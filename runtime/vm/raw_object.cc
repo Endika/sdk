@@ -18,10 +18,6 @@ namespace dart {
 DEFINE_FLAG(bool, validate_overwrite, true, "Verify overwritten fields.");
 #endif  // DEBUG
 
-bool RawObject::IsVMHeapObject() const {
-  return Dart::vm_isolate()->heap()->Contains(ToAddr(this));
-}
-
 
 void RawObject::Validate(Isolate* isolate) const {
   if (Object::void_class_ == reinterpret_cast<RawClass*>(kHeapObjectTag)) {
@@ -235,7 +231,6 @@ void RawObject::ValidateOverwrittenSmi(RawSmi* raw) {
 
 intptr_t RawObject::VisitPointers(ObjectPointerVisitor* visitor) {
   intptr_t size = 0;
-  NoHandleScope no_handles(visitor->isolate());
 
   // Only reasonable to be called on heap objects.
   ASSERT(IsHeapObject());
@@ -448,14 +443,14 @@ intptr_t RawFunction::VisitFunctionPointers(RawFunction* raw_obj,
     visitor->VisitPointer(
         reinterpret_cast<RawObject**>(&raw_obj->ptr()->instructions_));
   } else {
-    visitor->skipped_code_functions()->Add(raw_obj);
+    visitor->add_skipped_code_function(raw_obj);
   }
 
   if (ShouldVisitCode(raw_obj->ptr()->unoptimized_code_)) {
     visitor->VisitPointer(
         reinterpret_cast<RawObject**>(&raw_obj->ptr()->unoptimized_code_));
   } else {
-    visitor->skipped_code_functions()->Add(raw_obj);
+    visitor->add_skipped_code_function(raw_obj);
   }
   return Function::InstanceSize();
 }

@@ -154,7 +154,7 @@ static RawError* Compile(const Library& library, const Script& script) {
     } else {
       // Compilation errors are not Dart instances, so just mark the library
       // as having failed to load without providing an error instance.
-      library.SetLoadError(Instance::Handle());
+      library.SetLoadError(Object::null_instance());
     }
   }
   return error.raw();
@@ -253,7 +253,8 @@ static RawError* LoadPatchFiles(Isolate* isolate,
 
 
 RawError* Bootstrap::LoadandCompileScripts() {
-  Isolate* isolate = Isolate::Current();
+  Thread* thread = Thread::Current();
+  Isolate* isolate = thread->isolate();
   String& uri = String::Handle(isolate);
   String& patch_uri = String::Handle(isolate);
   String& source = String::Handle(isolate);
@@ -266,7 +267,7 @@ RawError* Bootstrap::LoadandCompileScripts() {
   // library tag handler so that we can load all the bootstrap libraries.
   isolate->set_library_tag_handler(BootstrapLibraryTagHandler);
 
-  HANDLESCOPE(isolate);
+  HANDLESCOPE(thread);
 
   // Create library objects for all the bootstrap libraries.
   for (intptr_t i = 0;

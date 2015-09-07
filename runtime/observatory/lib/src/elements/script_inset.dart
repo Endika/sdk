@@ -11,6 +11,7 @@ import 'service_ref.dart';
 import 'package:observatory/service.dart';
 import 'package:observatory/utils.dart';
 import 'package:polymer/polymer.dart';
+import 'package:logging/logging.dart';
 
 const nbsp = "\u00A0";
 
@@ -42,15 +43,29 @@ void addInfoBox(Element content, Function infoBoxGenerator) {
   content.style.cursor = 'pointer';
 }
 
+
+void addLink(Element content, String target) {
+  // Ick, destructive but still compatible with also adding an info box.
+  var a = new AnchorElement(href: target);
+  a.text = content.text;
+  content.text = '';
+  content.append(a);
+}
+
+
 abstract class Annotation implements Comparable<Annotation> {
   int line;
   int columnStart;
   int columnStop;
+  int get priority;
 
   void applyStyleTo(element);
 
   int compareTo(Annotation other) {
     if (line == other.line) {
+      if (columnStart == other.columnStart) {
+        return priority.compareTo(other.priority);
+      }
       return columnStart.compareTo(other.columnStart);
     }
     return line.compareTo(other.line);
@@ -89,6 +104,8 @@ abstract class Annotation implements Comparable<Annotation> {
 }
 
 class CurrentExecutionAnnotation extends Annotation {
+  int priority = 0;  // highest priority.
+
   void applyStyleTo(element) {
     if (element == null) {
       return;  // TODO(rmacnak): Handling overlapping annotations.
@@ -98,8 +115,70 @@ class CurrentExecutionAnnotation extends Annotation {
   }
 }
 
+class BreakpointAnnotation extends Annotation {
+  Breakpoint bpt;
+  int priority = 1;
+
+  BreakpointAnnotation(this.bpt) {
+    var script = bpt.location.script;
+    var pos = bpt.location.tokenPos;
+    line = script.tokenToLine(pos);
+    columnStart = script.tokenToCol(pos) - 1;  // tokenToCol is 1-origin.
+    var length = script.guessTokenLength(line, columnStart);
+    if (length == null) {
+      length = 1;
+    }
+    columnStop = columnStart + length;
+  }
+
+  void applyStyleTo(element) {
+    if (element == null) {
+      return;  // TODO(rmacnak): Handling overlapping annotations.
+    }
+    var script = bpt.location.script;
+    var pos = bpt.location.tokenPos;
+    int line = script.tokenToLine(pos);
+    int column = script.tokenToCol(pos);
+    element.classes.add("breakAnnotation");
+    element.title = "Breakpoint ${bpt.number} at ${line}:${column}";
+  }
+}
+
+class LibraryAnnotation extends Annotation {
+  Library target;
+  String url;
+  int priority = 2;
+
+  LibraryAnnotation(this.target, this.url);
+
+  void applyStyleTo(element) {
+    if (element == null) {
+      return;  // TODO(rmacnak): Handling overlapping annotations.
+    }
+    element.title = "library ${target.uri}";
+    addLink(element, url);
+  }
+}
+
+class PartAnnotation extends Annotation {
+  Script part;
+  String url;
+  int priority = 2;
+
+  PartAnnotation(this.part, this.url);
+
+  void applyStyleTo(element) {
+    if (element == null) {
+      return;  // TODO(rmacnak): Handling overlapping annotations.
+    }
+    element.title = "script ${part.uri}";
+    addLink(element, url);
+  }
+}
+
 class LocalVariableAnnotation extends Annotation {
   final value;
+  int priority = 2;
 
   LocalVariableAnnotation(LocalVarLocation location, this.value) {
     line = location.line;
@@ -118,13 +197,17 @@ class LocalVariableAnnotation extends Annotation {
 
 class CallSiteAnnotation extends Annotation {
   CallSite callSite;
+  int priority = 2;
 
   CallSiteAnnotation(this.callSite) {
     line = callSite.line;
     columnStart = callSite.column - 1;  // Call site is 1-origin.
-    var tokenLength = callSite.name.length;  // Approximate.
-    if (callSite.name.startsWith("get:") ||
-        callSite.name.startsWith("set:")) tokenLength -= 4;
+    var tokenLength = callSite.script.guessTokenLength(line, columnStart);
+    if (tokenLength == null) {
+      tokenLength = callSite.name.length;  // Approximate.
+      if (callSite.name.startsWith("get:") ||
+          callSite.name.startsWith("set:")) tokenLength -= 4;
+    }
     columnStop = columnStart + tokenLength;
   }
 
@@ -160,7 +243,10 @@ class CallSiteAnnotation extends Annotation {
 }
 
 abstract class DeclarationAnnotation extends Annotation {
-  DeclarationAnnotation(decl) {
+  String url;
+  int priority = 2;
+
+  DeclarationAnnotation(decl, this.url) {
     assert(decl.loaded);
     SourceLocation location = decl.location;
     if (location == null) {
@@ -169,6 +255,7 @@ abstract class DeclarationAnnotation extends Annotation {
       columnStop = 0;
       return;
     }
+
     Script script = location.script;
     line = script.tokenToLine(location.tokenPos);
     columnStart = script.tokenToCol(location.tokenPos);
@@ -196,119 +283,66 @@ abstract class DeclarationAnnotation extends Annotation {
 class ClassDeclarationAnnotation extends DeclarationAnnotation {
   Class klass;
 
-  ClassDeclarationAnnotation(Class cls) : klass = cls, super(cls);
+  ClassDeclarationAnnotation(Class cls, String url)
+    : klass = cls,
+      super(cls, url);
 
   void applyStyleTo(element) {
     if (element == null) {
       return;  // TODO(rmacnak): Handling overlapping annotations.
     }
-    element.style.fontWeight = "bold";
     element.title = "class ${klass.name}";
-
-    addInfoBox(element, () {
-      var details = table();
-      var r = row();
-      r.append(cell("Class"));
-      r.append(cell(serviceRef(klass)));
-      details.append(r);
-
-      return details;
-    });
+    addLink(element, url);
   }
 }
 
 class FieldDeclarationAnnotation extends DeclarationAnnotation {
   Field field;
 
-  FieldDeclarationAnnotation(Field fld) : field = fld, super(fld);
+  FieldDeclarationAnnotation(Field fld, String url)
+    : field = fld,
+      super(fld, url);
 
   void applyStyleTo(element) {
     if (element == null) {
       return;  // TODO(rmacnak): Handling overlapping annotations.
     }
-    element.style.fontWeight = "bold";
-    element.title = "field ${field.name}";
-
-    addInfoBox(element, () {
-      var details = table();
-      var r = row();
-      r.append(cell("Field"));
-      r.append(cell(serviceRef(field)));
-      details.append(r);
-
-      if (field.isStatic) {
-        if (field.loaded) {
-          r = row();
-          r.append(cell("Value"));
-          r.append(cell(serviceRef(field.staticValue)));
-          details.append(r);
-        }
-      } else {
-        r = row();
-        r.append(cell("Nullable"));
-        r.append(cell(field.guardNullable ? "null observed"
-                                          : "null not observed"));
-        details.append(r);
-
-        r = row();
-        r.append(cell("Types"));
-        if (field.guardClass == "dynamic") {
-          r.append(cell("various"));
-        } else if (field.guardClass == "unknown") {
-          r.append(cell("none"));
-        } else {
-          r.append(cell(serviceRef(field.guardClass)));
-        }
-        details.append(r);
-      }
-
-      return details;
-    });
+    var tooltip = "field ${field.name}";
+    element.title = tooltip;
+    addLink(element, url);
   }
 }
 
 class FunctionDeclarationAnnotation extends DeclarationAnnotation {
   ServiceFunction function;
 
-  FunctionDeclarationAnnotation(ServiceFunction func)
-    : function = func, super(func);
+  FunctionDeclarationAnnotation(ServiceFunction func, String url)
+    : function = func,
+      super(func, url);
 
   void applyStyleTo(element) {
     if (element == null) {
       return;  // TODO(rmacnak): Handling overlapping annotations.
     }
-    element.style.fontWeight = "bold";
-    element.title = "method ${function.name}";
+    var tooltip = "method ${function.name}";
+    if (function.isOptimizable == false) {
+      tooltip += "\nUnoptimizable!";
+    }
+    if (function.isInlinable == false) {
+      tooltip += "\nNot inlinable!";
+    }
+    if (function.deoptimizations > 0) {
+      tooltip += "\nDeoptimized ${function.deoptimizations} times!";
+    }
+    element.title = tooltip;
 
     if (function.isOptimizable == false ||
         function.isInlinable == false ||
         function.deoptimizations >0) {
-      element.style.backgroundColor = "red";
+      element.style.backgroundColor = "#EEA7A7";  // Low-saturation red.
     }
 
-    addInfoBox(element, () {
-      var details = table();
-      var r = row();
-      r.append(cell("Function"));
-      r.append(cell(serviceRef(function)));
-      details.append(r);
-
-      r = row();
-      r.append(cell("Usage Count"));
-      r.append(cell("${function.usageCounter}"));
-      details.append(r);
-
-      if (function.isOptimizable == false) {
-        details.append(row(cell("Unoptimizable!")));
-      }
-      if (function.isInlinable == false) {
-        details.append(row(cell("Not inlinable!")));
-      }
-      if (function.deoptimizations > 0) {
-        details.append(row("Deoptimized ${function.deoptimizations} times!"));
-      }
-      return details;
-    });
+    addLink(element, url);
   }
 }
 
@@ -335,26 +369,59 @@ class ScriptInsetElement extends ObservatoryElement {
   var annotations = [];
   var annotationsCursor;
 
-  StreamSubscription scriptChangeSubscription;
+  StreamSubscription _scriptChangeSubscription;
+  Future<StreamSubscription> _debugSubscriptionFuture;
+
+  bool hasLoadedLibraryDeclarations = false;
 
   String makeLineId(int line) {
     return 'line-$line';
   }
 
   void _scrollToCurrentPos() {
-    var line = querySelector('#${makeLineId(_currentLine)}');
+    var line = shadowRoot.getElementById(makeLineId(_currentLine));
     if (line != null) {
       line.scrollIntoView();
     }
   }
 
+  void attached() {
+    super.attached();
+    _debugSubscriptionFuture =
+        app.vm.listenEventStream(VM.kDebugStream, _onDebugEvent);
+  }
+
   void detached() {
-    if (scriptChangeSubscription != null) {
+    cancelFutureSubscription(_debugSubscriptionFuture);
+    _debugSubscriptionFuture = null;
+    if (_scriptChangeSubscription != null) {
       // Don't leak. If only Dart and Javascript exposed weak references...
-      scriptChangeSubscription.cancel();
-      scriptChangeSubscription = null;
+      _scriptChangeSubscription.cancel();
+      _scriptChangeSubscription = null;
     }
     super.detached();
+  }
+
+  void _onDebugEvent(event) {
+    if (script == null) {
+      return;
+    }
+    switch (event.kind) {
+      case ServiceEvent.kBreakpointAdded:
+      case ServiceEvent.kBreakpointResolved:
+      case ServiceEvent.kBreakpointRemoved:
+        var loc = event.breakpoint.location;
+        if (loc.script == script) {
+          int line = script.tokenToLine(loc.tokenPos);
+          if ((line >= _startLine) && (line <= _endLine)) {
+            _updateTask.queue();
+          }
+        }
+        break;
+      default:
+        // Ignore.
+        break;
+    }
   }
 
   void currentPosChanged(oldValue) {
@@ -414,21 +481,26 @@ class ScriptInsetElement extends ObservatoryElement {
       return;
     }
 
-    if (scriptChangeSubscription == null) {
-      scriptChangeSubscription = script.changes.listen((_) => update());
+    if (_scriptChangeSubscription == null) {
+      _scriptChangeSubscription = script.changes.listen((_) => update());
     }
 
     computeAnnotations();
 
     var table = linesTable();
+    var firstBuild = false;
     if (container == null) {
       // Indirect to avoid deleting the style element.
       container = new DivElement();
       shadowRoot.append(container);
+      firstBuild = true;
     }
     container.children.clear();
     container.children.add(table);
     makeCssClassUncopyable(table, "noCopy");
+    if (firstBuild) {
+      _scrollToCurrentPos();
+    }
   }
 
   void computeAnnotations() {
@@ -452,16 +524,23 @@ class ScriptInsetElement extends ObservatoryElement {
     annotations.clear();
 
     addCurrentExecutionAnnotation();
+    addBreakpointAnnotations();
 
     if (!inDebuggerContext && script.library != null) {
-      loadDeclarationsOfLibrary(script.library);
-
-      // Add fields before functions so they beat out conflicting
-      // implicit g/setters.
-      addClassAnnotations();
-      addFieldAnnotations();
-      addFunctionAnnotations();
-      addCallSiteAnnotations();
+      if (hasLoadedLibraryDeclarations) {
+        addLibraryAnnotations();
+        addDependencyAnnotations();
+        addPartAnnotations();
+        addClassAnnotations();
+        addFieldAnnotations();
+        addFunctionAnnotations();
+        addCallSiteAnnotations();
+      } else {
+        loadDeclarationsOfLibrary(script.library).then((_) {
+          hasLoadedLibraryDeclarations = true;
+          update();
+        });
+      }
     }
 
     addLocalVariableAnnotations();
@@ -474,36 +553,168 @@ class ScriptInsetElement extends ObservatoryElement {
       var a = new CurrentExecutionAnnotation();
       a.line = _currentLine;
       a.columnStart = _currentCol;
-      a.columnStop = _currentCol + 1;
+      var length = script.guessTokenLength(_currentLine, _currentCol);
+      if (length == null) {
+        length = 1;
+      }
+      a.columnStop = _currentCol + length;
       annotations.add(a);
     }
   }
 
-  void loadDeclarationsOfLibrary(Library lib) {
-    lib.load().then((lib) {
+  void addBreakpointAnnotations() {
+    for (var line = _startLine; line <= _endLine; line++) {
+      var bpts = script.getLine(line).breakpoints;
+      if (bpts != null) {
+        for (var bpt in bpts) {
+          if (bpt.location != null) {
+            annotations.add(new BreakpointAnnotation(bpt));
+          }
+        }
+      }
+    }
+  }
+
+  Future loadDeclarationsOfLibrary(Library lib) {
+    return lib.load().then((lib) {
+      var loads = [];
       for (var func in lib.functions) {
-        func.load();
+        loads.add(func.load());
       }
       for (var field in lib.variables) {
-        field.load();
+        loads.add(field.load());
       }
       for (var cls in lib.classes) {
-        cls.load().then((cls) {
-          for (var func in cls.functions) {
-            func.load();
-          }
-          for (var field in cls.fields) {
-            field.load();
-          }
-        });
+        loads.add(loadDeclarationsOfClass(cls));
       }
+      return Future.wait(loads);
     });
+  }
+
+  Future loadDeclarationsOfClass(Class cls) {
+    return cls.load().then((cls) {
+      var loads = [];
+      for (var func in cls.functions) {
+        loads.add(func.load());
+      }
+      for (var field in cls.fields) {
+        loads.add(field.load());
+      }
+      return Future.wait(loads);
+    });
+  }
+
+  String inspectLink(ServiceObject ref) {
+    return gotoLink('/inspect', ref);
+  }
+
+  void addLibraryAnnotations() {
+    for (ScriptLine line in script.lines) {
+      // TODO(rmacnak): Use a real scanner.
+      var pattern = new RegExp("library ${script.library.name}");
+      var match = pattern.firstMatch(line.text);
+      if (match != null) {
+        var anno = new LibraryAnnotation(script.library,
+                                         inspectLink(script.library));
+        anno.line = line.line;
+        anno.columnStart = match.start + 8;
+        anno.columnStop = match.end;
+        annotations.add(anno);
+      }
+      // TODO(rmacnak): Use a real scanner.
+      pattern = new RegExp("part of ${script.library.name}");
+      match = pattern.firstMatch(line.text);
+      if (match != null) {
+        var anno = new LibraryAnnotation(script.library,
+                                         inspectLink(script.library));
+        anno.line = line.line;
+        anno.columnStart = match.start + 8;
+        anno.columnStop = match.end;
+        annotations.add(anno);
+      }
+    }
+  }
+
+  Library resolveDependency(String relativeUri) {
+    var targetUri = Uri.parse(script.library.uri).resolve(relativeUri);
+    for (Library l in script.isolate.libraries) {
+      if (targetUri.toString() == l.uri) {
+        return l;
+      }
+    }
+    Logger.root.info("Could not resolve library dependency: $relativeUri");
+    return null;
+  }
+
+  void addDependencyAnnotations() {
+    // TODO(rmacnak): Use a real scanner.
+    var patterns = [
+      new RegExp("import '(.*)'"),
+      new RegExp('import "(.*)"'),
+      new RegExp("export '(.*)'"),
+      new RegExp('export "(.*)"'),
+    ];
+    for (ScriptLine line in script.lines) {
+      for (var pattern in patterns) {
+        var match = pattern.firstMatch(line.text);
+        if (match != null) {
+          Library target = resolveDependency(match[1]);
+          if (target != null) {
+            var anno = new LibraryAnnotation(target, inspectLink(target));
+            anno.line = line.line;
+            anno.columnStart = match.start + 8;
+            anno.columnStop = match.end - 1;
+            annotations.add(anno);
+          }
+        }
+      }
+    }
+  }
+
+  Script resolvePart(String relativeUri) {
+    var rootUri = Uri.parse(script.library.uri);
+    if (rootUri.scheme == 'dart') {
+      // The relative paths from dart:* libraries to their parts are not valid.
+      rootUri = new Uri.directory(script.library.uri);
+    }
+    var targetUri = rootUri.resolve(relativeUri);
+    for (Script s in script.library.scripts) {
+      if (targetUri.toString() == s.uri) {
+        return s;
+      }
+    }
+    Logger.root.info("Could not resolve part: $relativeUri");
+    return null;
+  }
+
+  void addPartAnnotations() {
+    // TODO(rmacnak): Use a real scanner.
+    var patterns = [
+      new RegExp("part '(.*)'"),
+      new RegExp('part "(.*)"'),
+    ];
+    for (ScriptLine line in script.lines) {
+      for (var pattern in patterns) {
+        var match = pattern.firstMatch(line.text);
+        if (match != null) {
+          Script part = resolvePart(match[1]);
+          if (part != null) {
+            var anno = new PartAnnotation(part, inspectLink(part));
+            anno.line = line.line;
+            anno.columnStart = match.start + 6;
+            anno.columnStop = match.end - 1;
+            annotations.add(anno);
+          }
+        }
+      }
+    }
   }
 
   void addClassAnnotations() {
     for (var cls in script.library.classes) {
       if ((cls.location != null) && (cls.location.script == script)) {
-        annotations.add(new ClassDeclarationAnnotation(cls));
+        var a = new ClassDeclarationAnnotation(cls, inspectLink(cls));
+        annotations.add(a);
       }
     }
   }
@@ -511,13 +722,15 @@ class ScriptInsetElement extends ObservatoryElement {
   void addFieldAnnotations() {
     for (var field in script.library.variables) {
       if ((field.location != null) && (field.location.script == script)) {
-        annotations.add(new FieldDeclarationAnnotation(field));
+        var a = new FieldDeclarationAnnotation(field, inspectLink(field));
+        annotations.add(a);
       }
     }
     for (var cls in script.library.classes) {
       for (var field in cls.fields) {
         if ((field.location != null) && (field.location.script == script)) {
-          annotations.add(new FieldDeclarationAnnotation(field));
+          var a = new FieldDeclarationAnnotation(field, inspectLink(field));
+          annotations.add(a);
         }
       }
     }
@@ -525,14 +738,26 @@ class ScriptInsetElement extends ObservatoryElement {
 
   void addFunctionAnnotations() {
     for (var func in script.library.functions) {
-      if ((func.location != null) && (func.location.script == script)) {
-        annotations.add(new FunctionDeclarationAnnotation(func));
+      if ((func.location != null) &&
+          (func.location.script == script) &&
+          (func.kind != FunctionKind.kImplicitGetterFunction) &&
+          (func.kind != FunctionKind.kImplicitSetterFunction)) {
+        // We annotate a field declaration with the field instead of the
+        // implicit getter or setter.
+        var a = new FunctionDeclarationAnnotation(func, inspectLink(func));
+        annotations.add(a);
       }
     }
     for (var cls in script.library.classes) {
       for (var func in cls.functions) {
-        if ((func.location != null) && (func.location.script == script)) {
-          annotations.add(new FunctionDeclarationAnnotation(func));
+        if ((func.location != null) &&
+            (func.location.script == script) &&
+            (func.kind != FunctionKind.kImplicitGetterFunction) &&
+            (func.kind != FunctionKind.kImplicitSetterFunction)) {
+          // We annotate a field declaration with the field instead of the
+          // implicit getter or setter.
+          var a = new FunctionDeclarationAnnotation(func, inspectLink(func));
+          annotations.add(a);
         }
       }
     }

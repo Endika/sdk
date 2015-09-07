@@ -57,6 +57,7 @@ class Link<T> {
   }
 
   bool get isEmpty => true;
+  bool get isNotEmpty => false;
 
   Link<T> reverse() => this;
 
@@ -132,7 +133,7 @@ abstract class LinkBuilder<T> {
 
   List<T> toList();
 
-  void addLast(T t);
+  Link<T> addLast(T t);
 
   final int length;
   final bool isEmpty;

@@ -172,7 +172,8 @@ bool VmService::Setup(const char* server_ip, intptr_t server_port) {
 
   // Prepare for script loading by setting up the 'print' and 'timer'
   // closures and setting up 'package root' for URI resolution.
-  result = DartUtils::PrepareForScriptLoading(NULL, true, false, builtin_lib);
+  result = DartUtils::PrepareForScriptLoading(
+      NULL, NULL, true, false, builtin_lib);
   SHUTDOWN_ON_ERROR(result);
 
   // Load main script.
@@ -312,7 +313,7 @@ Dart_Handle VmService::LoadResource(Dart_Handle library,
   RETURN_ERROR_HANDLE(result);
   ASSERT(data_buffer_length == data_list_buffer_length);
   ASSERT(data_list_buffer != NULL);
-  ASSERT(type = Dart_TypedData_kUint8);
+  ASSERT(type == Dart_TypedData_kUint8);
   memmove(data_list_buffer, &data_buffer[0], data_buffer_length);
   result = Dart_TypedDataReleaseData(data_list);
   RETURN_ERROR_HANDLE(result);

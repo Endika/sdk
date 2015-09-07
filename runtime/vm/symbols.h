@@ -5,6 +5,7 @@
 #ifndef VM_SYMBOLS_H_
 #define VM_SYMBOLS_H_
 
+#include "vm/growable_array.h"
 #include "vm/object.h"
 #include "vm/snapshot_ids.h"
 
@@ -66,6 +67,7 @@ class ObjectPointerVisitor;
   V(NoSuchMethodError, "NoSuchMethodError")                                    \
   V(CyclicInitializationError, "CyclicInitializationError")                    \
   V(ThrowNew, "_throwNew")                                                     \
+  V(ThrowNewIfNotLoaded, "_throwNewIfNotLoaded")                               \
   V(Symbol, "Symbol")                                                          \
   V(SymbolCtor, "Symbol.")                                                     \
   V(List, "List")                                                              \
@@ -102,12 +104,18 @@ class ObjectPointerVisitor;
   V(YieldKw, "yield")                                                          \
   V(AsyncCompleter, ":async_completer")                                        \
   V(AsyncOperation, ":async_op")                                               \
+  V(AsyncThenCallback, ":async_op_then")                                       \
+  V(AsyncCatchErrorCallback, ":async_op_catch_error")                          \
   V(AsyncOperationParam, ":async_result")                                      \
   V(AsyncOperationErrorParam, ":async_error_param")                            \
   V(AsyncOperationStackTraceParam, ":async_stack_trace_param")                 \
   V(AsyncSavedTryCtxVarPrefix, ":async_saved_try_ctx_var_")                    \
   V(AsyncCatchHelper, "_asyncCatchHelper")                                     \
+  V(AsyncThenWrapperHelper, "_asyncThenWrapperHelper")                         \
+  V(AsyncErrorWrapperHelper, "_asyncErrorWrapperHelper")                       \
+  V(AsyncAwaitHelper, "_awaitHelper")                                          \
   V(Await, "await")                                                            \
+  V(AwaitTempVarPrefix, ":await_temp_var_")                                    \
   V(AwaitContextVar, ":await_ctx_var")                                         \
   V(AwaitJumpVar, ":await_jump_var")                                           \
   V(Future, "Future")                                                          \
@@ -118,7 +126,7 @@ class ObjectPointerVisitor;
   V(Completer, "Completer")                                                    \
   V(CompleterComplete, "complete")                                             \
   V(CompleterCompleteError, "completeError")                                   \
-  V(CompleterConstructor, "Completer.")                                        \
+  V(CompleterSyncConstructor, "Completer.sync")                                \
   V(CompleterFuture, "future")                                                 \
   V(StreamIterator, "StreamIterator")                                          \
   V(StreamIteratorConstructor, "StreamIterator.")                              \
@@ -290,6 +298,7 @@ class ObjectPointerVisitor;
   V(RangeError, "RangeError")                                                  \
   V(DotRange, ".range")                                                        \
   V(ArgumentError, "ArgumentError")                                            \
+  V(DotValue, ".value")                                                        \
   V(FormatException, "FormatException")                                        \
   V(UnsupportedError, "UnsupportedError")                                      \
   V(StackOverflowError, "StackOverflowError")                                  \
@@ -311,6 +320,11 @@ class ObjectPointerVisitor;
   V(TwoNewlines, "\n\n")                                                       \
   V(TwoSpaces, "  ")                                                           \
   V(_instanceOf, "_instanceOf")                                                \
+  V(_instanceOfSmi, "_instanceOfSmi")                                          \
+  V(_instanceOfNum, "_instanceOfNum")                                          \
+  V(_instanceOfInt, "_instanceOfInt")                                          \
+  V(_instanceOfDouble, "_instanceOfDouble")                                    \
+  V(_instanceOfString, "_instanceOfString")                                    \
   V(_as, "_as")                                                                \
   V(GetterPrefix, "get:")                                                      \
   V(SetterPrefix, "set:")                                                      \
@@ -383,6 +397,9 @@ class ObjectPointerVisitor;
   V(last, "last")                                                              \
   V(removeLast, "removeLast")                                                  \
   V(add, "add")                                                                \
+  V(ConstructorClosurePrefix, "new#")                                          \
+  V(_runExtension, "_runExtension")                                            \
+  V(_runPendingImmediateCallback, "_runPendingImmediateCallback")              \
 
 
 // Contains a list of frequently used strings in a canonicalized form. This
@@ -497,6 +514,9 @@ class Symbols : public AllStatic {
   static const String& At() {
     return *(symbol_handles_[kNullCharId + '@']);
   }
+  static const String& HashMark() {
+    return *(symbol_handles_[kNullCharId + '#']);
+  }
   static const String& Semicolon() {
     return *(symbol_handles_[kNullCharId + ';']);
   }
@@ -575,7 +595,14 @@ class Symbols : public AllStatic {
                         intptr_t begin_index,
                         intptr_t length);
 
+  static RawString* NewFormatted(const char* format, ...)
+      PRINTF_ATTRIBUTE(1, 2);
+  static RawString* NewFormattedV(const char* format, va_list args);
+
   static RawString* FromConcat(const String& str1, const String& str2);
+
+  static RawString* FromConcatAll(
+      const GrowableHandlePtrArray<const String>& strs);
 
   // Returns char* of predefined symbol.
   static const char* Name(SymbolId symbol);
@@ -587,6 +614,13 @@ class Symbols : public AllStatic {
   }
 
   static void DumpStats();
+
+  // Returns Symbol::Null if no symbol is found.
+  template<typename StringType>
+  static RawString* Lookup(const StringType& str);
+
+  // Returns Symbol::Null if no symbol is found.
+  static RawString* LookupFromConcat(const String& str1, const String& str2);
 
  private:
   enum {

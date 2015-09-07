@@ -8,6 +8,7 @@ import 'dart:async';
 
 import 'package:analysis_server/src/analysis_server.dart';
 import 'package:analysis_server/src/constants.dart';
+import 'package:analysis_server/src/context_manager.dart';
 import 'package:analysis_server/src/domain_server.dart';
 import 'package:analysis_server/src/operation/operation.dart';
 import 'package:analysis_server/src/plugin/server_plugin.dart';
@@ -26,9 +27,10 @@ import 'package:unittest/unittest.dart';
 
 import 'mock_sdk.dart';
 import 'mocks.dart';
+import 'utils.dart';
 
 main() {
-  groupSep = ' | ';
+  initializeTestEnvironment();
   defineReflectiveTests(AnalysisServerTest);
 }
 
@@ -52,12 +54,16 @@ class AnalysisServerTest {
     // bar.dart.
     resourceProvider.newFolder('/foo');
     resourceProvider.newFolder('/bar');
-    File foo = resourceProvider.newFile('/foo/foo.dart', '''
+    File foo = resourceProvider.newFile(
+        '/foo/foo.dart',
+        '''
 libary foo;
 import "../bar/bar.dart";
 ''');
     Source fooSource = foo.createSource();
-    File bar = resourceProvider.newFile('/bar/bar.dart', '''
+    File bar = resourceProvider.newFile(
+        '/bar/bar.dart',
+        '''
 library bar;
 import "../foo/foo.dart";
 ''');
@@ -120,9 +126,16 @@ import "../foo/foo.dart";
     ExtensionManager manager = new ExtensionManager();
     ServerPlugin serverPlugin = new ServerPlugin();
     manager.processPlugins([serverPlugin]);
-    server = new AnalysisServer(channel, resourceProvider, packageMapProvider,
-        null, serverPlugin, new AnalysisServerOptions(), new MockSdk(),
-        InstrumentationService.NULL_SERVICE, rethrowExceptions: true);
+    server = new AnalysisServer(
+        channel,
+        resourceProvider,
+        packageMapProvider,
+        null,
+        serverPlugin,
+        new AnalysisServerOptions(),
+        new MockSdk(),
+        InstrumentationService.NULL_SERVICE,
+        rethrowExceptions: true);
   }
 
   Future test_contextDisposed() {
@@ -404,8 +417,8 @@ import "../foo/foo.dart";
 
   void test_rethrowExceptions() {
     Exception exceptionToThrow = new Exception('test exception');
-    MockServerOperation operation = new MockServerOperation(
-        ServerOperationPriority.ANALYSIS, (_) {
+    MockServerOperation operation =
+        new MockServerOperation(ServerOperationPriority.ANALYSIS, (_) {
       throw exceptionToThrow;
     });
     server.operationQueue.add(operation);

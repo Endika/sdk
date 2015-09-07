@@ -4,35 +4,31 @@
 
 library elements;
 
-
+import '../compiler.dart' show
+    Compiler;
+import '../constants/constructors.dart';
 import '../constants/expressions.dart';
-import '../tree/tree.dart';
-import '../util/util.dart';
-import '../resolution/resolution.dart';
-
-import '../dart2jslib.dart' show InterfaceType,
-                                 DartType,
-                                 TypeVariableType,
-                                 TypedefType,
-                                 DualKind,
-                                 MessageKind,
-                                 DiagnosticListener,
-                                 Script,
-                                 FunctionType,
-                                 Selector,
-                                 SourceSpan,
-                                 Constant,
-                                 Compiler,
-                                 Backend,
-                                 isPrivateName;
-
 import '../dart_types.dart';
-
-import '../scanner/scannerlib.dart' show Token,
-                                         isUserDefinableOperator,
-                                         isMinusOperator;
-
+import '../diagnostics/diagnostic_listener.dart';
+import '../diagnostics/messages.dart' show
+MessageKind;
+import '../diagnostics/source_span.dart' show
+    SourceSpan;
+import '../diagnostics/spannable.dart' show
+    Spannable;
+import '../resolution/scope.dart' show
+    Scope;
+import '../resolution/tree_elements.dart' show
+    TreeElements;
 import '../ordered_typeset.dart' show OrderedTypeSet;
+import '../script.dart';
+import '../tokens/token.dart' show
+    Token,
+    isUserDefinableOperator,
+    isMinusOperator;
+import '../tree/tree.dart';
+import '../util/characters.dart' show $_;
+import '../util/util.dart';
 
 import 'visitor.dart' show ElementVisitor;
 
@@ -525,7 +521,7 @@ class Elements {
     if (element == null) return !isClosureSend(send, element);
     return isInstanceMethod(element) ||
            isInstanceField(element) ||
-           send.isConditional;
+           (send.isConditional && !element.isStatic);
   }
 
   static bool isClosureSend(Send send, Element element) {
@@ -662,12 +658,6 @@ class Elements {
     if (identical(op, '??=')) return '??';
 
     return null;
-  }
-
-  static String mapToUserOperator(String op) {
-    String userOperator = mapToUserOperatorOrNull(op);
-    if (userOperator == null) throw 'Unhandled operator: $op';
-    else return userOperator;
   }
 
   static bool isNumberOrStringSupertype(Element element, Compiler compiler) {
@@ -836,10 +826,8 @@ abstract class CompilationUnitElement extends Element {
   get enclosingElement;
 
   Script get script;
-  PartOf get partTag;
 
   void forEachLocalMember(f(Element element));
-  bool get hasMembers;
 
   int compareTo(CompilationUnitElement other);
 }
@@ -902,6 +890,15 @@ abstract class LibraryElement extends Element
 
   bool hasLibraryName();
   String getLibraryName();
+
+  /**
+   * Returns the library name (as defined by the library tag) or for script
+   * (which have no library tag) the script file name. The latter case is used
+   * to provide a 'library name' for scripts to use for instance in dartdoc.
+   *
+   * Note: the returned filename is still escaped ("a%20b.dart" instead of
+   * "a b.dart").
+   */
   String getLibraryOrScriptName();
 
   int compareTo(LibraryElement other);
@@ -965,7 +962,7 @@ abstract class MemberElement extends Element implements ExecutableElement {
   /// The local functions defined within this member.
   List<FunctionElement> get nestedClosures;
 
-  /// The name of this member taking privacy into account.
+  /// The name of this member, taking privacy into account.
   Name get memberName;
 }
 
@@ -1276,6 +1273,9 @@ abstract class ConstructorBodyElement extends MethodElement {
 /// [TypeDeclarationElement] defines the common interface for class/interface
 /// declarations and typedefs.
 abstract class TypeDeclarationElement extends Element implements AstElement {
+  /// The name of this type declaration, taking privacy into account.
+  Name get memberName;
+
   /// Do not use [computeType] outside of the resolver; instead retrieve the
   /// type from the [thisType] or [rawType], depending on the use case.
   ///
@@ -1485,6 +1485,8 @@ abstract class JumpTarget extends Local {
 /// The [Element] for a type variable declaration on a generic class or typedef.
 abstract class TypeVariableElement extends Element
     implements AstElement, TypedElement {
+  /// The name of this type variable, taking privacy into account.
+  Name get memberName;
 
   /// Use [typeDeclaration] instead.
   @deprecated
@@ -1492,6 +1494,9 @@ abstract class TypeVariableElement extends Element
 
   /// The class or typedef on which this type variable is defined.
   TypeDeclarationElement get typeDeclaration;
+
+  /// The index of this type variable within its type declaration.
+  int get index;
 
   /// The [type] defined by the type variable.
   TypeVariableType get type;
@@ -1571,6 +1576,8 @@ class ResolvedAst {
   final TreeElements elements;
 
   ResolvedAst(this.element, this.node, this.elements);
+
+  String toString() => '$element:$node';
 }
 
 /// A [MemberSignature] is a member of an interface.

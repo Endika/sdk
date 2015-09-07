@@ -236,7 +236,7 @@ class RawObject {
     kWatchedBit = 0,
     kMarkBit = 1,
     kCanonicalBit = 2,
-    kFromSnapshotBit = 3,
+    kVMHeapObjectBit = 3,
     kRememberedBit = 4,
 #if defined(ARCH_IS_32_BIT)
     kReservedTagPos = 5,  // kReservedBit{100K,1M,10M}
@@ -315,8 +315,6 @@ class RawObject {
     uword addr = reinterpret_cast<uword>(this);
     return (addr & kNewObjectAlignmentOffset) == kOldObjectAlignmentOffset;
   }
-  // Assumes this is a heap object.
-  bool IsVMHeapObject() const;
 
   // Like !IsHeapObject() || IsOldObject(), but compiles to a single branch.
   bool IsSmiOrOldObject() const {
@@ -369,11 +367,14 @@ class RawObject {
   void SetCanonical() {
     UpdateTagBit<CanonicalObjectTag>(true);
   }
-  bool IsCreatedFromSnapshot() const {
-    return CreatedFromSnapshotTag::decode(ptr()->tags_);
+  void ClearCanonical() {
+    UpdateTagBit<CanonicalObjectTag>(false);
   }
-  void SetCreatedFromSnapshot() {
-    UpdateTagBit<CreatedFromSnapshotTag>(true);
+  bool IsVMHeapObject() const {
+    return VMHeapObjectTag::decode(ptr()->tags_);
+  }
+  void SetVMHeapObject() {
+    UpdateTagBit<VMHeapObjectTag>(true);
   }
 
   // Support for GC remembered bit.
@@ -442,8 +443,8 @@ class RawObject {
     return reinterpret_cast<uword>(raw_obj->ptr());
   }
 
-  static bool IsCreatedFromSnapshot(intptr_t value) {
-    return CreatedFromSnapshotTag::decode(value);
+  static bool IsVMHeapObject(intptr_t value) {
+    return VMHeapObjectTag::decode(value);
   }
 
   static bool IsCanonical(intptr_t value) {
@@ -479,7 +480,7 @@ class RawObject {
 
   class CanonicalObjectTag : public BitField<bool, kCanonicalBit, 1> {};
 
-  class CreatedFromSnapshotTag : public BitField<bool, kFromSnapshotBit, 1> {};
+  class VMHeapObjectTag : public BitField<bool, kVMHeapObjectBit, 1> {};
 
   class ReservedBits : public
       BitField<intptr_t, kReservedTagPos, kReservedTagSize> {};  // NOLINT
@@ -581,6 +582,9 @@ class RawObject {
   friend class Scavenger;
   friend class ScavengerVisitor;
   friend class SizeExcludingClassVisitor;  // GetClassId
+  friend class RetainingPathVisitor;  // GetClassId
+  friend class SkippedCodeFunctions;  // StorePointer
+  friend class InstructionsReader;  // tags_ check
   friend class SnapshotReader;
   friend class SnapshotWriter;
   friend class String;
@@ -741,8 +745,8 @@ class RawFunction : public RawObject {
   };
 
  private:
-  // So that the MarkingVisitor::DetachCode can null out the code fields.
-  friend class MarkingVisitor;
+  // So that the SkippedCodeFunctions::DetachCode can null out the code fields.
+  friend class SkippedCodeFunctions;
   friend class Class;
   RAW_HEAP_OBJECT_IMPLEMENTATION(Function);
   static bool ShouldVisitCode(RawCode* raw_code);
@@ -769,6 +773,7 @@ class RawFunction : public RawObject {
   RawObject** to() {
     return reinterpret_cast<RawObject**>(&ptr()->unoptimized_code_);
   }
+  uword entry_point_;
 
   int32_t token_pos_;
   int32_t end_token_pos_;
@@ -776,7 +781,6 @@ class RawFunction : public RawObject {
   int16_t num_fixed_parameters_;
   int16_t num_optional_parameters_;  // > 0: positional; < 0: named.
   int16_t deoptimization_counter_;
-  classid_t regexp_cid_;
   uint32_t kind_tag_;  // See Function::KindTagBits.
   uint16_t optimized_instruction_count_;
   uint16_t optimized_call_site_count_;
@@ -826,8 +830,20 @@ class RawField : public RawObject {
   RawObject* owner_;  // Class or patch class or mixin class
                       // where this field is defined.
   RawAbstractType* type_;
-  RawInstance* value_;  // Offset in words for instance and value for static.
+  union {
+    RawInstance* static_value_;  // Value for static fields.
+    RawSmi* offset_;  // Offset in words for instance fields.
+  } value_;
   RawArray* dependent_code_;
+  union {
+    // When precompiling we need to save the static initializer function here
+    // so that code for it can be generated.
+    RawFunction* precompiled_;  // Static initializer function - precompiling.
+    // When generating script snapshots after running the application it is
+    // necessary to save the initial value of static fields so that we can
+    // restore the value back to the original initial value.
+    RawInstance* saved_value_;  // Saved initial value - static fields.
+  } initializer_;
   RawSmi* guarded_list_length_;
   RawObject** to() {
     return reinterpret_cast<RawObject**>(&ptr()->guarded_list_length_);
@@ -842,7 +858,7 @@ class RawField : public RawObject {
   // generated on platforms with weak addressing modes (ARM, MIPS).
   int8_t guarded_list_length_in_object_offset_;
 
-  uint8_t kind_bits_;  // static, final, const, has initializer.
+  uint8_t kind_bits_;  // static, final, const, has initializer....
 };
 
 
@@ -925,15 +941,18 @@ class RawLibrary : public RawObject {
   RawScript* script_;
   RawString* private_key_;
   RawArray* dictionary_;         // Top-level names in this library.
-  RawArray* resolved_names_;     // Cache of resolved names in library scope.
   RawGrowableObjectArray* metadata_;  // Metadata on classes, methods etc.
   RawArray* anonymous_classes_;  // Classes containing top-level elements.
   RawArray* imports_;            // List of Namespaces imported without prefix.
   RawArray* exports_;            // List of re-exported Namespaces.
-  RawArray* loaded_scripts_;     // Array of scripts loaded in this library.
   RawInstance* load_error_;      // Error iff load_state_ == kLoadError.
-  RawObject** to() {
+  RawObject** to_snapshot() {
     return reinterpret_cast<RawObject**>(&ptr()->load_error_);
+  }
+  RawArray* resolved_names_;     // Cache of resolved names in library scope.
+  RawArray* loaded_scripts_;     // Array of scripts loaded in this library.
+  RawObject** to() {
+    return reinterpret_cast<RawObject**>(&ptr()->loaded_scripts_);
   }
 
   Dart_NativeEntryResolver native_entry_resolver_;  // Resolves natives.
@@ -945,7 +964,9 @@ class RawLibrary : public RawObject {
   bool corelib_imported_;
   bool is_dart_scheme_;
   bool debuggable_;             // True if debugger can stop in library.
+  bool is_in_fullsnapshot_;     // True if library is in a full snapshot.
 
+  friend class Class;
   friend class Isolate;
 };
 
@@ -971,7 +992,8 @@ class RawCode : public RawObject {
   enum InlinedMetadataIndex {
     kInlinedIntervalsIndex = 0,
     kInlinedIdToFunctionIndex = 1,
-    kInlinedMetadataSize = 2,
+    kInlinedCallerIdMapIndex = 2,
+    kInlinedMetadataSize = 3,
   };
 
   RAW_HEAP_OBJECT_IMPLEMENTATION(Code);
@@ -992,12 +1014,13 @@ class RawCode : public RawObject {
   RawLocalVarDescriptors* var_descriptors_;
   RawArray* inlined_metadata_;
   RawArray* comments_;
-  // If return_address_info_ is a Smi, it is the offset to the prologue.
-  // Else, return_address_info_ is null.
+  // If return_address_metadata_ is a Smi, it is the offset to the prologue.
+  // Else, return_address_metadata_ is null.
   RawObject* return_address_metadata_;
   RawObject** to() {
-    return reinterpret_cast<RawObject**>(&ptr()->comments_);
+    return reinterpret_cast<RawObject**>(&ptr()->return_address_metadata_);
   }
+  uword entry_point_;
 
   // Compilation timestamp.
   int64_t compile_timestamp_;
@@ -1019,6 +1042,7 @@ class RawCode : public RawObject {
 
   friend class Function;
   friend class MarkingVisitor;
+  friend class SkippedCodeFunctions;
   friend class StackFrame;
 };
 
@@ -1041,6 +1065,7 @@ class RawObjectPool : public RawObject {
   Entry* first_entry() { return &ptr()->data()[0]; }
 
   friend class Object;
+  friend class SnapshotReader;
 };
 
 
@@ -1070,7 +1095,9 @@ class RawInstructions : public RawObject {
   friend class Code;
   friend class StackFrame;
   friend class MarkingVisitor;
+  friend class SkippedCodeFunctions;
   friend class Function;
+  friend class InstructionsReader;
 };
 
 
@@ -1128,6 +1155,7 @@ class RawPcDescriptors : public RawObject {
   const uint8_t* data() const { OPEN_ARRAY_START(uint8_t, intptr_t); }
 
   friend class Object;
+  friend class SnapshotReader;
 };
 
 
@@ -1135,9 +1163,8 @@ class RawPcDescriptors : public RawObject {
 // PC. The stack map representation consists of a bit map which marks each
 // live object index starting from the base of the frame.
 //
-// The Stackmap also consists of a link to the code object corresponding to
-// the frame which the stack map is describing.  The bit map representation
-// is optimized for dense and small bit maps, without any upper bound.
+// The bit map representation is optimized for dense and small bit maps, without
+// any upper bound.
 class RawStackmap : public RawObject {
   RAW_HEAP_OBJECT_IMPLEMENTATION(Stackmap);
 
@@ -1155,6 +1182,8 @@ class RawStackmap : public RawObject {
   // Variable length data follows here (bitmap of the stack layout).
   uint8_t* data() { OPEN_ARRAY_START(uint8_t, uint8_t); }
   const uint8_t* data() const { OPEN_ARRAY_START(uint8_t, uint8_t); }
+
+  friend class SnapshotReader;
 };
 
 
@@ -1164,7 +1193,8 @@ class RawLocalVarDescriptors : public RawObject {
     kStackVar = 1,
     kContextVar,
     kContextLevel,
-    kSavedCurrentContext
+    kSavedCurrentContext,
+    kAsyncOperation
   };
 
   enum {
@@ -1228,6 +1258,7 @@ class RawLocalVarDescriptors : public RawObject {
   }
 
   friend class Object;
+  friend class SnapshotReader;
 };
 
 
@@ -1257,6 +1288,7 @@ class RawExceptionHandlers : public RawObject {
   HandlerInfo* data() { OPEN_ARRAY_START(HandlerInfo, intptr_t); }
 
   friend class Object;
+  friend class SnapshotReader;
 };
 
 
@@ -1300,6 +1332,7 @@ class RawContextScope : public RawObject {
   };
 
   int32_t num_variables_;
+  bool is_implicit_;  // true, if this context scope is for an implicit closure.
 
   RawObject** from() {
     VariableDesc* begin = const_cast<VariableDesc*>(ptr()->VariableDescAddr(0));
@@ -1317,6 +1350,10 @@ class RawContextScope : public RawObject {
     // 'end' is the address just beyond the last descriptor, so step back.
     return reinterpret_cast<RawObject**>(end - kWordSize);
   }
+
+  friend class Object;
+  friend class RawClosureData;
+  friend class SnapshotReader;
 };
 
 
@@ -1904,9 +1941,13 @@ class RawJSRegExp : public RawInstance {
   RawFunction* two_byte_function_;
   RawFunction* external_one_byte_function_;
   RawFunction* external_two_byte_function_;
+  RawTypedData* one_byte_bytecode_;
+  RawTypedData* two_byte_bytecode_;
   RawObject** to() {
-    return reinterpret_cast<RawObject**>(&ptr()->external_two_byte_function_);
+    return reinterpret_cast<RawObject**>(&ptr()->two_byte_bytecode_);
   }
+
+  intptr_t num_registers_;
 
   // A bitfield with two fields:
   // type: Uninitialized, simple or complex.

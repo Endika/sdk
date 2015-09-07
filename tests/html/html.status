@@ -21,6 +21,7 @@ element_animate_test/simple_timing: Fail # Not supported on Dartium
 element_animate_test/omit_timing: Fail # Not supported on Dartium
 element_animate_test/timing_dict: Fail # Not supported on Dartium
 trusted_html_tree_sanitizer_test/untrusted: Fail # We make adoptNode throw to verify it's not being called. That doesn't work on Dartium.
+resource_http_test: Fail # Issue 24203
 
 [ $compiler == none && $mode == debug && ($runtime == drt || $runtime == dartium || $runtime == ContentShellOnAndroid) ]
 datalistelement_test: Skip # Issue 20540
@@ -106,12 +107,19 @@ element_types_test/supported_meter: RuntimeError # Issue 18573
 
 [ $runtime == chrome ]
 touchevent_test/supported: Fail # Touch events are only supported on touch devices
+element_animate_test/omit_timing: RuntimeError # Also timing out on MacOS. Issue 23507
+element_animate_test/timing_dict: RuntimeError # Also timing out on MacOS. Issue 23507
 
 [ $runtime == chrome && $system == macos ]
 element_animate_test/omit_timing: Skip # Timing out on MacOS. Issue 23507
 element_animate_test/timing_dict: Skip # Timing out on MacOS. Issue 23507
 transition_event_test/functional: Skip # Times out. Issue 22167
 request_animation_frame_test: Skip # Times out. Issue 22167
+
+[ $runtime == chrome && $system != linux ]
+# These are failures in Chrome 45, which is not yet on Linux.
+# This will be merged with the earlier blocks when Linux is updated.
+element_animate_test/simple_timing: RuntimeError # Please triage this failure
 
 [$runtime == drt || $runtime == dartium || $runtime == chrome || $runtime == chromeOnAndroid || $runtime == ContentShellOnAndroid ]
 webgl_1_test: Pass, Fail # Issue 8219
@@ -197,6 +205,9 @@ canvas_pixel_array_type_alias_test/types2_runtimeTypeName: Fail, OK # Issue 1260
 [ $compiler == dart2js && $runtime == chrome ]
 css_test/supportsPointConversions: Fail # Issues 21710
 css_test/functional: Fail # Issues 21710
+
+[ $compiler == dart2js && $cps_ir ]
+resource_http_test: Crash # Cannot handle async functions.
 
 [ $runtime == ie11 ]
 custom/document_register_type_extensions_test/single-parameter: Fail # Issue 13193.
@@ -415,5 +426,3 @@ typed_arrays_range_checks_test: StaticWarning
 typing_test: StaticWarning
 webgl_1_test: StaticWarning
 window_nosuchmethod_test: StaticWarning
-
-[ $compiler == dart2js && $cps_ir ]

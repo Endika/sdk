@@ -8,19 +8,34 @@ import "package:expect/expect.dart";
 
 import "package:compiler/src/elements/elements.dart";
 import "package:compiler/src/tree/tree.dart";
-import "package:compiler/src/scanner/scannerlib.dart";
+import "package:compiler/src/parser/element_listener.dart";
+import "package:compiler/src/parser/node_listener.dart";
+import "package:compiler/src/parser/parser.dart";
+import "package:compiler/src/parser/partial_parser.dart";
+import "package:compiler/src/scanner/string_scanner.dart";
+import "package:compiler/src/tokens/token.dart";
+import "package:compiler/src/tokens/token_constants.dart";
 import "package:compiler/src/io/source_file.dart";
 import "package:compiler/src/util/util.dart";
 
 import "package:compiler/src/elements/modelx.dart"
     show CompilationUnitElementX, ElementX, LibraryElementX;
 
-import "package:compiler/src/dart2jslib.dart";
+import "package:compiler/src/compiler.dart";
+import "package:compiler/src/diagnostics/source_span.dart";
+import "package:compiler/src/diagnostics/spannable.dart";
+import "package:compiler/src/diagnostics/diagnostic_listener.dart";
+import "package:compiler/src/diagnostics/messages.dart";
+import "package:compiler/src/script.dart";
 
-export "package:compiler/src/dart2jslib.dart"
-    show DiagnosticListener;
-// TODO(ahe): We should have token library to export instead.
-export "package:compiler/src/scanner/scannerlib.dart";
+export "package:compiler/src/diagnostics/diagnostic_listener.dart";
+export 'package:compiler/src/parser/listener.dart';
+export 'package:compiler/src/parser/node_listener.dart';
+export 'package:compiler/src/parser/parser.dart';
+export 'package:compiler/src/parser/partial_parser.dart';
+export 'package:compiler/src/parser/partial_elements.dart';
+export "package:compiler/src/tokens/token.dart";
+export "package:compiler/src/tokens/token_constants.dart";
 
 class LoggerCanceler implements DiagnosticListener {
   void log(message) {
@@ -42,30 +57,30 @@ class LoggerCanceler implements DiagnosticListener {
   void reportFatalError(Spannable node,
                         MessageKind errorCode,
                         [Map arguments]) {
-    log(new Message(errorCode, arguments, false));
+    log(new Message(MessageTemplate.TEMPLATES[errorCode], arguments, false));
   }
 
   void reportError(Spannable node, MessageKind errorCode, [Map arguments]) {
-    log(new Message(errorCode, arguments, false));
+    log(new Message(MessageTemplate.TEMPLATES[errorCode], arguments, false));
   }
 
   void reportWarning(Spannable node, MessageKind errorCode, [Map arguments]) {
-    log(new Message(errorCode, arguments, false));
+    log(new Message(MessageTemplate.TEMPLATES[errorCode], arguments, false));
   }
 
   void reportInfo(Spannable node, MessageKind errorCode, [Map arguments]) {
-    log(new Message(errorCode, arguments, false));
+    log(new Message(MessageTemplate.TEMPLATES[errorCode], arguments, false));
   }
 
   void reportHint(Spannable node, MessageKind errorCode, [Map arguments]) {
-    log(new Message(errorCode, arguments, false));
+    log(new Message(MessageTemplate.TEMPLATES[errorCode], arguments, false));
   }
 
   withCurrentElement(Element element, f()) => f();
 }
 
 Token scan(String text) =>
-    new StringScanner.fromString(text, enableNullAwareOperators: true)
+    new StringScanner.fromString(text)
     .tokenize();
 
 Node parseBodyCode(String text, Function parseMethod,

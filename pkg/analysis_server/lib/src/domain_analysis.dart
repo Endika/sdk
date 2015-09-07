@@ -7,14 +7,23 @@ library domain.analysis;
 import 'dart:async';
 import 'dart:core' hide Resource;
 
+import 'package:analysis_server/analysis/analysis_domain.dart';
 import 'package:analysis_server/src/analysis_server.dart';
 import 'package:analysis_server/src/computer/computer_hover.dart';
 import 'package:analysis_server/src/constants.dart';
+import 'package:analysis_server/src/context_manager.dart';
+import 'package:analysis_server/src/domains/analysis/navigation.dart';
+import 'package:analysis_server/src/operation/operation_analysis.dart'
+    show sendAnalysisNotificationNavigation;
 import 'package:analysis_server/src/protocol_server.dart';
 import 'package:analysis_server/src/services/dependencies/library_dependencies.dart';
 import 'package:analyzer/file_system/file_system.dart';
 import 'package:analyzer/src/generated/ast.dart';
+import 'package:analyzer/src/generated/element.dart';
 import 'package:analyzer/src/generated/engine.dart' as engine;
+import 'package:analyzer/src/generated/java_engine.dart' show CaughtException;
+import 'package:analyzer/src/generated/source.dart';
+import 'package:analyzer/task/model.dart' show ResultDescriptor;
 
 /**
  * Instances of the class [AnalysisDomainHandler] implement a [RequestHandler]
@@ -29,7 +38,9 @@ class AnalysisDomainHandler implements RequestHandler {
   /**
    * Initialize a newly created handler to handle requests for the given [server].
    */
-  AnalysisDomainHandler(this.server);
+  AnalysisDomainHandler(this.server) {
+    _callAnalysisDomainReceivers();
+  }
 
   /**
    * Implement the `analysis.getErrors` request.
@@ -105,6 +116,50 @@ class AnalysisDomainHandler implements RequestHandler {
     return Response.DELAYED_RESPONSE;
   }
 
+  /**
+   * Implement the `analysis.getNavigation` request.
+   */
+  Response getNavigation(Request request) {
+    var params = new AnalysisGetNavigationParams.fromRequest(request);
+    String file = params.file;
+    Future<AnalysisDoneReason> analysisFuture =
+        server.onFileAnalysisComplete(file);
+    if (analysisFuture == null) {
+      return new Response.getNavigationInvalidFile(request);
+    }
+    analysisFuture.then((AnalysisDoneReason reason) {
+      switch (reason) {
+        case AnalysisDoneReason.COMPLETE:
+          List<CompilationUnit> units =
+              server.getResolvedCompilationUnits(file);
+          if (units.isEmpty) {
+            server.sendResponse(new Response.getNavigationInvalidFile(request));
+          } else {
+            CompilationUnitElement unitElement = units.first.element;
+            NavigationHolderImpl holder = computeNavigation(
+                server,
+                unitElement.context,
+                unitElement.source,
+                params.offset,
+                params.length);
+            server.sendResponse(new AnalysisGetNavigationResult(
+                    holder.files, holder.targets, holder.regions)
+                .toResponse(request.id));
+          }
+          break;
+        case AnalysisDoneReason.CONTEXT_REMOVED:
+          // The active contexts have changed, so try again.
+          Response response = getNavigation(request);
+          if (response != Response.DELAYED_RESPONSE) {
+            server.sendResponse(response);
+          }
+          break;
+      }
+    });
+    // delay response
+    return Response.DELAYED_RESPONSE;
+  }
+
   @override
   Response handleRequest(Request request) {
     try {
@@ -115,10 +170,14 @@ class AnalysisDomainHandler implements RequestHandler {
         return getHover(request);
       } else if (requestName == ANALYSIS_GET_LIBRARY_DEPENDENCIES) {
         return getLibraryDependencies(request);
+      } else if (requestName == ANALYSIS_GET_NAVIGATION) {
+        return getNavigation(request);
       } else if (requestName == ANALYSIS_REANALYZE) {
         return reanalyze(request);
       } else if (requestName == ANALYSIS_SET_ANALYSIS_ROOTS) {
         return setAnalysisRoots(request);
+      } else if (requestName == ANALYSIS_SET_GENERAL_SUBSCRIPTIONS) {
+        return setGeneralSubscriptions(request);
       } else if (requestName == ANALYSIS_SET_PRIORITY_FILES) {
         return setPriorityFiles(request);
       } else if (requestName == ANALYSIS_SET_SUBSCRIPTIONS) {
@@ -142,7 +201,7 @@ class AnalysisDomainHandler implements RequestHandler {
         new AnalysisReanalyzeParams.fromRequest(request);
     List<String> roots = params.roots;
     if (roots == null || roots.isNotEmpty) {
-      List<String> includedPaths = server.contextDirectoryManager.includedPaths;
+      List<String> includedPaths = server.contextManager.includedPaths;
       List<Resource> rootResources = null;
       if (roots != null) {
         rootResources = <Resource>[];
@@ -167,6 +226,16 @@ class AnalysisDomainHandler implements RequestHandler {
     server.setAnalysisRoots(request.id, params.included, params.excluded,
         params.packageRoots == null ? {} : params.packageRoots);
     return new AnalysisSetAnalysisRootsResult().toResponse(request.id);
+  }
+
+  /**
+   * Implement the 'analysis.setGeneralSubscriptions' request.
+   */
+  Response setGeneralSubscriptions(Request request) {
+    AnalysisSetGeneralSubscriptionsParams params =
+        new AnalysisSetGeneralSubscriptionsParams.fromRequest(request);
+    server.setGeneralAnalysisSubscriptions(params.subscriptions);
+    return new AnalysisSetGeneralSubscriptionsResult().toResponse(request.id);
   }
 
   /**
@@ -207,11 +276,6 @@ class AnalysisDomainHandler implements RequestHandler {
     var params = new AnalysisUpdateOptionsParams.fromRequest(request);
     AnalysisOptions newOptions = params.options;
     List<OptionUpdater> updaters = new List<OptionUpdater>();
-    if (newOptions.enableNullAwareOperators != null) {
-      updaters.add((engine.AnalysisOptionsImpl options) {
-        options.enableNullAwareOperators = newOptions.enableNullAwareOperators;
-      });
-    }
     if (newOptions.generateDart2jsHints != null) {
       updaters.add((engine.AnalysisOptionsImpl options) {
         options.dart2jsHint = newOptions.generateDart2jsHints;
@@ -227,7 +291,80 @@ class AnalysisDomainHandler implements RequestHandler {
         options.lint = newOptions.generateLints;
       });
     }
+    if (newOptions.enableSuperMixins != null) {
+      updaters.add((engine.AnalysisOptionsImpl options) {
+        options.enableSuperMixins = newOptions.enableSuperMixins;
+      });
+    }
     server.updateOptions(updaters);
     return new AnalysisUpdateOptionsResult().toResponse(request.id);
+  }
+
+  /**
+   * Call all the registered [SetAnalysisDomain] functions.
+   */
+  void _callAnalysisDomainReceivers() {
+    AnalysisDomain analysisDomain = new AnalysisDomainImpl(server);
+    for (SetAnalysisDomain function
+        in server.serverPlugin.setAnalysisDomainFunctions) {
+      try {
+        function(analysisDomain);
+      } catch (exception, stackTrace) {
+        engine.AnalysisEngine.instance.logger.logError(
+            'Exception from analysis domain receiver: ${function.runtimeType}',
+            new CaughtException(exception, stackTrace));
+      }
+    }
+  }
+}
+
+/**
+ * An implementation of [AnalysisDomain] for [AnalysisServer].
+ */
+class AnalysisDomainImpl implements AnalysisDomain {
+  final AnalysisServer server;
+
+  final Map<ResultDescriptor,
+          StreamController<engine.ComputedResult>> controllers =
+      <ResultDescriptor, StreamController<engine.ComputedResult>>{};
+
+  AnalysisDomainImpl(this.server) {
+    server.onContextsChanged.listen((ContextsChangedEvent event) {
+      event.added.forEach(_subscribeForContext);
+    });
+  }
+
+  @override
+  Stream<engine.ComputedResult> onResultComputed(ResultDescriptor descriptor) {
+    Stream<engine.ComputedResult> stream = controllers
+        .putIfAbsent(descriptor,
+            () => new StreamController<engine.ComputedResult>.broadcast())
+        .stream;
+    server.getAnalysisContexts().forEach(_subscribeForContext);
+    return stream;
+  }
+
+  @override
+  void scheduleNotification(
+      engine.AnalysisContext context, Source source, AnalysisService service) {
+    // TODO(scheglov) schedule, don't do it right now
+    String file = source.fullName;
+    if (server.hasAnalysisSubscription(service, file)) {
+      if (service == AnalysisService.NAVIGATION) {
+        sendAnalysisNotificationNavigation(server, context, source);
+      }
+    }
+  }
+
+  void _subscribeForContext(engine.AnalysisContext context) {
+    for (ResultDescriptor descriptor in controllers.keys) {
+      context.onResultComputed(descriptor).listen((result) {
+        StreamController<engine.ComputedResult> controller =
+            controllers[result.descriptor];
+        if (controller != null) {
+          controller.add(result);
+        }
+      });
+    }
   }
 }

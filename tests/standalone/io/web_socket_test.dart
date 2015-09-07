@@ -19,8 +19,17 @@ import "package:path/path.dart";
 
 const WEB_SOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
-const String CERT_NAME = 'localhost_cert';
 const String HOST_NAME = 'localhost';
+
+String localFile(path) => Platform.script.resolve(path).toFilePath();
+
+SecurityContext serverContext = new SecurityContext()
+  ..useCertificateChain(localFile('certificates/server_chain.pem'))
+  ..usePrivateKey(localFile('certificates/server_key.pem'),
+                  password: 'dartdart');
+
+SecurityContext clientContext = new SecurityContext()
+  ..setTrustedCertificates(file: localFile('certificates/trusted_certs.pem'));
 
 /**
  * A SecurityConfiguration lets us run the tests over HTTP or HTTPS.
@@ -33,14 +42,22 @@ class SecurityConfiguration {
   Future<HttpServer> createServer({int backlog: 0}) =>
       secure ? HttpServer.bindSecure(HOST_NAME,
                                      0,
-                                     backlog: backlog,
-                                     certificateName: CERT_NAME)
+                                     serverContext,
+                                     backlog: backlog)
              : HttpServer.bind(HOST_NAME,
                                0,
                                backlog: backlog);
 
   Future<WebSocket> createClient(int port) =>
+    // TODO(whesse): Add client context argument to WebSocket.connect
     WebSocket.connect('${secure ? "wss" : "ws"}://$HOST_NAME:$port/');
+
+  checkCloseStatus(webSocket, closeStatus, closeReason) {
+    Expect.equals(closeStatus == null ? WebSocketStatus.NO_STATUS_RECEIVED
+                                      : closeStatus, webSocket.closeCode);
+    Expect.equals(closeReason == null ? ""
+                                      : closeReason, webSocket.closeReason);
+  }
 
   void testRequestResponseClientCloses(int totalConnections,
                                        int closeStatus,
@@ -55,12 +72,7 @@ class SecurityConfiguration {
         webSocket.listen(
             webSocket.add,
             onDone: () {
-              Expect.equals(closeStatus == null
-                            ? WebSocketStatus.NO_STATUS_RECEIVED
-                            : closeStatus, webSocket.closeCode);
-              Expect.equals(
-                  closeReason == null ? ""
-                                      : closeReason, webSocket.closeReason);
+              checkCloseStatus(webSocket, closeStatus, closeReason);
               asyncEnd();
             });
         }, onDone: () {
@@ -85,10 +97,7 @@ class SecurityConfiguration {
                 }
               },
               onDone: () {
-                Expect.equals(closeStatus == null
-                              ? WebSocketStatus.NO_STATUS_RECEIVED
-                              : closeStatus, webSocket.closeCode);
-                Expect.equals("", webSocket.closeReason);
+                checkCloseStatus(webSocket, closeStatus, closeReason);
                 closeCount++;
                 if (closeCount == totalConnections) {
                   server.close();
@@ -119,10 +128,7 @@ class SecurityConfiguration {
               }
             },
             onDone: () {
-              Expect.equals(closeStatus == null
-                            ? WebSocketStatus.NO_STATUS_RECEIVED
-                            : closeStatus, webSocket.closeCode);
-              Expect.equals("", webSocket.closeReason);
+              checkCloseStatus(webSocket, closeStatus, closeReason);
               closeCount++;
               if (closeCount == totalConnections) {
                 server.close();
@@ -136,12 +142,7 @@ class SecurityConfiguration {
             webSocket.listen(
                 webSocket.add,
                 onDone: () {
-                  Expect.equals(closeStatus == null
-                                ? WebSocketStatus.NO_STATUS_RECEIVED
-                                : closeStatus, webSocket.closeCode);
-                  Expect.equals(closeReason == null
-                                ? ""
-                                : closeReason, webSocket.closeReason);
+                  checkCloseStatus(webSocket, closeStatus, closeReason);
                 });
             });
       }
@@ -178,6 +179,36 @@ class SecurityConfiguration {
       server.transform(new WebSocketTransformer()).listen((webSocket) {
         server.close();
         webSocket.close();
+      });
+
+      createClient(server.port).then((webSocket) {
+        webSocket.close();
+      });
+    });
+  }
+
+
+  void testCancelThenClose() {
+    createServer().then((server) {
+      server.transform(new WebSocketTransformer()).listen((webSocket) {
+        webSocket.listen(null).cancel();
+        webSocket.close();
+        server.close();
+      });
+
+      createClient(server.port).then((webSocket) {
+        webSocket.close();
+      });
+    });
+  }
+
+  void testCloseThenCancel() {
+    createServer().then((server) {
+      server.transform(new WebSocketTransformer()).listen((webSocket) {
+        var subscription = webSocket.listen(null);
+        webSocket.close();
+        subscription.cancel();
+        server.close();
       });
 
       createClient(server.port).then((webSocket) {
@@ -333,8 +364,7 @@ class SecurityConfiguration {
               }
             },
             onDone: () {
-              Expect.equals(closeStatus, webSocket.closeCode);
-              Expect.equals("", webSocket.closeReason);
+              checkCloseStatus(webSocket, closeStatus, closeReason);
               closeCount++;
               if (closeCount == totalConnections) {
                 server.close();
@@ -543,6 +573,8 @@ class SecurityConfiguration {
     testMessageLength(65535);
     testMessageLength(65536);
     testCloseNoListen();
+    testCancelThenClose();
+    testCloseThenCancel();
     testListenAfterClose();
     testDoubleCloseClient();
     testDoubleCloseServer();
@@ -559,15 +591,8 @@ class SecurityConfiguration {
 }
 
 
-void initializeSSL() {
-  var testPkcertDatabase = Platform.script.resolve('pkcert').toFilePath();
-  SecureSocket.initialize(database: testPkcertDatabase,
-                          password: "dartdart");
-}
-
-
 main() {
   new SecurityConfiguration(secure: false).runTests();
-  initializeSSL();
-  new SecurityConfiguration(secure: true).runTests();
+  // TODO(whesse): Make WebSocket.connect() take an optional context: parameter.
+  // new SecurityConfiguration(secure: true).runTests();
 }

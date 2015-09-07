@@ -11,6 +11,7 @@
 #include "vm/lockers.h"
 #include "vm/object.h"
 #include "vm/os_thread.h"
+#include "vm/thread_registry.h"
 #include "vm/verified_memory.h"
 #include "vm/virtual_memory.h"
 
@@ -160,6 +161,9 @@ PageSpace::PageSpace(Heap* heap,
       max_external_in_words_(max_external_in_words),
       tasks_lock_(new Monitor()),
       tasks_(0),
+#if defined(DEBUG)
+      iterating_thread_(NULL),
+#endif
       page_space_controller_(heap,
                              FLAG_old_gen_growth_space_ratio,
                              FLAG_old_gen_growth_rate,
@@ -632,7 +636,7 @@ void PageSpace::WriteProtect(bool read_only) {
 }
 
 
-void PageSpace::PrintToJSONObject(JSONObject* object) {
+void PageSpace::PrintToJSONObject(JSONObject* object) const {
   Isolate* isolate = Isolate::Current();
   ASSERT(isolate != NULL);
   JSONObject space(object, "old");
@@ -671,7 +675,8 @@ class HeapMapAsJSONVisitor : public ObjectVisitor {
 };
 
 
-void PageSpace::PrintHeapMapToJSONStream(Isolate* isolate, JSONStream* stream) {
+void PageSpace::PrintHeapMapToJSONStream(
+    Isolate* isolate, JSONStream* stream) const {
   JSONObject heap_map(stream);
   heap_map.AddProperty("type", "HeapMap");
   heap_map.AddProperty("freeClassId",
@@ -763,11 +768,17 @@ void PageSpace::MarkSweep(bool invoke_api_callbacks) {
     }
     set_tasks(1);
   }
+  // Ensure that all threads for this isolate are at a safepoint (either stopped
+  // or in native code). If two threads are racing at this point, the loser
+  // will continue with its collection after waiting for the winner to complete.
+  // TODO(koda): Consider moving SafepointThreads into allocation failure/retry
+  // logic to avoid needless collections.
+  isolate->thread_registry()->SafepointThreads();
 
   // Perform various cleanup that relies on no tasks interfering.
   isolate->class_table()->FreeOldTables();
 
-  NoHandleScope no_handles(isolate);
+  NoSafepointScope no_safepoints;
 
   if (FLAG_print_free_list_before_gc) {
     OS::Print("Data Freelist (before GC):\n");
@@ -778,7 +789,7 @@ void PageSpace::MarkSweep(bool invoke_api_callbacks) {
 
   if (FLAG_verify_before_gc) {
     OS::PrintErr("Verifying before marking...");
-    heap_->Verify();
+    heap_->VerifyGC();
     OS::PrintErr(" done.\n");
   }
 
@@ -810,7 +821,7 @@ void PageSpace::MarkSweep(bool invoke_api_callbacks) {
   {
     if (FLAG_verify_before_gc) {
       OS::PrintErr("Verifying before sweeping...");
-      heap_->Verify(kAllowMarked);
+      heap_->VerifyGC(kAllowMarked);
       OS::PrintErr(" done.\n");
     }
     GCSweeper sweeper;
@@ -871,7 +882,7 @@ void PageSpace::MarkSweep(bool invoke_api_callbacks) {
       }
       if (FLAG_verify_after_gc) {
         OS::PrintErr("Verifying after sweeping...");
-        heap_->Verify(kForbidMarked);
+        heap_->VerifyGC(kForbidMarked);
         OS::PrintErr(" done.\n");
       }
     } else {
@@ -902,6 +913,8 @@ void PageSpace::MarkSweep(bool invoke_api_callbacks) {
     OS::Print("Executable Freelist (after GC):\n");
     freelist_[HeapPage::kExecutable].Print();
   }
+
+  isolate->thread_registry()->ResumeAllThreads();
 
   // Done, reset the task count.
   {

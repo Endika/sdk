@@ -13,10 +13,13 @@ import 'compilation.dart' show PRIVATE_SCHEME;
 
 import 'package:compiler/compiler.dart' as compiler;
 
+import 'package:compiler/src/old_to_new_api.dart' show
+    LegacyCompilerDiagnostics, LegacyCompilerInput;
+
 import 'package:dart2js_incremental/dart2js_incremental.dart' show
     reuseCompiler, OutputProvider;
 
-import 'package:compiler/src/dart2jslib.dart' show
+import 'package:compiler/src/compiler.dart' show
     Compiler;
 
 const bool THROW_ON_ERROR = false;
@@ -112,8 +115,8 @@ compile(source, SendPort replyTo) {
   Stopwatch compilationTimer = new Stopwatch()..start();
   OutputProvider outputProvider = new OutputProvider();
   reuseCompiler(
-      diagnosticHandler: handler,
-      inputProvider: inputProvider,
+      diagnosticHandler: new LegacyCompilerDiagnostics(handler),
+      inputProvider: new LegacyCompilerInput(inputProvider),
       outputProvider: outputProvider,
       options: options,
       cachedCompiler: cachedCompiler,

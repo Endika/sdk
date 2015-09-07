@@ -12,8 +12,10 @@ import 'package:test_reflective_loader/test_reflective_loader.dart';
 import 'package:unittest/unittest.dart';
 
 import '../analysis_abstract.dart';
+import '../utils.dart';
 
 main() {
+  initializeTestEnvironment();
   defineReflectiveTests(_AnalysisNotificationOutlineTest);
 }
 
@@ -575,6 +577,8 @@ class A { // leftA
 
   test_sourceRange_inUnit() {
     addTestFile('''
+library lib;
+/// My first class.
 class A {
 } // endA
 class B {
@@ -591,7 +595,7 @@ class B {
         expect(element.kind, ElementKind.CLASS);
         expect(element.name, "A");
         {
-          int offset = 0;
+          int offset = testCode.indexOf("/// My first class.");
           int end = testCode.indexOf(" // endA");
           expect(outline.offset, offset);
           expect(outline.length, end - offset);

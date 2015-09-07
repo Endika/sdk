@@ -21,6 +21,7 @@ namespace dart {
 
 // Forward declarations.
 class RuntimeEntry;
+class StubEntry;
 
 class Label : public ValueObject {
  public:
@@ -319,7 +320,7 @@ class Assembler : public ValueObject {
         prologue_offset_(-1),
         use_far_branches_(use_far_branches),
         comments_(),
-        allow_constant_pool_(true) { }
+        constant_pool_allowed_(false) { }
 
   ~Assembler() { }
 
@@ -607,18 +608,17 @@ class Assembler : public ValueObject {
 
   // Macros.
   // Branch to an entry address. Call sequence is never patched.
-  void Branch(const ExternalLabel* label, Condition cond = AL);
+  void Branch(const StubEntry& stub_entry, Condition cond = AL);
 
   // Branch to an entry address. Call sequence can be patched or even replaced.
-  void BranchPatchable(const ExternalLabel* label);
+  void BranchPatchable(const StubEntry& stub_entry);
 
-  // Branch and link to an entry address. Call sequence is never patched.
-  void BranchLink(const ExternalLabel* label);
-
+  void BranchLink(const StubEntry& stub_entry,
+                  Patchability patchable = kNotPatchable);
   void BranchLink(const ExternalLabel* label, Patchability patchable);
 
   // Branch and link to an entry address. Call sequence can be patched.
-  void BranchLinkPatchable(const ExternalLabel* label);
+  void BranchLinkPatchable(const StubEntry& stub_entry);
 
   // Branch and link to [base + offset]. Call sequence is never patched.
   void BranchLinkOffset(Register base, int32_t offset);
@@ -666,6 +666,7 @@ class Assembler : public ValueObject {
   void LoadIsolate(Register rd);
 
   void LoadObject(Register rd, const Object& object, Condition cond = AL);
+  void LoadUniqueObject(Register rd, const Object& object, Condition cond = AL);
   void LoadExternalLabel(Register dst,
                          const ExternalLabel* label,
                          Patchability patchable,
@@ -754,6 +755,7 @@ class Assembler : public ValueObject {
                            Register scratch2,
                            Label* miss);
 
+  intptr_t FindImmediate(int32_t imm);
   void LoadWordFromPoolOffset(Register rd, int32_t offset, Condition cond = AL);
   void LoadFromOffset(OperandSize type,
                       Register reg,
@@ -910,13 +912,12 @@ class Assembler : public ValueObject {
   // avoid a dependent load too nearby the load of the table address.
   void LoadAllocationStatsAddress(Register dest,
                                   intptr_t cid,
-                                  Heap::Space space);
+                                  bool inline_isolate = true);
   void IncrementAllocationStats(Register stats_addr,
                                 intptr_t cid,
                                 Heap::Space space);
   void IncrementAllocationStatsWithSize(Register stats_addr_reg,
                                         Register size_reg,
-                                        intptr_t cid,
                                         Heap::Space space);
 
   Address ElementAddressForIntIndex(bool is_load,
@@ -933,6 +934,13 @@ class Assembler : public ValueObject {
                                     intptr_t index_scale,
                                     Register array,
                                     Register index);
+
+  // If allocation tracing for |cid| is enabled, will jump to |trace| label,
+  // which will allocate in the runtime where tracing occurs.
+  void MaybeTraceAllocation(intptr_t cid,
+                            Register temp_reg,
+                            Label* trace,
+                            bool inline_isolate = true);
 
   // Inlined allocation of an instance of class 'cls', code has no runtime
   // calls. Jump to 'failure' if the instance cannot be allocated here.
@@ -959,11 +967,11 @@ class Assembler : public ValueObject {
   static bool IsSafe(const Object& object) { return true; }
   static bool IsSafeSmi(const Object& object) { return object.IsSmi(); }
 
-  bool allow_constant_pool() const {
-    return allow_constant_pool_;
+  bool constant_pool_allowed() const {
+    return constant_pool_allowed_;
   }
-  void set_allow_constant_pool(bool b) {
-    allow_constant_pool_ = b;
+  void set_constant_pool_allowed(bool b) {
+    constant_pool_allowed_ = b;
   }
 
  private:
@@ -982,6 +990,8 @@ class Assembler : public ValueObject {
   void BindARMv6(Label* label);
   void BindARMv7(Label* label);
 
+  void BranchLink(const ExternalLabel* label);
+
   class CodeComment : public ZoneAllocated {
    public:
     CodeComment(intptr_t pc_offset, const String& comment)
@@ -999,7 +1009,12 @@ class Assembler : public ValueObject {
 
   GrowableArray<CodeComment*> comments_;
 
-  bool allow_constant_pool_;
+  bool constant_pool_allowed_;
+
+  void LoadObjectHelper(Register rd,
+                        const Object& object,
+                        Condition cond,
+                        bool is_unique);
 
   void EmitType01(Condition cond,
                   int type,

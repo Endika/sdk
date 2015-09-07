@@ -6,7 +6,7 @@
 #define VM_OS_THREAD_H_
 
 #include "platform/globals.h"
-#include "vm/allocation.h"
+#include "vm/globals.h"
 
 // Declare the OS-specific types ahead of defining the generic classes.
 #if defined(TARGET_OS_ANDROID)
@@ -24,7 +24,8 @@
 namespace dart {
 
 // Low-level operations on OS platform threads.
-class OSThread : AllStatic {
+// TODO(koda): Move to runtime/platform.
+class OSThread {
  public:
   static ThreadLocalKey kUnsetThreadLocalKey;
   static ThreadId kInvalidThreadId;
@@ -48,6 +49,7 @@ class OSThread : AllStatic {
   static ThreadId GetCurrentThreadId();
   static bool Join(ThreadId id);
   static intptr_t ThreadIdToIntPtr(ThreadId id);
+  static ThreadId ThreadIdFromIntPtr(intptr_t id);
   static bool Compare(ThreadId a, ThreadId b);
   static void GetThreadCpuUsage(ThreadId thread_id, int64_t* cpu_usage);
 };

@@ -49,6 +49,8 @@ class Zone {
   // Make a zone-allocated string based on printf format and args.
   char* PrintToString(const char* format, ...) PRINTF_ATTRIBUTE(2, 3);
 
+  char* VPrint(const char* format, va_list args);
+
   // Compute the total size of this zone. This includes wasted space that is
   // due to internal fragmentation in the segments.
   intptr_t SizeInBytes() const;
@@ -174,10 +176,8 @@ class Zone {
 
 class StackZone : public StackResource {
  public:
-  // Create an empty zone and set is at the current zone for the Isolate.
-  explicit StackZone(Isolate* isolate)
-    : StackResource(isolate),
-      zone_() {
+  // Create an empty zone and set is at the current zone for the Thread.
+  explicit StackZone(Thread* thread) : StackResource(thread), zone_() {
 #ifdef DEBUG
     if (FLAG_trace_zones) {
       OS::PrintErr("*** Starting a new Stack zone 0x%" Px "(0x%" Px ")\n",
@@ -185,16 +185,14 @@ class StackZone : public StackResource {
                    reinterpret_cast<intptr_t>(&zone_));
     }
 #endif
-    BaseIsolate* base_isolate = reinterpret_cast<BaseIsolate*>(isolate);
-    zone_.Link(base_isolate->current_zone());
-    base_isolate->set_current_zone(&zone_);
+    zone_.Link(thread->zone());
+    thread->set_zone(&zone_);
   }
 
   // Delete all memory associated with the zone.
   ~StackZone() {
-    BaseIsolate* base_isolate = reinterpret_cast<BaseIsolate*>(isolate());
-    ASSERT(base_isolate->current_zone() == &zone_);
-    base_isolate->set_current_zone(zone_.previous_);
+    ASSERT(thread()->zone() == &zone_);
+    thread()->set_zone(zone_.previous_);
 #ifdef DEBUG
     if (FLAG_trace_zones) {
       OS::PrintErr("*** Deleting Stack zone 0x%" Px "(0x%" Px ")\n",

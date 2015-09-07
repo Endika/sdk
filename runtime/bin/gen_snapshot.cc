@@ -544,7 +544,7 @@ int main(int argc, char** argv) {
   // Initialize the Dart VM.
   // Note: We don't expect isolates to be created from dart code during
   // snapshot generation.
-  if (!Dart_Initialize(NULL,
+  if (!Dart_Initialize(NULL, NULL,
                        NULL, NULL, NULL, NULL,
                        DartUtils::OpenFile,
                        DartUtils::ReadFile,
@@ -592,6 +592,7 @@ int main(int argc, char** argv) {
     // closures and setting up 'package root' for URI resolution.
     result =
         DartUtils::PrepareForScriptLoading(package_root,
+                                           NULL,
                                            false,
                                            false,
                                            builtin_lib);

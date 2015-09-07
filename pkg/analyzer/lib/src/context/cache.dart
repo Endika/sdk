@@ -12,7 +12,6 @@ import 'package:analyzer/src/generated/engine.dart'
 import 'package:analyzer/src/generated/java_engine.dart';
 import 'package:analyzer/src/generated/source.dart';
 import 'package:analyzer/src/generated/utilities_collection.dart';
-import 'package:analyzer/src/generated/utilities_general.dart';
 import 'package:analyzer/src/task/model.dart';
 import 'package:analyzer/task/model.dart';
 
@@ -216,8 +215,10 @@ class AnalysisCache {
 
   /**
    * Remove all information related to the given [target] from this cache.
+   * Return the entry associated with the target, or `null` if there was cache
+   * entry for the target.
    */
-  void remove(AnalysisTarget target) {
+  CacheEntry remove(AnalysisTarget target) {
     int count = _partitions.length;
     for (int i = 0; i < count; i++) {
       CachePartition partition = _partitions[i];
@@ -226,10 +227,10 @@ class AnalysisCache {
           AnalysisEngine.instance.logger
               .logInformation('Removed the cache entry for $target.');
         }
-        partition.remove(target);
-        return;
+        return partition.remove(target);
       }
     }
+    return null;
   }
 
   /**
@@ -896,9 +897,11 @@ abstract class CachePartition {
   }
 
   /**
-   * Remove all information related to the given [target] from this cache.
+   * Remove all information related to the given [target] from this partition.
+   * Return the entry associated with the target, or `null` if there was cache
+   * entry for the target.
    */
-  void remove(AnalysisTarget target) {
+  CacheEntry remove(AnalysisTarget target) {
     for (CacheFlushManager flushManager in _flushManagerMap.values) {
       flushManager.targetRemoved(target);
     }
@@ -907,6 +910,7 @@ abstract class CachePartition {
       entry._invalidateAll();
     }
     _removeIfSource(target);
+    return entry;
   }
 
   /**
@@ -981,19 +985,17 @@ abstract class CachePartition {
   }
 
   /**
-   * If the given [target] is a [Source], removes it from [_sources].
+   * If the given [target] is a [Source], remove it from the list of [_sources].
    */
   void _removeIfSource(AnalysisTarget target) {
     if (target is Source) {
       _sources.remove(target);
-      {
-        String fullName = target.fullName;
-        List<Source> sources = _pathToSources[fullName];
-        if (sources != null) {
-          sources.remove(target);
-          if (sources.isEmpty) {
-            _pathToSources.remove(fullName);
-          }
+      String fullName = target.fullName;
+      List<Source> sources = _pathToSources[fullName];
+      if (sources != null) {
+        sources.remove(target);
+        if (sources.isEmpty) {
+          _pathToSources.remove(fullName);
         }
       }
     }
@@ -1111,46 +1113,6 @@ class SdkCachePartition extends CachePartition {
     Source source = target.source;
     return source != null && source.isInSystemLibrary;
   }
-}
-
-/**
- * A specification of a specific result computed for a specific target.
- */
-class TargetedResult {
-  /**
-   * An empty list of results.
-   */
-  static final List<TargetedResult> EMPTY_LIST = const <TargetedResult>[];
-
-  /**
-   * The target with which the result is associated.
-   */
-  final AnalysisTarget target;
-
-  /**
-   * The result associated with the target.
-   */
-  final ResultDescriptor result;
-
-  /**
-   * Initialize a new targeted result.
-   */
-  TargetedResult(this.target, this.result);
-
-  @override
-  int get hashCode {
-    return JenkinsSmiHash.combine(target.hashCode, result.hashCode);
-  }
-
-  @override
-  bool operator ==(other) {
-    return other is TargetedResult &&
-        other.target == target &&
-        other.result == result;
-  }
-
-  @override
-  String toString() => '$result for $target';
 }
 
 /**

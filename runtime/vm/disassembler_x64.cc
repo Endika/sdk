@@ -798,7 +798,7 @@ static const char* ObjectToCStringNoGC(const Object& obj) {
   const char* full_class_name = clazz.ToCString();
   const char* format = "instance of %s";
   intptr_t len = OS::SNPrint(NULL, 0, format, full_class_name) + 1;
-  char* chars = Isolate::Current()->current_zone()->Alloc<char>(len);
+  char* chars = Thread::Current()->zone()->Alloc<char>(len);
   OS::SNPrint(chars, len, format, full_class_name);
   return chars;
 }
@@ -878,7 +878,7 @@ int DisassemblerX64::JumpConditional(uint8_t* data) {
 int DisassemblerX64::JumpConditionalShort(uint8_t* data) {
   uint8_t cond = *data & 0x0F;
   uint8_t b = *(data + 1);
-  uint8_t* dest = data + static_cast<uint8_t>(b) + 2;
+  uint8_t* dest = data + static_cast<int8_t>(b) + 2;
   const char* mnem = conditional_code_suffix[cond];
   AppendToBuffer("j%s ", mnem);
   AppendAddressToBuffer(dest);

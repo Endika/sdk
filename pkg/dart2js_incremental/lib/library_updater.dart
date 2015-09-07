@@ -7,16 +7,13 @@ library dart2js_incremental.library_updater;
 import 'dart:async' show
     Future;
 
-import 'dart:convert' show
-    UTF8;
-
 import 'package:compiler/compiler.dart' as api;
 
-import 'package:compiler/src/dart2jslib.dart' show
-    Compiler,
-    EnqueueTask,
-    MessageKind,
-    Script;
+import 'package:compiler/src/compiler.dart' show
+    Compiler;
+
+import 'package:compiler/src/diagnostics/messages.dart' show
+    MessageKind;
 
 import 'package:compiler/src/elements/elements.dart' show
     ClassElement,
@@ -27,17 +24,35 @@ import 'package:compiler/src/elements/elements.dart' show
     STATE_NOT_STARTED,
     ScopeContainerElement;
 
-import 'package:compiler/src/scanner/scannerlib.dart' show
-    EOF_TOKEN,
-    Listener,
-    NodeListener,
-    Parser,
+import 'package:compiler/src/enqueue.dart' show
+    EnqueueTask;
+
+import 'package:compiler/src/parser/listener.dart' show
+    Listener;
+
+import 'package:compiler/src/parser/node_listener.dart' show
+    NodeListener;
+
+import 'package:compiler/src/parser/partial_elements.dart' show
     PartialClassElement,
     PartialElement,
     PartialFieldList,
-    PartialFunctionElement,
-    Scanner,
+    PartialFunctionElement;
+
+import 'package:compiler/src/parser/parser.dart' show
+    Parser;
+
+import 'package:compiler/src/scanner/scanner.dart' show
+    Scanner;
+
+import 'package:compiler/src/tokens/token.dart' show
     Token;
+
+import 'package:compiler/src/tokens/token_constants.dart' show
+    EOF_TOKEN;
+
+import 'package:compiler/src/script.dart' show
+    Script;
 
 import 'package:compiler/src/io/source_file.dart' show
     CachingUtf8BytesSourceFile,
@@ -66,12 +81,15 @@ import 'package:compiler/src/js_emitter/js_emitter.dart' show
     MemberInfo,
     computeMixinClass;
 
+import 'package:compiler/src/js_emitter/full_emitter/emitter.dart'
+    as full show Emitter;
+
 import 'package:compiler/src/js_emitter/model.dart' show
     Class,
     Method;
 
-import 'package:compiler/src/js_emitter/program_builder.dart' show
-    ProgramBuilder;
+import 'package:compiler/src/js_emitter/program_builder/program_builder.dart'
+    show ProgramBuilder;
 
 import 'package:js_runtime/shared/embedded_names.dart'
     as embeddedNames;
@@ -155,14 +173,18 @@ class IncrementalCompilerContext extends _IncrementalCompilerContext {
 
   void _captureState(Compiler compiler) {
     JavaScriptBackend backend = compiler.backend;
-    _emittedClasses = new Set.from(backend.emitter.neededClasses);
+    Set neededClasses = backend.emitter.neededClasses;
+    if (neededClasses == null) {
+      neededClasses = new Set();
+    }
+    _emittedClasses = new Set.from(neededClasses);
 
     _directlyInstantiatedClasses =
         new Set.from(compiler.codegenWorld.directlyInstantiatedClasses);
 
-    List<ConstantValue> constants =
-        backend.emitter.outputConstantLists[
-            compiler.deferredLoadTask.mainOutputUnit];
+    // This breaks constant tracking of the incremental compiler. It would need
+    // to capture the emitted constants.
+    List<ConstantValue> constants = null;
     if (constants == null) constants = <ConstantValue>[];
     _compiledConstants = new Set<ConstantValue>.identity()..addAll(constants);
   }
@@ -897,9 +919,9 @@ class LibraryUpdater extends JsFeatures {
       if (constants != null) {
         for (ConstantValue constant in constants) {
           if (!_compiledConstants.contains(constant)) {
+            full.Emitter fullEmitter = emitter.emitter;
             jsAst.Statement constantInitializer =
-                emitter.oldEmitter.buildConstantInitializer(constant)
-                .toStatement();
+                fullEmitter.buildConstantInitializer(constant).toStatement();
             updates.add(constantInitializer);
           }
         }
@@ -976,9 +998,10 @@ if (this.pendingStubs) {
     }
     // A static (or top-level) field.
     if (backend.constants.lazyStatics.contains(element)) {
+      full.Emitter fullEmitter = emitter.emitter;
       jsAst.Expression init =
-          emitter.oldEmitter.buildLazilyInitializedStaticField(
-              element, isolateProperties: namer.currentIsolate);
+          fullEmitter.buildLazilyInitializedStaticField(
+              element, isolateProperties: namer.staticStateHolder);
       if (init == null) {
         throw new StateError("Initializer optimized away for $element");
       }
@@ -1470,7 +1493,10 @@ abstract class JsFeatures {
 
   CodeEmitterTask get emitter => backend.emitter;
 
-  ContainerBuilder get containerBuilder => emitter.oldEmitter.containerBuilder;
+  ContainerBuilder get containerBuilder {
+    full.Emitter fullEmitter = emitter.emitter;
+    return fullEmitter.containerBuilder;
+  }
 
   EnqueueTask get enqueuer => compiler.enqueuer;
 }
@@ -1480,7 +1506,10 @@ class EmitterHelper extends JsFeatures {
 
   EmitterHelper(this.compiler);
 
-  ClassEmitter get classEmitter => backend.emitter.oldEmitter.classEmitter;
+  ClassEmitter get classEmitter {
+    full.Emitter fullEmitter = emitter.emitter;
+    return fullEmitter.classEmitter;
+  }
 
   List<String> computeFields(ClassElement classElement) {
     Class cls = new ProgramBuilder(compiler, namer, emitter)

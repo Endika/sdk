@@ -18,6 +18,8 @@ class DartBackend extends Backend {
   final List<CompilerTask> tasks;
   final bool stripAsserts;
 
+  bool get supportsReflection => true;
+
   // TODO(zarah) Maybe change this to a command-line option.
   // Right now, it is set by the tests.
   bool useMirrorHelperLibrary = false;
@@ -129,14 +131,13 @@ class DartBackend extends Backend {
     }
     // Enqueue the methods that the VM might invoke on user objects because
     // we don't trust the resolution to always get these included.
-    world.registerInvocation(
-        new UniverseSelector(new Selector.call("toString", null, 0), null));
+    world.registerInvocation(new UniverseSelector(Selectors.toString_, null));
     world.registerInvokedGetter(
-        new UniverseSelector(new Selector.getter("hashCode", null), null));
+        new UniverseSelector(Selectors.hashCode_, null));
     world.registerInvocation(
-        new UniverseSelector(new Selector.binaryOperator("=="), null));
+        new UniverseSelector(new Selector.binaryOperator('=='), null));
     world.registerInvocation(
-        new UniverseSelector(new Selector.call("compareTo", null, 1), null));
+        new UniverseSelector(Selectors.compareTo, null));
   }
 
   WorldImpact codegen(CodegenWorkItem work) => const WorldImpact();
@@ -229,10 +230,10 @@ class DartBackend extends Backend {
       }
     });
     if (useMirrorHelperLibrary &&
-        loadedLibraries.containsLibrary(Compiler.DART_MIRRORS)) {
+        loadedLibraries.containsLibrary(Uris.dart_mirrors)) {
       return compiler.libraryLoader.loadLibrary(
           compiler.translateResolvedUri(
-              loadedLibraries.getLibrary(Compiler.DART_MIRRORS),
+              loadedLibraries.getLibrary(Uris.dart_mirrors),
               MirrorRenamerImpl.DART_MIRROR_HELPER, null)).
           then((LibraryElement library) {
         mirrorRenamer = new MirrorRenamerImpl(compiler, this, library);
@@ -477,6 +478,13 @@ class DartConstantTask extends ConstantCompilerTask
   ConstantExpression compileConstant(VariableElement element) {
     return measure(() {
       return constantCompiler.compileConstant(element);
+    });
+  }
+
+  @override
+  void evaluate(ConstantExpression constant) {
+    return measure(() {
+      return constantCompiler.evaluate(constant);
     });
   }
 

@@ -3,16 +3,11 @@ library dart2js.unsugar_cps;
 import '../../cps_ir/cps_ir_nodes.dart';
 
 import '../../cps_ir/optimizers.dart' show ParentVisitor;
-import '../../constants/expressions.dart';
 import '../../constants/values.dart';
-import '../../elements/elements.dart' show
-    ClassElement,
-    FieldElement,
-    FunctionElement,
-    Local,
-    ExecutableElement;
+import '../../elements/elements.dart';
+import '../../io/source_information.dart';
 import '../../js_backend/codegen/glue.dart';
-import '../../dart2jslib.dart' show Selector, World;
+import '../../universe/universe.dart' show Selector;
 import '../../cps_ir/cps_ir_builder.dart' show ThisParameterLocal;
 
 class ExplicitReceiverParameterEntity implements Local {
@@ -22,11 +17,20 @@ class ExplicitReceiverParameterEntity implements Local {
   toString() => 'ExplicitReceiverParameterEntity($executableContext)';
 }
 
+/// Suggested name for an interceptor.
+class InterceptorEntity extends Entity {
+  Entity interceptedVariable;
+
+  InterceptorEntity(this.interceptedVariable);
+
+  String get name => interceptedVariable.name + '_';
+}
+
+
 /// Rewrites the initial CPS IR to make Dart semantics explicit and inserts
 /// special nodes that respect JavaScript behavior.
 ///
 /// Performs the following rewrites:
-///  - Rewrite [IsTrue] in a [Branch] to do boolean conversion.
 ///  - Add interceptors at call sites that use interceptor calling convention.
 ///  - Add explicit receiver argument for methods that are called in interceptor
 ///    calling convention.
@@ -45,7 +49,15 @@ class UnsugarVisitor extends RecursiveVisitor {
 
   UnsugarVisitor(this._glue);
 
+  bool methodUsesReceiverArgument(FunctionElement function) {
+    assert(_glue.isInterceptedMethod(function));
+    ClassElement clazz = function.enclosingClass.declaration;
+    return _glue.isInterceptorClass(clazz) || 
+           _glue.isUsedAsMixin(clazz);
+  }
+
   void rewrite(FunctionDefinition function) {
+    thisParameter = function.thisParameter;
     bool inInterceptedMethod = _glue.isInterceptedMethod(function.element);
 
     if (function.element.name == '==' &&
@@ -57,7 +69,6 @@ class UnsugarVisitor extends RecursiveVisitor {
     }
 
     if (inInterceptedMethod) {
-      thisParameter = function.thisParameter;
       ThisParameterLocal holder = thisParameter.hint;
       explicitReceiverParameter = new Parameter(
           new ExplicitReceiverParameterEntity(
@@ -68,17 +79,11 @@ class UnsugarVisitor extends RecursiveVisitor {
     // Set all parent pointers.
     _parentVisitor.visit(function);
 
-    if (inInterceptedMethod) {
+    if (inInterceptedMethod && methodUsesReceiverArgument(function.element)) {
       explicitReceiverParameter.substituteFor(thisParameter);
     }
 
     visit(function);
-  }
-
-  @override
-  visit(Node node) {
-    Node result = node.accept(this);
-    return result != null ? result : node;
   }
 
   Constant get trueConstant {
@@ -127,16 +132,14 @@ class UnsugarVisitor extends RecursiveVisitor {
     Primitive nullPrimitive = nullConstant;
     Primitive test = new ApplyBuiltinOperator(
         BuiltinOperator.Identical,
-          <Primitive>[function.parameters.single, nullPrimitive]);
+          <Primitive>[function.parameters.single, nullPrimitive],
+          function.parameters.single.sourceInformation);
 
     Expression newBody =
         new LetCont.many(<Continuation>[returnFalse, originalBody],
             new LetPrim(nullPrimitive,
                 new LetPrim(test,
-                    new Branch(
-                        new IsTrue(test),
-                        returnFalse,
-                        originalBody))));
+                    new Branch.loose(test, returnFalse, originalBody))));
     function.body = newBody;
   }
 
@@ -158,8 +161,8 @@ class UnsugarVisitor extends RecursiveVisitor {
     Selector selector = new Selector.fromElement(function);
     // TODO(johnniwinther): Come up with an implementation of SourceInformation
     // for calls such as this one that don't appear in the original source.
-    InvokeStatic invoke =
-        new InvokeStatic(function, selector, arguments, continuation, null);
+    InvokeStatic invoke = new InvokeStatic(
+        function, selector, arguments, continuation, null);
     _parentVisitor.processInvokeStatic(invoke);
 
     LetCont letCont = new LetCont(continuation, invoke);
@@ -169,7 +172,11 @@ class UnsugarVisitor extends RecursiveVisitor {
     letCont.parent = parent;
   }
 
-  processLetHandler(LetHandler node) {
+  @override
+  Expression traverseLetHandler(LetHandler node) {
+    assert(node.handler.parameters.length == 2);
+    Parameter previousExceptionParameter = _exceptionParameter;
+
     // BEFORE: Handlers have two parameters, exception and stack trace.
     // AFTER: Handlers have a single parameter, which is unwrapped to get
     // the exception and stack trace.
@@ -193,18 +200,11 @@ class UnsugarVisitor extends RecursiveVisitor {
 
     assert(stackTraceParameter.hasNoUses);
     node.handler.parameters.removeLast();
-  }
 
-  @override
-  visitLetHandler(LetHandler node) {
-    assert(node.handler.parameters.length == 2);
-    Parameter previousExceptionParameter = _exceptionParameter;
-    _exceptionParameter = node.handler.parameters.first;
-    processLetHandler(node);
     visit(node.handler);
     _exceptionParameter = previousExceptionParameter;
 
-    visit(node.body);
+    return node.body;
   }
 
   processThrow(Throw node) {
@@ -240,50 +240,41 @@ class UnsugarVisitor extends RecursiveVisitor {
       //  Change 'receiver.foo()'  to  'this.foo(receiver)'.
       newReceiver = thisParameter;
     } else {
-      // TODO(sra): Move the computation of interceptedClasses to a much later
-      // phase and take into account the remaining uses of the interceptor.
-      Set<ClassElement> interceptedClasses =
-        _glue.getInterceptedClassesOn(selector);
-      _glue.registerSpecializedGetInterceptor(interceptedClasses);
-      newReceiver = new Interceptor(receiver, interceptedClasses);
-      insertLetPrim(newReceiver, node);
+      LetCont contBinding = node.parent;
+      newReceiver = new Interceptor(receiver, node.sourceInformation)
+          ..interceptedClasses.addAll(_glue.getInterceptedClassesOn(selector));
+      if (receiver.hint != null) {
+        newReceiver.hint = new InterceptorEntity(receiver.hint);
+      }
+      insertLetPrim(newReceiver, contBinding);
     }
-
     node.arguments.insert(0, node.receiver);
     node.receiver = new Reference<Primitive>(newReceiver);
   }
 
   processInvokeMethodDirectly(InvokeMethodDirectly node) {
-    if (_glue.isInterceptedMethod(node.target)) {
-      Primitive nullPrim = nullConstant;
-      insertLetPrim(nullPrim, node);
-      node.arguments.insert(0, node.receiver);
-      // TODO(sra): `null` is not adequate.  Interceptors project the class
-      // hierarchy onto an interceptor hierarchy.  A super call that does a
-      // method call will use the javascript 'this' parameter to avoid calling
-      // getInterceptor again, so the receiver must be the interceptor (likely
-      // `this`), not `null`.
-      node.receiver = new Reference<Primitive>(nullPrim);
-    }
-  }
+    if (!_glue.isInterceptedMethod(node.target)) return;
 
-  processBranch(Branch node) {
-    // TODO(karlklose): implement the checked mode part of boolean conversion.
-    InteriorNode parent = node.parent;
-    IsTrue condition = node.condition;
-    Primitive t = trueConstant;
-    Primitive i = new ApplyBuiltinOperator(
-        BuiltinOperator.Identical,
-        <Primitive>[condition.value.definition, t]);
-    LetPrim newNode = new LetPrim(t,
-        new LetPrim(i,
-            new Branch(new IsTrue(i),
-                node.trueContinuation.definition,
-                node.falseContinuation.definition)));
-    condition.value.unlink();
-    node.trueContinuation.unlink();
-    node.falseContinuation.unlink();
-    parent.body = newNode;
+    Selector selector = node.selector;
+    Primitive receiver = node.receiver.definition;
+    Primitive newReceiver;
+
+    if (receiver == explicitReceiverParameter) {
+      // If the receiver is the explicit receiver, we are calling a method in
+      // the same interceptor:
+      //  Change 'receiver.foo()'  to  'this.foo(receiver)'.
+      newReceiver = thisParameter;
+    } else {
+      LetCont contBinding = node.parent;
+      newReceiver = new Interceptor(receiver, node.sourceInformation)
+        ..interceptedClasses.addAll(_glue.getInterceptedClassesOn(selector));
+      if (receiver.hint != null) {
+        newReceiver.hint = new InterceptorEntity(receiver.hint);
+      }
+      insertLetPrim(newReceiver, contBinding);
+    }
+    node.arguments.insert(0, node.receiver);
+    node.receiver = new Reference<Primitive>(newReceiver);
   }
 
   processInterceptor(Interceptor node) {

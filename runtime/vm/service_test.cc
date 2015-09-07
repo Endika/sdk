@@ -35,10 +35,8 @@ class ServiceTestMessageHandler : public MessageHandler {
     }
 
     // Parse the message.
-    MessageSnapshotReader reader(message->data(),
-                                 message->len(),
-                                 Isolate::Current(),
-                                 Thread::Current()->zone());
+    Thread* thread = Thread::Current();
+    MessageSnapshotReader reader(message->data(), message->len(), thread);
     const Object& response_obj = Object::Handle(reader.ReadObject());
     String& response = String::Handle();
     response ^= response_obj.raw();
@@ -77,14 +75,12 @@ static RawArray* Eval(Dart_Handle lib, const char* expr) {
 
 
 static RawArray* EvalF(Dart_Handle lib, const char* fmt, ...) {
-  Isolate* isolate = Isolate::Current();
-
   va_list args;
   va_start(args, fmt);
   intptr_t len = OS::VSNPrint(NULL, 0, fmt, args);
   va_end(args);
 
-  char* buffer = isolate->current_zone()->Alloc<char>(len + 1);
+  char* buffer = Thread::Current()->zone()->Alloc<char>(len + 1);
   va_list args2;
   va_start(args2, fmt);
   OS::VSNPrint(buffer, (len + 1), fmt, args2);
@@ -122,7 +118,8 @@ TEST_CASE(Service_IdZones) {
   // Both RingServiceIdZones share the same backing store and id space.
 
   // Always allocate a new id.
-  RingServiceIdZone always_new_zone(ring, ObjectIdRing::kAllocateId);
+  RingServiceIdZone always_new_zone;
+  always_new_zone.Init(ring, ObjectIdRing::kAllocateId);
   EXPECT_STREQ("objects/0", always_new_zone.GetServiceId(test_a));
   EXPECT_STREQ("objects/1", always_new_zone.GetServiceId(test_a));
   EXPECT_STREQ("objects/2", always_new_zone.GetServiceId(test_a));
@@ -130,7 +127,8 @@ TEST_CASE(Service_IdZones) {
   EXPECT_STREQ("objects/4", always_new_zone.GetServiceId(test_c));
 
   // Reuse an existing id or allocate a new id.
-  RingServiceIdZone reuse_zone(ring, ObjectIdRing::kReuseId);
+  RingServiceIdZone reuse_zone;
+  reuse_zone.Init(ring, ObjectIdRing::kReuseId);
   EXPECT_STREQ("objects/0", reuse_zone.GetServiceId(test_a));
   EXPECT_STREQ("objects/0", reuse_zone.GetServiceId(test_a));
   EXPECT_STREQ("objects/3", reuse_zone.GetServiceId(test_b));
@@ -532,15 +530,15 @@ TEST_CASE(Service_EmbedderRootHandler) {
 
 
   Array& service_msg = Array::Handle();
-  service_msg = Eval(lib, "[0, port, '0', 'alpha', [], []]");
+  service_msg = Eval(lib, "[0, port, '\"', 'alpha', [], []]");
   Service::HandleRootMessage(service_msg);
   handler.HandleNextMessage();
-  EXPECT_STREQ("{\"json-rpc\":\"2.0\", \"result\":alpha, \"id\":\"0\"}",
+  EXPECT_STREQ("{\"jsonrpc\":\"2.0\", \"result\":alpha,\"id\":\"\\\"\"}",
                handler.msg());
-  service_msg = Eval(lib, "[0, port, '0', 'beta', [], []]");
+  service_msg = Eval(lib, "[0, port, 1, 'beta', [], []]");
   Service::HandleRootMessage(service_msg);
   handler.HandleNextMessage();
-  EXPECT_STREQ("{\"json-rpc\":\"2.0\", \"result\":beta, \"id\":\"0\"}",
+  EXPECT_STREQ("{\"jsonrpc\":\"2.0\", \"result\":beta,\"id\":1}",
                handler.msg());
 }
 
@@ -575,12 +573,12 @@ TEST_CASE(Service_EmbedderIsolateHandler) {
   service_msg = Eval(lib, "[0, port, '0', 'alpha', [], []]");
   Service::HandleIsolateMessage(isolate, service_msg);
   handler.HandleNextMessage();
-  EXPECT_STREQ("{\"json-rpc\":\"2.0\", \"result\":alpha, \"id\":\"0\"}",
+  EXPECT_STREQ("{\"jsonrpc\":\"2.0\", \"result\":alpha,\"id\":\"0\"}",
                handler.msg());
   service_msg = Eval(lib, "[0, port, '0', 'beta', [], []]");
   Service::HandleIsolateMessage(isolate, service_msg);
   handler.HandleNextMessage();
-  EXPECT_STREQ("{\"json-rpc\":\"2.0\", \"result\":beta, \"id\":\"0\"}",
+  EXPECT_STREQ("{\"jsonrpc\":\"2.0\", \"result\":beta,\"id\":\"0\"}",
                handler.msg());
 }
 

@@ -7,15 +7,17 @@
 
 library dart2js.source_information.start_end;
 
-import '../dart2jslib.dart' show
+import '../diagnostics/messages.dart' show
     MessageKind,
+    MessageTemplate;
+import '../diagnostics/source_span.dart' show
     SourceSpan;
 import '../elements/elements.dart' show
     AstElement,
     LocalElement;
 import '../js/js.dart' as js;
 import '../js/js_source_mapping.dart';
-import '../scanner/scannerlib.dart' show Token;
+import '../tokens/token.dart' show Token;
 import '../tree/tree.dart' show Node, Send;
 
 import 'source_file.dart';
@@ -182,10 +184,11 @@ class StartEndSourceInformationBuilder extends SourceInformationBuilder {
   void checkValidSourceFileLocation(
       SourceLocation location, SourceFile sourceFile, int offset) {
     if (!location.isValid) {
-      throw MessageKind.INVALID_SOURCE_FILE_LOCATION.message(
-          {'offset': offset,
-           'fileName': sourceFile.filename,
-           'length': sourceFile.length});
+      throw MessageTemplate.TEMPLATES[MessageKind.INVALID_SOURCE_FILE_LOCATION]
+          .message(
+              {'offset': offset,
+               'fileName': sourceFile.filename,
+               'length': sourceFile.length});
     }
   }
 
@@ -203,9 +206,10 @@ class StartEndSourceInformationBuilder extends SourceInformationBuilder {
   }
 
   @override
-  SourceInformation buildReturn(Node node) {
-    return buildGeneric(node);
-  }
+  SourceInformation buildCreate(Node node) => buildGeneric(node);
+
+  @override
+  SourceInformation buildReturn(Node node) => buildGeneric(node);
 
   @override
   SourceInformation buildGet(Node node) => buildGeneric(node);

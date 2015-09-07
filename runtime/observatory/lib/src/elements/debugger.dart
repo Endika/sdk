@@ -11,6 +11,7 @@ import 'package:observatory/app.dart';
 import 'package:observatory/cli.dart';
 import 'package:observatory/debugger.dart';
 import 'package:observatory/service.dart';
+import 'package:logging/logging.dart';
 import 'package:polymer/polymer.dart';
 
 // TODO(turnidge): Move Debugger, DebuggerCommand to debugger library.
@@ -27,7 +28,9 @@ abstract class DebuggerCommand extends Command {
 // TODO(turnidge): Rewrite HelpCommand so that it is a general utility
 // provided by the cli library.
 class HelpCommand extends DebuggerCommand {
-  HelpCommand(Debugger debugger) : super(debugger, 'help', []);
+  HelpCommand(Debugger debugger) : super(debugger, 'help', [
+    new HelpHotkeysCommand(debugger),
+  ]);
 
   String _nameAndAlias(Command cmd) {
     if (cmd.alias == null) {
@@ -50,6 +53,7 @@ class HelpCommand extends DebuggerCommand {
       }
       con.print(
           "\nFor more information on a specific command type 'help <command>'\n"
+          "For a list of hotkeys type 'help hotkeys'\n"
           "\n"
           "Command prefixes are accepted (e.g. 'h' for 'help')\n"
           "Hit [TAB] to complete a command (try 'is[TAB][TAB]')\n"
@@ -105,6 +109,38 @@ class HelpCommand extends DebuggerCommand {
       '        help <command>  - Help for a specific command\n';
 }
 
+class HelpHotkeysCommand extends DebuggerCommand {
+  HelpHotkeysCommand(Debugger debugger) : super(debugger, 'hotkeys', []);
+
+  Future run(List<String> args) {
+    var con = debugger.console;
+    con.print("List of hotkeys:\n"
+              "\n"
+              "[TAB]        - complete a command\n"
+              "[Up Arrow]   - history previous\n"
+              "[Down Arrow] - history next\n"
+              "\n"
+              "[Page Up]    - move up one frame\n"
+              "[Page Down]  - move down one frame\n"
+              "\n"
+              "[F7]         - continue execution of the current isolate\n"
+              "[Ctrl ;]     - pause execution of the current isolate\n"
+              "\n"
+              "[F8]         - toggle breakpoint at current location\n"
+              "[F9]         - next\n"
+              "[F10]        - step\n"
+              "\n");
+    return new Future.value(null);
+  }
+
+  String helpShort = 'Provide a list of hotkeys';
+
+  String helpLong =
+      'Provide a list of key hotkeys.\n'
+      '\n'
+      'Syntax: help hotkeys\n';
+}
+
 class PrintCommand extends DebuggerCommand {
   PrintCommand(Debugger debugger) : super(debugger, 'print', []) {
     alias = 'p';
@@ -155,7 +191,7 @@ class DownCommand extends DebuggerCommand {
       return new Future.value(null);
     }
     try {
-      debugger.currentFrame -= count;
+      debugger.downFrame(count);
       debugger.console.print('frame = ${debugger.currentFrame}');
     } catch (e) {
       debugger.console.print('frame must be in range [${e.start},${e.end-1}]');
@@ -163,10 +199,12 @@ class DownCommand extends DebuggerCommand {
     return new Future.value(null);
   }
 
-  String helpShort = 'Move down one or more frames';
+  String helpShort = 'Move down one or more frames (hotkey: [Page Down])';
 
   String helpLong =
       'Move down one or more frames.\n'
+      '\n'
+      'Hotkey: [Page Down]\n'
       '\n'
       'Syntax: down\n'
       '        down <count>\n';
@@ -188,7 +226,7 @@ class UpCommand extends DebuggerCommand {
       return new Future.value(null);
     }
     try {
-      debugger.currentFrame += count;
+      debugger.upFrame(count);
       debugger.console.print('frame = ${debugger.currentFrame}');
     } on RangeError catch (e) {
       debugger.console.print('frame must be in range [${e.start},${e.end-1}]');
@@ -196,10 +234,12 @@ class UpCommand extends DebuggerCommand {
     return new Future.value(null);
   }
 
-  String helpShort = 'Move up one or more frames';
+  String helpShort = 'Move up one or more frames (hotkey: [Page Up])';
 
   String helpLong =
       'Move up one or more frames.\n'
+      '\n'
+      'Hotkey: [Page Up]\n'
       '\n'
       'Syntax: up\n'
       '        up <count>\n';
@@ -244,18 +284,15 @@ class PauseCommand extends DebuggerCommand {
   PauseCommand(Debugger debugger) : super(debugger, 'pause', []);
 
   Future run(List<String> args) {
-    if (!debugger.isolatePaused()) {
-      return debugger.isolate.pause();
-    } else {
-      debugger.console.print('The program is already paused');
-      return new Future.value(null);
-    }
+    return debugger.pause();
   }
 
-  String helpShort = 'Pause the isolate';
+  String helpShort = 'Pause the isolate (hotkey: [Ctrl ;])';
 
   String helpLong =
       'Pause the isolate.\n'
+      '\n'
+      'Hotkey: [Ctrl ;]\n'
       '\n'
       'Syntax: pause\n';
 }
@@ -266,55 +303,74 @@ class ContinueCommand extends DebuggerCommand {
   }
 
   Future run(List<String> args) {
-    if (debugger.isolatePaused()) {
-      return debugger.isolate.resume().then((_) {
-          debugger.warnOutOfDate();
-        });
-    } else {
-      debugger.console.print('The program must be paused');
-      return new Future.value(null);
-    }
+    return debugger.resume();
   }
 
-  String helpShort = 'Resume execution of the isolate';
+  String helpShort = 'Resume execution of the isolate (hotkey: [F7])';
 
   String helpLong =
       'Continue running the isolate.\n'
+      '\n'
+      'Hotkey: [F7]\n'
       '\n'
       'Syntax: continue\n'
       '        c\n';
 }
 
-class NextCommand extends DebuggerCommand {
-  NextCommand(Debugger debugger) : super(debugger, 'next', []);
+class SmartNextCommand extends DebuggerCommand {
+  SmartNextCommand(Debugger debugger) : super(debugger, 'next', []) {
+    alias = 'n';
+  }
 
-  Future run(List<String> args) {
-    if (debugger.isolatePaused()) {
-      var event = debugger.isolate.pauseEvent;
-      if (event.kind == ServiceEvent.kPauseStart) {
-        debugger.console.print("Type 'continue' to start the isolate");
-        return new Future.value(null);
-      }
-      if (event.kind == ServiceEvent.kPauseExit) {
-        debugger.console.print("Type 'continue' to exit the isolate");
-        return new Future.value(null);
-      }
-      return debugger.isolate.stepOver();
-    } else {
-      debugger.console.print('The program is already running');
-      return new Future.value(null);
-    }
+  Future run(List<String> args) async {
+    return debugger.smartNext();
   }
 
   String helpShort =
       'Continue running the isolate until it reaches the next source location '
-      'in the current function';
+      'in the current function (hotkey: [F9])';
 
   String helpLong =
       'Continue running the isolate until it reaches the next source location '
       'in the current function.\n'
       '\n'
+      'Hotkey: [F9]\n'
+      '\n'
       'Syntax: next\n';
+}
+
+class SyncNextCommand extends DebuggerCommand {
+  SyncNextCommand(Debugger debugger) : super(debugger, 'next-sync', []);
+
+  Future run(List<String> args) {
+    return debugger.syncNext();
+  }
+
+  String helpShort =
+      'Run until return/unwind to current activation.';
+
+  String helpLong =
+      'Continue running the isolate until control returns to the current '
+      'activation or one of its callers.\n'
+      '\n'
+      'Syntax: next-sync\n';
+}
+
+class AsyncNextCommand extends DebuggerCommand {
+  AsyncNextCommand(Debugger debugger) : super(debugger, 'next-async', []);
+
+  Future run(List<String> args) {
+    return debugger.asyncNext();
+  }
+
+  String helpShort =
+      'Step over await or yield';
+
+  String helpLong =
+      'Continue running the isolate until control returns to the current '
+      'activation of an async or async* function.\n'
+      '\n'
+      'Syntax: next-async\n';
 }
 
 class StepCommand extends DebuggerCommand {
@@ -323,31 +379,106 @@ class StepCommand extends DebuggerCommand {
   }
 
   Future run(List<String> args) {
-    if (debugger.isolatePaused()) {
-      var event = debugger.isolate.pauseEvent;
-      if (event.kind == ServiceEvent.kPauseStart) {
-        debugger.console.print("Type 'continue' to start the isolate");
-        return new Future.value(null);
-      }
-      if (event.kind == ServiceEvent.kPauseExit) {
-        debugger.console.print("Type 'continue' to exit the isolate");
-        return new Future.value(null);
-      }
-      return debugger.isolate.stepInto();
-    } else {
-      debugger.console.print('The program is already running');
-      return new Future.value(null);
-    }
+    return debugger.step();
   }
 
   String helpShort =
-      'Continue running the isolate until it reaches the next source location';
+      'Continue running the isolate until it reaches the next source location'
+      ' (hotkey: [F10]';
 
   String helpLong =
       'Continue running the isolate until it reaches the next source '
       'location.\n'
       '\n'
+      'Hotkey: [F10]\n'
+      '\n'
       'Syntax: step\n';
+}
+
+class ClsCommand extends DebuggerCommand {
+  ClsCommand(Debugger debugger) : super(debugger, 'cls', []) {}
+
+  Future run(List<String> args) {
+    debugger.console.clear();
+    debugger.console.newline();
+    return new Future.value(null);
+  }
+
+  String helpShort = 'Clear the console';
+
+  String helpLong =
+      'Clear the console.\n'
+      '\n'
+      'Syntax: cls\n';
+}
+
+class LogCommand extends DebuggerCommand {
+  LogCommand(Debugger debugger) : super(debugger, 'log', []);
+
+  Future run(List<String> args) async {
+    if (args.length == 0) {
+      debugger.console.print(
+          'Current log level: '
+          '${debugger._consolePrinter._minimumLogLevel.name}');
+      return new Future.value(null);
+    }
+    if (args.length > 1) {
+      debugger.console.print("log expects zero or one arguments");
+      return new Future.value(null);
+    }
+    var level = _findLevel(args[0]);
+    if (level == null) {
+      debugger.console.print('No such log level: ${args[0]}');
+      return new Future.value(null);
+    }
+    debugger._consolePrinter._minimumLogLevel = level;
+    debugger.console.print('Set log level to: ${level.name}');
+    return new Future.value(null);
+  }
+
+  Level _findLevel(String levelName) {
+    levelName = levelName.toUpperCase();
+    for (var level in Level.LEVELS) {
+      if (level.name == levelName) {
+        return level;
+      }
+    }
+    return null;
+  }
+
+  Future<List<String>> complete(List<String> args) {
+    if (args.length != 1) {
+      return new Future.value([args.join('')]);
+    }
+    var prefix = args[0].toUpperCase();
+    var result = <String>[];
+    for (var level in Level.LEVELS) {
+      if (level.name.startsWith(prefix)) {
+        result.add(level.name);
+      }
+    }
+    return new Future.value(result);
+  }
+
+  String helpShort =
+      'Control which log messages are displayed';
+
+  String helpLong =
+      'Get or set the minimum log level that should be displayed.\n'
+      '\n'
+      'Log levels (in ascending order): ALL, FINEST, FINER, FINE, CONFIG, '
+      'INFO, WARNING, SEVERE, SHOUT, OFF\n'
+      '\n'
+      'Default: OFF\n'
+      '\n'
+      'Syntax: log          '
+      '# Display the current minimum log level.\n'
+      '        log <level>  '
+      '# Set the minimum log level to <level>.\n'
+      '        log OFF      '
+      '# Display no log messages.\n'
+      '        log ALL      '
+      '# Display all log messages.\n';
 }
 
 class FinishCommand extends DebuggerCommand {
@@ -355,6 +486,16 @@ class FinishCommand extends DebuggerCommand {
 
   Future run(List<String> args) {
     if (debugger.isolatePaused()) {
+      var event = debugger.isolate.pauseEvent;
+      if (event.kind == ServiceEvent.kPauseStart) {
+        debugger.console.print(
+            "Type 'continue' [F7] or 'step' [F10] to start the isolate");
+        return new Future.value(null);
+      }
+      if (event.kind == ServiceEvent.kPauseExit) {
+        debugger.console.print("Type 'continue' [F7] to exit the isolate");
+        return new Future.value(null);
+      }
       return debugger.isolate.stepOut();
     } else {
       debugger.console.print('The program is already running');
@@ -375,29 +516,119 @@ class SetCommand extends DebuggerCommand {
   SetCommand(Debugger debugger)
       : super(debugger, 'set', []);
 
-  Future run(List<String> args) async {
-    if (args.length == 2) {
-      var option = args[0].trim();
-      if (option == 'break-on-exceptions') {
-        var result = await debugger.isolate.setExceptionPauseInfo(args[1]);
-        if (result.isError) {
-          debugger.console.print(result.toString());
-        }
-      } else {
-        debugger.console.print("unknown option '$option'");
-      }
+  static var _boeValues = ['all', 'none', 'unhandled'];
+  static var _boolValues = ['false', 'true'];
+
+  static var _options = {
+    'break-on-exception': [_boeValues,
+                           _setBreakOnException,
+                           (debugger, _) => debugger.breakOnException],
+    'up-is-down': [_boolValues,
+                   _setUpIsDown,
+                   (debugger, _) => debugger.upIsDown],
+  };
+
+  static Future _setBreakOnException(debugger, name, value) async {
+    var result = await debugger.isolate.setExceptionPauseInfo(value);
+    if (result.isError) {
+      debugger.console.print(result.toString());
     } else {
-      debugger.console.print("set expects 2 arguments");
+      // Printing will occur elsewhere.
+      debugger.breakOnException = value;
     }
+  }
+
+  static Future _setUpIsDown(debugger, name, value) async {
+    if (value == 'true') {
+      debugger.upIsDown = true;
+    } else {
+      debugger.upIsDown = false;
+    }
+    debugger.console.print('${name} = ${value}');
+  }
+
+  Future run(List<String> args) async {
+    if (args.length == 0) {
+      for (var name in _options.keys) {
+        var getHandler = _options[name][2];
+        var value = await getHandler(debugger, name);
+        debugger.console.print("${name} = ${value}");
+      }
+    } else if (args.length == 1) {
+      var name = args[0].trim();
+      var optionInfo = _options[name];
+      if (optionInfo == null) {
+        debugger.console.print("unrecognized option: $name");
+        return;
+      } else {
+        var getHandler = optionInfo[2];
+        var value = await getHandler(debugger, name);
+        debugger.console.print("${name} = ${value}");
+      }
+    } else if (args.length == 2) {
+      var name = args[0].trim();
+      var value = args[1].trim();
+      var optionInfo = _options[name];
+      if (optionInfo == null) {
+        debugger.console.print("unrecognized option: $name");
+        return;
+      }
+      var validValues = optionInfo[0];
+      if (!validValues.contains(value)) {
+        debugger.console.print("'${value}' is not in ${validValues}");
+        return;
+      }
+      var setHandler = optionInfo[1];
+      await setHandler(debugger, name, value);
+    } else {
+      debugger.console.print("set expects 0, 1, or 2 arguments");
+    }
+  }
+
+  Future<List<String>> complete(List<String> args) {
+    if (args.length < 1 || args.length > 2) {
+      return new Future.value([args.join('')]);
+    }
+    var result = [];
+    if (args.length == 1) {
+      var prefix = args[0];
+      for (var option in _options.keys) {
+        if (option.startsWith(prefix)) {
+          result.add('${option} ');
+        }
+      }
+    }
+    if (args.length == 2) {
+      var name = args[0].trim();
+      var prefix = args[1];
+      var optionInfo = _options[name];
+      if (optionInfo != null) {
+        var validValues = optionInfo[0];
+        for (var value in validValues) {
+          if (value.startsWith(prefix)) {
+            result.add('${args[0]}${value} ');
+          }
+        }
+      }
+    }
+    return new Future.value(result);
   }
 
   String helpShort =
       'Set a debugger option';
 
   String helpLong =
-      'Set a debugger option'
+      'Set a debugger option.\n'
       '\n'
-      'Syntax: set break-on-exceptions "all" | "none" | "unhandled"\n';
+      'Known options:\n'
+      '  break-on-exception    # Should the debugger break on exceptions?\n'
+      "                        # ${_boeValues}\n"
+      '  up-is-down            # Reverse meaning of up/down commands?\n'
+      "                        # ${_boolValues}\n"
+      '\n'
+      'Syntax: set                    # Display all option settings\n'
+      '        set <option>           # Get current value for option\n'
+      '        set <option> <value>   # Set value for option';
 }
 
 class BreakCommand extends DebuggerCommand {
@@ -452,31 +683,34 @@ class BreakCommand extends DebuggerCommand {
     return new Future.value(DebuggerLocation.complete(debugger, args[0]));
   }
 
-  String helpShort = 'Add a breakpoint by source location or function name';
+  String helpShort = 'Add a breakpoint by source location or function name'
+      ' (hotkey: [F8])';
 
   String helpLong =
       'Add a breakpoint by source location or function name.\n'
       '\n'
+      'Hotkey: [F8]\n'
+      '\n'
       'Syntax: break                       '
-      '- Break at the current position\n'
+      '# Break at the current position\n'
       '        break <line>                '
-      '- Break at a line in the current script\n'
+      '# Break at a line in the current script\n'
       '                                    '
       '  (e.g \'break 11\')\n'
       '        break <line>:<col>          '
-      '- Break at a line:col in the current script\n'
+      '# Break at a line:col in the current script\n'
       '                                    '
       '  (e.g \'break 11:8\')\n'
       '        break <script>:<line>       '
-      '- Break at a line:col in a specific script\n'
+      '# Break at a line:col in a specific script\n'
       '                                    '
       '  (e.g \'break test.dart:11\')\n'
       '        break <script>:<line>:<col> '
-      '- Break at a line:col in a specific script\n'
+      '# Break at a line:col in a specific script\n'
       '                                    '
       '  (e.g \'break test.dart:11:8\')\n'
       '        break <function>            '
-      '- Break at the named function\n'
+      '# Break at the named function\n'
       '                                    '
       '  (e.g \'break main\' or \'break Class.someFunction\')\n';
 }
@@ -535,31 +769,34 @@ class ClearCommand extends DebuggerCommand {
     return new Future.value(DebuggerLocation.complete(debugger, args[0]));
   }
 
-  String helpShort = 'Remove a breakpoint by source location or function name';
+  String helpShort = 'Remove a breakpoint by source location or function name'
+      ' (hotkey: [F8])';
 
   String helpLong =
       'Remove a breakpoint by source location or function name.\n'
       '\n'
+      'Hotkey: [F8]\n'
+      '\n'
       'Syntax: clear                       '
-      '- Clear at the current position\n'
+      '# Clear at the current position\n'
       '        clear <line>                '
-      '- Clear at a line in the current script\n'
+      '# Clear at a line in the current script\n'
       '                                    '
       '  (e.g \'clear 11\')\n'
       '        clear <line>:<col>          '
-      '- Clear at a line:col in the current script\n'
+      '# Clear at a line:col in the current script\n'
       '                                    '
       '  (e.g \'clear 11:8\')\n'
       '        clear <script>:<line>       '
-      '- Clear at a line:col in a specific script\n'
+      '# Clear at a line:col in a specific script\n'
       '                                    '
       '  (e.g \'clear test.dart:11\')\n'
       '        clear <script>:<line>:<col> '
-      '- Clear at a line:col in a specific script\n'
+      '# Clear at a line:col in a specific script\n'
       '                                    '
       '  (e.g \'clear test.dart:11:8\')\n'
       '        clear <function>            '
-      '- Clear at the named function\n'
+      '# Clear at the named function\n'
       '                                    '
       '  (e.g \'clear main\' or \'clear Class.someFunction\')\n';
 }
@@ -710,16 +947,14 @@ class IsolateCommand extends DebuggerCommand {
     if (args.length != 1) {
       return new Future.value([args.join('')]);
     }
-    var isolates = debugger.vm.isolates.toList();
-    isolates.sort((a, b) => a.startTime.compareTo(b.startTime));
     var result = [];
-    for (var isolate in isolates) {
+    for (var isolate in debugger.vm.isolates) {
       var str = isolate.number.toString();
       if (str.startsWith(args[0])) {
         result.add('$str ');
       }
     }
-    for (var isolate in isolates) {
+    for (var isolate in debugger.vm.isolates) {
       if (isolate.name.startsWith(args[0])) {
         result.add('${isolate.name} ');
       }
@@ -744,9 +979,7 @@ class IsolateListCommand extends DebuggerCommand {
           "Internal error: vm has not been set");
       return new Future.value(null);
     }
-    var isolates = debugger.vm.isolates.toList();
-    isolates.sort((a, b) => a.startTime.compareTo(b.startTime));
-    for (var isolate in isolates) {
+    for (var isolate in debugger.vm.isolates) {
       String current = (isolate == debugger.isolate ? ' *' : '');
       debugger.console.print(
           "Isolate ${isolate.number} '${isolate.name}'${current}");
@@ -855,17 +1088,93 @@ class RefreshCommand extends DebuggerCommand {
       'Syntax: refresh <subcommand>\n';
 }
 
+class _ConsoleStreamPrinter {
+  ObservatoryDebugger _debugger;
+
+  _ConsoleStreamPrinter(this._debugger);
+  Level _minimumLogLevel = Level.OFF;
+  String _savedStream;
+  String _savedIsolate;
+  String _savedLine;
+  List<String> _buffer = [];
+
+  void onEvent(String streamName, ServiceEvent event) {
+    if (event.kind == ServiceEvent.kLogging) {
+      // Check if we should print this log message.
+      if (event.logRecord['level'].value < _minimumLogLevel.value) {
+        return;
+      }
+    }
+    String isolateName = event.isolate.name;
+    // If we get a line from a different isolate/stream, flush
+    // any pending output, even if it is not newline-terminated.
+    if ((_savedIsolate != null && isolateName != _savedIsolate) ||
+        (_savedStream != null && streamName != _savedStream)) {
+       flush();
+    }
+    String data;
+    bool hasNewline;
+    if (event.kind == ServiceEvent.kLogging) {
+      data = event.logRecord["message"].valueAsString;
+      hasNewline = true;
+    } else {
+      data = event.bytesAsString;
+      hasNewline = data.endsWith('\n');
+    }
+    if (_savedLine != null) {
+       data = _savedLine + data;
+      _savedIsolate = null;
+      _savedStream = null;
+      _savedLine = null;
+    }
+    var lines = data.split('\n').where((line) => line != '').toList();
+    if (lines.isEmpty) {
+      return;
+    }
+    int limit = (hasNewline ? lines.length : lines.length - 1);
+    for (int i = 0; i < limit; i++) {
+      _buffer.add(_format(isolateName, streamName, lines[i]));
+    }
+    // If there is no newline, we save the last line of output for next time.
+    if (!hasNewline) {
+      _savedIsolate = isolateName;
+      _savedStream = streamName;
+      _savedLine = lines[lines.length - 1];
+    }
+  }
+
+  void flush() {
+    // If there is any saved output, flush it now.
+    if (_savedLine != null) {
+      _buffer.add(_format(_savedIsolate, _savedStream, _savedLine));
+      _savedIsolate = null;
+      _savedStream = null;
+      _savedLine = null;
+    }
+    if (_buffer.isNotEmpty) {
+      _debugger.console.printStdio(_buffer);
+      _buffer.clear();
+    }
+  }
+
+  String _format(String isolateName, String streamName, String line) {
+    return '${isolateName}:${streamName}> ${line}';
+  }
+}
+
 // Tracks the state for an isolate debugging session.
 class ObservatoryDebugger extends Debugger {
+  final SettingsGroup settings = new SettingsGroup('debugger');
   RootCommand cmd;
   DebuggerPageElement page;
   DebuggerConsoleElement console;
   DebuggerInputElement input;
   DebuggerStackElement stackElement;
   ServiceMap stack;
-  String exceptions = "none";  // Last known setting.
+  String breakOnException = "none";  // Last known setting.
 
   int get currentFrame => _currentFrame;
+
   void set currentFrame(int value) {
     if (value != null && (value < 0 || value >= stackDepth)) {
       throw new RangeError.range(value, 0, stackDepth);
@@ -877,28 +1186,61 @@ class ObservatoryDebugger extends Debugger {
   }
   int _currentFrame = null;
 
+  bool get upIsDown => _upIsDown;
+  void set upIsDown(bool value) {
+    settings.set('up-is-down', value);
+    _upIsDown = value;
+  }
+  bool _upIsDown;
+
+  void upFrame(int count) {
+    if (_upIsDown) {
+      currentFrame += count;
+    } else {
+      currentFrame -= count;
+    }
+  }
+
+  void downFrame(int count) {
+    if (_upIsDown) {
+      currentFrame -= count;
+    } else {
+      currentFrame += count;
+    }
+  }
+
   int get stackDepth => stack['frames'].length;
 
   ObservatoryDebugger() {
+    _loadSettings();
     cmd = new RootCommand([
-        new HelpCommand(this),
-        new PrintCommand(this),
-        new DownCommand(this),
-        new UpCommand(this),
-        new FrameCommand(this),
-        new PauseCommand(this),
-        new ContinueCommand(this),
-        new NextCommand(this),
-        new StepCommand(this),
-        new FinishCommand(this),
+        new AsyncNextCommand(this),
         new BreakCommand(this),
-        new SetCommand(this),
         new ClearCommand(this),
+        new ClsCommand(this),
+        new ContinueCommand(this),
         new DeleteCommand(this),
+        new DownCommand(this),
+        new FinishCommand(this),
+        new FrameCommand(this),
+        new HelpCommand(this),
         new InfoCommand(this),
         new IsolateCommand(this),
+        new LogCommand(this),
+        new PauseCommand(this),
+        new PrintCommand(this),
         new RefreshCommand(this),
+        new SetCommand(this),
+        new SmartNextCommand(this),
+        new StepCommand(this),
+        new SyncNextCommand(this),
+        new UpCommand(this),
     ]);
+    _consolePrinter = new _ConsoleStreamPrinter(this);
+  }
+
+  void _loadSettings() {
+    _upIsDown = settings.get('up-is-down');
   }
 
   VM get vm => page.app.vm;
@@ -906,9 +1248,10 @@ class ObservatoryDebugger extends Debugger {
   void updateIsolate(Isolate iso) {
     _isolate = iso;
     if (_isolate != null) {
-      if (exceptions != iso.exceptionsPauseInfo) {
-        exceptions = iso.exceptionsPauseInfo;
-        console.print("Now pausing for $exceptions exceptions");
+      if ((breakOnException != iso.exceptionsPauseInfo) &&
+          (iso.exceptionsPauseInfo != null)) {
+        breakOnException = iso.exceptionsPauseInfo;
+        console.print("Now pausing for exceptions: $breakOnException");
       }
 
       _isolate.reload().then((response) {
@@ -921,9 +1264,6 @@ class ObservatoryDebugger extends Debugger {
           }
         }
         Future.wait(pending).then((_) {
-          if (_subscription == null) {
-            _subscription = vm.events.stream.listen(_onEvent);
-          }
           _refreshStack(isolate.pauseEvent).then((_) {
             reportStatus();
           });
@@ -948,7 +1288,6 @@ class ObservatoryDebugger extends Debugger {
   }
   Isolate get isolate => _isolate;
   Isolate _isolate;
-  var _subscription;
 
   void init() {
     console.newline();
@@ -1002,6 +1341,7 @@ class ObservatoryDebugger extends Debugger {
   }
 
   void reportStatus() {
+    flushStdio();
     if (_isolate == null) {
       console.print('No current isolate');
     } else if (_isolate.idle) {
@@ -1019,10 +1359,10 @@ class ObservatoryDebugger extends Debugger {
   void _reportPause(ServiceEvent event) {
     if (event.kind == ServiceEvent.kPauseStart) {
       console.print(
-          "Paused at isolate start (type 'continue' to start the isolate')");
+          "Paused at isolate start (type 'continue' [F7] or 'step' [F10] to start the isolate')");
     } else if (event.kind == ServiceEvent.kPauseExit) {
       console.print(
-          "Paused at isolate exit (type 'continue' to exit the isolate')");
+          "Paused at isolate exit (type 'continue' or [F7] to exit the isolate')");
     }
     if (stack['frames'].length > 0) {
       Frame frame = stack['frames'][0];
@@ -1080,7 +1420,7 @@ class ObservatoryDebugger extends Debugger {
     });
   }
 
-  void _onEvent(ServiceEvent event) {
+  void onEvent(ServiceEvent event) {
     switch(event.kind) {
       case ServiceEvent.kIsolateStart:
         {
@@ -1103,9 +1443,9 @@ class ObservatoryDebugger extends Debugger {
         break;
 
       case ServiceEvent.kDebuggerSettingsUpdate:
-        if (exceptions != event.exceptions) {
-          exceptions = event.exceptions;
-          console.print("Now pausing for $exceptions exceptions");
+        if (breakOnException != event.exceptions) {
+          breakOnException = event.exceptions;
+          console.print("Now pausing for exceptions: $breakOnException");
         }
         break;
 
@@ -1121,6 +1461,7 @@ class ObservatoryDebugger extends Debugger {
       case ServiceEvent.kPauseException:
         if (event.owner == isolate) {
           _refreshStack(event).then((_) {
+            flushStdio();
             _reportPause(event);
           });
         }
@@ -1128,6 +1469,7 @@ class ObservatoryDebugger extends Debugger {
 
       case ServiceEvent.kResume:
         if (event.owner == isolate) {
+          flushStdio();
           console.print('Continuing...');
         }
         break;
@@ -1140,16 +1482,35 @@ class ObservatoryDebugger extends Debugger {
         }
         break;
 
-      case ServiceEvent.kIsolateStart:
+      case ServiceEvent.kIsolateRunnable:
       case ServiceEvent.kGraph:
       case ServiceEvent.kGC:
       case ServiceEvent.kInspect:
+        // Ignore.
+        break;
+
+      case ServiceEvent.kLogging:
+        _consolePrinter.onEvent(event.logRecord['level'].name, event);
         break;
 
       default:
         console.print('Unrecognized event: $event');
         break;
     }
+  }
+
+  _ConsoleStreamPrinter _consolePrinter;
+
+  void flushStdio() {
+    _consolePrinter.flush();
+  }
+
+  void onStdout(ServiceEvent event) {
+    _consolePrinter.onEvent('stdout', event);
+  }
+
+  void onStderr(ServiceEvent event) {
+    _consolePrinter.onEvent('stderr', event);
   }
 
   static String _commonPrefix(String a, String b) {
@@ -1222,11 +1583,111 @@ class ObservatoryDebugger extends Debugger {
   String historyNext(String command) {
     return cmd.historyNext(command);
   }
+
+  Future pause() {
+    if (!isolatePaused()) {
+      return isolate.pause();
+    } else {
+      console.print('The program is already paused');
+      return new Future.value(null);
+    }
+  }
+
+  Future resume() {
+    if (isolatePaused()) {
+      return isolate.resume().then((_) {
+          warnOutOfDate();
+        });
+    } else {
+      console.print('The program must be paused');
+      return new Future.value(null);
+    }
+  }
+
+  Future toggleBreakpoint() async {
+    var loc = await DebuggerLocation.parse(this, '');
+    var script = loc.script;
+    var line = loc.line;
+    if (script != null && line != null) {
+      var bpts = script.getLine(line).breakpoints;
+      if (bpts == null || bpts.isEmpty) {
+        // Set a new breakpoint.
+        // TODO(turnidge): Set this breakpoint at current column.
+        await isolate.addBreakpoint(script, line);
+      } else {
+        // TODO(turnidge): Clear this breakpoint at current column.
+        var pending = [];
+        for (var bpt in bpts) {
+          pending.add(isolate.removeBreakpoint(bpt));
+        }
+        await Future.wait(pending);
+      }
+    }
+    return new Future.value(null);
+  }
+
+
+  Future smartNext() async {
+    if (isolatePaused()) {
+      var event = isolate.pauseEvent;
+      if (event.atAsyncJump) {
+        return asyncNext();
+      } else {
+        return syncNext();
+      }
+    } else {
+      console.print('The program is already running');
+    }
+  }
+
+  Future asyncNext() async {
+    if (isolatePaused()) {
+      var event = isolate.pauseEvent;
+      if (event.asyncContinuation == null) {
+        console.print("No async continuation at this location");
+      } else {
+        return isolate.asyncStepOver()[Isolate.kFirstResume];
+      }
+    } else {
+      console.print('The program is already running');
+    }
+  }
+
+  Future syncNext() async {
+    if (isolatePaused()) {
+      var event = isolate.pauseEvent;
+      if (event.kind == ServiceEvent.kPauseStart) {
+        console.print("Type 'continue' [F7] or 'step' [F10] to start the isolate");
+        return;
+      }
+      if (event.kind == ServiceEvent.kPauseExit) {
+        console.print("Type 'continue' [F7] to exit the isolate");
+        return;
+      }
+      return isolate.stepOver();
+    } else {
+      console.print('The program is already running');
+      return;
+    }
+  }
+
+  Future step() {
+    if (isolatePaused()) {
+      var event = isolate.pauseEvent;
+      if (event.kind == ServiceEvent.kPauseExit) {
+        console.print("Type 'continue' [F7] to exit the isolate");
+        return new Future.value(null);
+      }
+      return isolate.stepInto();
+    } else {
+      console.print('The program is already running');
+      return new Future.value(null);
+    }
+  }
 }
 
 @CustomTag('debugger-page')
 class DebuggerPageElement extends ObservatoryElement {
-  @published ObservatoryApplication app;
   @published Isolate isolate;
 
   isolateChanged(oldValue) {
@@ -1240,10 +1701,69 @@ class DebuggerPageElement extends ObservatoryElement {
     debugger.page = this;
   }
 
+  StreamSubscription _resizeSubscription;
+  Future<StreamSubscription> _isolateSubscriptionFuture;
+  Future<StreamSubscription> _debugSubscriptionFuture;
+  Future<StreamSubscription> _stdoutSubscriptionFuture;
+  Future<StreamSubscription> _stderrSubscriptionFuture;
+  Future<StreamSubscription> _logSubscriptionFuture;
+
   @override
   void attached() {
     super.attached();
+    _onResize(null);
 
+    // Wire the debugger object to the stack, console, and command line.
+    var stackElement = $['stackElement'];
+    debugger.stackElement = stackElement;
+    stackElement.debugger = debugger;
+    debugger.console = $['console'];
+    debugger.input = $['commandline'];
+    debugger.input.debugger = debugger;
+    debugger.init();
+
+    _resizeSubscription = window.onResize.listen(_onResize);
+    _isolateSubscriptionFuture =
+        app.vm.listenEventStream(VM.kIsolateStream, debugger.onEvent);
+    _debugSubscriptionFuture =
+        app.vm.listenEventStream(VM.kDebugStream, debugger.onEvent);
+    _stdoutSubscriptionFuture =
+        app.vm.listenEventStream(VM.kStdoutStream, debugger.onStdout);
+    if (_stdoutSubscriptionFuture != null) {
+      // TODO(turnidge): How do we want to handle this in general?
+      _stdoutSubscriptionFuture.catchError((e, st) {
+        Logger.root.info('Failed to subscribe to stdout: $e\n$st\n');
+      });
+    }
+    _stderrSubscriptionFuture =
+        app.vm.listenEventStream(VM.kStderrStream, debugger.onStderr);
+    if (_stderrSubscriptionFuture != null) {
+      // TODO(turnidge): How do we want to handle this in general?
+      _stderrSubscriptionFuture.catchError((e, st) {
+        Logger.root.info('Failed to subscribe to stderr: $e\n$st\n');
+      });
+    }
+    _logSubscriptionFuture =
+        app.vm.listenEventStream(Isolate.kLoggingStream, debugger.onEvent);
+    // Turn on the periodic poll timer for this page.
+    pollPeriod = const Duration(milliseconds:100);
+
+    onClick.listen((event) {
+      // Random clicks should focus on the text box.  If the user selects
+      // a range, don't interfere.
+      var selection = window.getSelection();
+      if (selection == null ||
+          (selection.type != 'Range' && selection.type != 'text')) {
+        debugger.input.focus();
+      }
+    });
+  }
+
+  void onPoll() {
+    debugger.flushStdio();
+  }
+
+  void _onResize(_) {
     var navbarDiv = $['navbarDiv'];
     var stackDiv = $['stackDiv'];
     var splitterDiv = $['splitterDiv'];
@@ -1258,15 +1778,24 @@ class DebuggerPageElement extends ObservatoryElement {
     int available = windowHeight - fixedHeight;
     int stackHeight = available ~/ 1.6;
     stackDiv.style.setProperty('height', '${stackHeight}px');
+  }
 
-    // Wire the debugger object to the stack, console, and command line.
-    var stackElement = $['stackElement'];
-    debugger.stackElement = stackElement;
-    stackElement.debugger = debugger;
-    debugger.console = $['console'];
-    debugger.input = $['commandline'];
-    debugger.input.debugger = debugger;
-    debugger.init();
+  @override
+  void detached() {
+    debugger.isolate = null;
+    _resizeSubscription.cancel();
+    _resizeSubscription = null;
+    cancelFutureSubscription(_isolateSubscriptionFuture);
+    _isolateSubscriptionFuture = null;
+    cancelFutureSubscription(_debugSubscriptionFuture);
+    _debugSubscriptionFuture = null;
+    cancelFutureSubscription(_stdoutSubscriptionFuture);
+    _stdoutSubscriptionFuture = null;
+    cancelFutureSubscription(_stderrSubscriptionFuture);
+    _stderrSubscriptionFuture = null;
+    cancelFutureSubscription(_logSubscriptionFuture);
+    _logSubscriptionFuture = null;
+    super.detached();
   }
 }
 
@@ -1476,6 +2005,11 @@ class DebuggerFrameElement extends ObservatoryElement {
 
   DebuggerFrameElement.created() : super.created();
 
+
+  String makeExpandKey(String key) {
+    return '${frame.function.qualifiedName}/${key}';
+  }
+
   bool matchFrame(Frame newFrame) {
     return newFrame.function.id == frame.function.id;
   }
@@ -1612,6 +2146,38 @@ class DebuggerConsoleElement extends ObservatoryElement {
 
   DebuggerConsoleElement.created() : super.created();
 
+  /// Is [container] scrolled to the within [threshold] pixels of the bottom?
+  static bool _isScrolledToBottom(DivElement container, [int threshold = 2]) {
+    if (container == null) {
+      return false;
+    }
+    // scrollHeight -> complete height of element including scrollable area.
+    // clientHeight -> height of element on page.
+    // scrollTop -> how far is an element scrolled (from 0 to scrollHeight).
+    final distanceFromBottom =
+        container.scrollHeight - container.clientHeight - container.scrollTop;
+    const threshold = 2;  // 2 pixel slop.
+    return distanceFromBottom <= threshold;
+  }
+
+  /// Scroll [container] so the bottom content is visible.
+  static _scrollToBottom(DivElement container) {
+    if (container == null) {
+      return;
+    }
+    // Adjust scroll so that the bottom of the content is visible.
+    container.scrollTop = container.scrollHeight - container.clientHeight;
+  }
+
+  void _append(HtmlElement span) {
+    var consoleTextElement = $['consoleText'];
+    bool autoScroll = _isScrolledToBottom(parent);
+    consoleTextElement.children.add(span);
+    if (autoScroll) {
+      _scrollToBottom(parent);
+    }
+  }
+
   void print(String line, { bool newline:true }) {
     var span = new SpanElement();
     span.classes.add('normal');
@@ -1619,8 +2185,7 @@ class DebuggerConsoleElement extends ObservatoryElement {
     if (newline) {
       span.appendText('\n');
     }
-    $['consoleText'].children.add(span);
-    span.scrollIntoView();
+    _append(span);
   }
 
   void printBold(String line, { bool newline:true }) {
@@ -1630,8 +2195,7 @@ class DebuggerConsoleElement extends ObservatoryElement {
     if (newline) {
       span.appendText('\n');
     }
-    $['consoleText'].children.add(span);
-    span.scrollIntoView();
+    _append(span);
   }
 
   void printRed(String line, { bool newline:true }) {
@@ -1641,24 +2205,40 @@ class DebuggerConsoleElement extends ObservatoryElement {
     if (newline) {
       span.appendText('\n');
     }
-    $['consoleText'].children.add(span);
-    span.scrollIntoView();
+    _append(span);
+  }
+
+  void printStdio(List<String> lines) {
+    var consoleTextElement = $['consoleText'];
+    bool autoScroll = _isScrolledToBottom(parent);
+    for (var line in lines) {
+      var span = new SpanElement();
+      span.classes.add('green');
+      span.appendText(line);
+      span.appendText('\n');
+      consoleTextElement.children.add(span);
+    }
+    if (autoScroll) {
+      _scrollToBottom(parent);
+    }
   }
 
   void printRef(Instance ref, { bool newline:true }) {
     var refElement = new Element.tag('instance-ref');
     refElement.ref = ref;
-    $['consoleText'].children.add(refElement);
+    _append(refElement);
     if (newline) {
       this.newline();
     }
-    refElement.scrollIntoView();
   }
 
   void newline() {
-    var br = new BRElement();
-    $['consoleText'].children.add(br);
-    br.scrollIntoView();
+    _append(new BRElement());
+  }
+
+  void clear() {
+    var consoleTextElement = $['consoleText'];
+    consoleTextElement.children.clear();
   }
 }
 
@@ -1713,6 +2293,66 @@ class DebuggerInputElement extends ObservatoryElement {
             busy = false;
             break;
 
+          case KeyCode.PAGE_UP:
+            e.preventDefault();
+            try {
+              debugger.upFrame(1);
+            } on RangeError catch (_) {
+              // Ignore.
+            }
+            busy = false;
+            break;
+
+          case KeyCode.PAGE_DOWN:
+            e.preventDefault();
+            try {
+              debugger.downFrame(1);
+            } on RangeError catch (_) {
+              // Ignore.
+            }
+            busy = false;
+            break;
+
+          case KeyCode.F7:
+            e.preventDefault();
+            debugger.resume().whenComplete(() {
+              busy = false;
+            });
+            break;
+
+          case KeyCode.F8:
+            e.preventDefault();
+            debugger.toggleBreakpoint().whenComplete(() {
+              busy = false;
+            });
+            break;
+
+          case KeyCode.F9:
+            e.preventDefault();
+            debugger.smartNext().whenComplete(() {
+              busy = false;
+            });
+            break;
+
+          case KeyCode.F10:
+            e.preventDefault();
+            debugger.step().whenComplete(() {
+              busy = false;
+            });
+            break;
+
+          case KeyCode.SEMICOLON:
+            if (e.ctrlKey) {
+              e.preventDefault();
+              debugger.console.printRed('^;');
+              debugger.pause().whenComplete(() {
+                busy = false;
+              });
+            } else {
+              busy = false;
+            }
+            break;
+
           default:
             busy = false;
             break;
@@ -1726,4 +2366,3 @@ class DebuggerInputElement extends ObservatoryElement {
 
   DebuggerInputElement.created() : super.created();
 }
-

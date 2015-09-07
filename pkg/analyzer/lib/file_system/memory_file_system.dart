@@ -65,8 +65,14 @@ class MemoryResourceProvider implements ResourceProvider {
   }
 
   @override
+  File getFile(String path) => new _MemoryFile(this, path);
+
+  @override
+  Folder getFolder(String path) => newFolder(path);
+
+  @override
   Resource getResource(String path) {
-    path = posix.normalize(path);
+    path = pathContext.normalize(path);
     Resource resource = _pathToResource[path];
     if (resource == null) {
       resource = new _MemoryFile(this, path);
@@ -91,8 +97,8 @@ class MemoryResourceProvider implements ResourceProvider {
    * appears in its parent directory, but whose `exists` property is false)
    */
   File newDummyLink(String path) {
-    path = posix.normalize(path);
-    newFolder(posix.dirname(path));
+    path = pathContext.normalize(path);
+    newFolder(pathContext.dirname(path));
     _MemoryDummyLink link = new _MemoryDummyLink(this, path);
     _pathToResource[path] = link;
     _pathToTimestamp[path] = nextStamp++;
@@ -101,8 +107,13 @@ class MemoryResourceProvider implements ResourceProvider {
   }
 
   File newFile(String path, String content, [int stamp]) {
-    path = posix.normalize(path);
-    newFolder(posix.dirname(path));
+    path = pathContext.normalize(path);
+    _MemoryResource folder = _pathToResource[pathContext.dirname(path)];
+    if (folder == null) {
+      newFolder(pathContext.dirname(path));
+    } else if (folder is! Folder) {
+      throw new ArgumentError('Cannot create file ($path) as child of file');
+    }
     _MemoryFile file = new _MemoryFile(this, path);
     _pathToResource[path] = file;
     _pathToContent[path] = content;
@@ -112,21 +123,24 @@ class MemoryResourceProvider implements ResourceProvider {
   }
 
   Folder newFolder(String path) {
-    path = posix.normalize(path);
-    if (!path.startsWith('/')) {
-      throw new ArgumentError("Path must start with '/'");
+    path = pathContext.normalize(path);
+    if (!path.startsWith(pathContext.separator)) {
+      throw new ArgumentError(
+          "Path must start with '${pathContext.separator}' : $path");
     }
     _MemoryResource resource = _pathToResource[path];
     if (resource == null) {
-      String parentPath = posix.dirname(path);
+      String parentPath = pathContext.dirname(path);
       if (parentPath != path) {
         newFolder(parentPath);
       }
       _MemoryFolder folder = new _MemoryFolder(this, path);
       _pathToResource[path] = folder;
       _pathToTimestamp[path] = nextStamp++;
+      _notifyWatchers(path, ChangeType.ADD);
       return folder;
     } else if (resource is _MemoryFolder) {
+      _notifyWatchers(path, ChangeType.ADD);
       return resource;
     } else {
       String message =
@@ -136,8 +150,8 @@ class MemoryResourceProvider implements ResourceProvider {
   }
 
   File updateFile(String path, String content, [int stamp]) {
-    path = posix.normalize(path);
-    newFolder(posix.dirname(path));
+    path = pathContext.normalize(path);
+    newFolder(pathContext.dirname(path));
     _MemoryFile file = new _MemoryFile(this, path);
     _pathToResource[path] = file;
     _pathToContent[path] = content;
@@ -165,7 +179,7 @@ class MemoryResourceProvider implements ResourceProvider {
   void _notifyWatchers(String path, ChangeType changeType) {
     _pathToWatchers.forEach((String watcherPath,
         List<StreamController<WatchEvent>> streamControllers) {
-      if (watcherPath == path || posix.isWithin(watcherPath, path)) {
+      if (watcherPath == path || pathContext.isWithin(watcherPath, path)) {
         for (StreamController<WatchEvent> streamController
             in streamControllers) {
           streamController.add(new WatchEvent(changeType, path));
@@ -248,7 +262,7 @@ class _MemoryFile extends _MemoryResource implements File {
   @override
   Source createSource([Uri uri]) {
     if (uri == null) {
-      uri = posix.toUri(path);
+      uri = _provider.pathContext.toUri(path);
     }
     return new _MemoryFileSource(this, uri);
   }
@@ -368,15 +382,15 @@ class _MemoryFolder extends _MemoryResource implements Folder {
 
   @override
   String canonicalizePath(String relPath) {
-    relPath = posix.normalize(relPath);
-    String childPath = posix.join(path, relPath);
-    childPath = posix.normalize(childPath);
+    relPath = _provider.pathContext.normalize(relPath);
+    String childPath = _provider.pathContext.join(path, relPath);
+    childPath = _provider.pathContext.normalize(childPath);
     return childPath;
   }
 
   @override
   bool contains(String path) {
-    return posix.isWithin(this.path, path);
+    return _provider.pathContext.isWithin(this.path, path);
   }
 
   @override
@@ -406,7 +420,7 @@ class _MemoryFolder extends _MemoryResource implements Folder {
     }
     List<Resource> children = <Resource>[];
     _provider._pathToResource.forEach((resourcePath, resource) {
-      if (posix.dirname(resourcePath) == path) {
+      if (_provider.pathContext.dirname(resourcePath) == path) {
         children.add(resource);
       }
     });
@@ -452,7 +466,7 @@ abstract class _MemoryResource implements Resource {
 
   @override
   Folder get parent {
-    String parentPath = posix.dirname(path);
+    String parentPath = _provider.pathContext.dirname(path);
     if (parentPath == path) {
       return null;
     }
@@ -460,7 +474,7 @@ abstract class _MemoryResource implements Resource {
   }
 
   @override
-  String get shortName => posix.basename(path);
+  String get shortName => _provider.pathContext.basename(path);
 
   @override
   bool operator ==(other) {

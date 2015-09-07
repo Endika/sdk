@@ -6,18 +6,22 @@ library code_generator;
 
 import 'glue.dart';
 
-import '../../tree_ir/tree_ir_nodes.dart' as tree_ir;
-import '../../tree_ir/tree_ir_nodes.dart' show BuiltinOperator;
-import '../../js/js.dart' as js;
+import '../../closure.dart' show ClosureClassElement;
+import '../../common/codegen.dart' show CodegenRegistry;
+import '../../constants/values.dart';
+import '../../dart_types.dart';
+import '../../diagnostics/invariant.dart' show invariant;
+import '../../diagnostics/spannable.dart' show CURRENT_ELEMENT_SPANNABLE;
 import '../../elements/elements.dart';
 import '../../io/source_information.dart' show SourceInformation;
-import '../../util/maplet.dart';
-import '../../constants/values.dart';
-import '../../dart2jslib.dart';
-import '../../dart_types.dart';
+import '../../js/js.dart' as js;
+import '../../tree_ir/tree_ir_nodes.dart' as tree_ir;
+import '../../tree_ir/tree_ir_nodes.dart' show BuiltinOperator, BuiltinMethod;
 import '../../types/types.dart' show TypeMask;
-import '../../universe/universe.dart' show UniverseSelector;
-import '../../closure.dart' show ClosureClassElement;
+import '../../universe/universe.dart' show
+    Selector,
+    UniverseSelector;
+import '../../util/maplet.dart';
 
 class CodegenBailout {
   final tree_ir.Node node;
@@ -47,6 +51,12 @@ class CodeGenerator extends tree_ir.StatementVisitor
   Set<String> usedVariableNames = new Set<String>();
 
   final tree_ir.FallthroughStack fallthrough = new tree_ir.FallthroughStack();
+
+  /// Stacks whose top element is the current target of an unlabeled break
+  /// or continue. For continues, this is the loop node itself.
+  final tree_ir.FallthroughStack shortBreak = new tree_ir.FallthroughStack();
+  final tree_ir.FallthroughStack shortContinue =
+      new tree_ir.FallthroughStack();
 
   Set<tree_ir.Label> usedLabels = new Set<tree_ir.Label>();
 
@@ -96,6 +106,31 @@ class CodeGenerator extends tree_ir.StatementVisitor
       jsVariables.add(jsVariable);
 
       ++accumulatorIndex;
+    }
+
+    // If the last statement is a for loop with an initializer expression, try
+    // to pull that expression into an initializer as well.
+    pullFromForLoop:
+    if (accumulatorIndex < accumulator.length &&
+        accumulator[accumulatorIndex] is js.For) {
+      js.For forLoop = accumulator[accumulatorIndex];
+      if (forLoop.init is! js.Assignment) break pullFromForLoop;
+      js.Assignment assign = forLoop.init;
+      if (assign.leftHandSide is! js.VariableUse) break pullFromForLoop;
+      if (assign.op != null) break pullFromForLoop; // Compound assignment.
+      js.VariableUse use = assign.leftHandSide;
+
+      // We cannot declare a variable more than once.
+      if (!declaredVariables.add(use.name)) break pullFromForLoop;
+
+      js.VariableInitialization jsVariable = new js.VariableInitialization(
+        new js.VariableDeclaration(use.name),
+        assign.value);
+      jsVariables.add(jsVariable);
+
+      // Remove the initializer from the for loop.
+      accumulator[accumulatorIndex] = 
+          new js.For(null, forLoop.condition, forLoop.update, forLoop.body);
     }
 
     // Discard the statements that were pulled in the initializer.
@@ -177,18 +212,18 @@ class CodeGenerator extends tree_ir.StatementVisitor
         visitExpression(node.elseExpression));
   }
 
-  js.Expression buildConstant(ConstantValue constant) {
+  js.Expression buildConstant(ConstantValue constant,
+                              {SourceInformation sourceInformation}) {
     registry.registerCompileTimeConstant(constant);
-    return glue.constantReference(constant);
+    return glue.constantReference(constant)
+        .withSourceInformation(sourceInformation);
   }
 
   @override
   js.Expression visitConstant(tree_ir.Constant node) {
-    return buildConstant(node.value);
-  }
-
-  js.Expression compileConstant(ParameterElement parameter) {
-    return buildConstant(glue.getConstantValueForVariable(parameter));
+    return buildConstant(
+        node.value,
+        sourceInformation: node.sourceInformation);
   }
 
   js.Expression buildStaticInvoke(Element target,
@@ -207,7 +242,8 @@ class CodeGenerator extends tree_ir.StatementVisitor
     registry.registerInstantiatedType(node.type);
     FunctionElement target = node.target;
     List<js.Expression> arguments = visitExpressionList(node.arguments);
-    return buildStaticInvoke(target, arguments);
+    return buildStaticInvoke(
+        target, arguments, sourceInformation: node.sourceInformation);
   }
 
   void registerMethodInvoke(tree_ir.InvokeMethod node) {
@@ -234,7 +270,8 @@ class CodeGenerator extends tree_ir.StatementVisitor
     registerMethodInvoke(node);
     return js.propertyCall(visitExpression(node.receiver),
                            glue.invocationName(node.selector),
-                           visitExpressionList(node.arguments));
+                           visitExpressionList(node.arguments))
+        .withSourceInformation(node.sourceInformation);
   }
 
   @override
@@ -254,13 +291,15 @@ class CodeGenerator extends tree_ir.StatementVisitor
       return js.js('#.#(#)',
           [visitExpression(node.receiver),
            glue.instanceMethodName(node.target),
-           visitExpressionList(node.arguments)]);
+           visitExpressionList(node.arguments)])
+          .withSourceInformation(node.sourceInformation);
     }
     return js.js('#.#.call(#, #)',
         [glue.prototypeAccess(node.target.enclosingClass),
          glue.invocationName(node.selector),
          visitExpression(node.receiver),
-         visitExpressionList(node.arguments)]);
+         visitExpressionList(node.arguments)])
+        .withSourceInformation(node.sourceInformation);
   }
 
   @override
@@ -319,10 +358,26 @@ class CodeGenerator extends tree_ir.StatementVisitor
 
       // Handle some special checks against classes that exist only in
       // the compile-time class hierarchy, not at runtime.
+      // TODO(sra): Is this correct? The field tests are only valid with the
+      // precondition that [value] is an Array. They will crash on `null`.
       if (clazz == glue.jsExtendableArrayClass) {
+        assert(node.isTypeTest);
         return js.js(r'!#.fixed$length', <js.Expression>[value]);
       } else if (clazz == glue.jsMutableArrayClass) {
+        assert(node.isTypeTest);
         return js.js(r'!#.immutable$list', <js.Expression>[value]);
+      }
+
+      if (glue.isStringClass(clazz)) {
+        if (node.isTypeTest) {
+          return js.js(r'typeof # === "string"', <js.Expression>[value]);
+        }
+        // TODO(sra): Implement fast cast via calling 'stringTypeCast'.
+      } else if (glue.isBoolClass(clazz)) {
+        if (node.isTypeTest) {
+          return js.js(r'typeof # === "boolean"', <js.Expression>[value]);
+        }
+        // TODO(sra): Implement fast cast via calling 'boolTypeCast'.
       }
 
       // The helper we use needs the JSArray class to exist, but for some
@@ -390,27 +445,36 @@ class CodeGenerator extends tree_ir.StatementVisitor
   @override
   void visitContinue(tree_ir.Continue node) {
     tree_ir.Statement next = fallthrough.target;
-    if (node.target.binding == next) {
-      // Fall through to continue target
+    if (node.target.binding == next ||
+        next is tree_ir.Continue && node.target == next.target) {
+      // Fall through to continue target or to equivalent continue.
       fallthrough.use();
-    } else if (next is tree_ir.Continue && next.target == node.target) {
-      // Fall through to equivalent continue
-      fallthrough.use();
+    } else if (node.target.binding == shortContinue.target) {
+      // The target is the immediately enclosing loop.
+      shortContinue.use();
+      accumulator.add(new js.Continue(null));
     } else {
       usedLabels.add(node.target);
       accumulator.add(new js.Continue(node.target.name));
     }
   }
 
+  /// True if [other] is the target of [node] or is a [Break] with the same
+  /// target. This means jumping to [other] is equivalent to executing [node].
+  bool isEffectiveBreakTarget(tree_ir.Break node, tree_ir.Statement other) {
+    return node.target.binding.next == other ||
+           other is tree_ir.Break && node.target == other.target;
+  }
+
   @override
   void visitBreak(tree_ir.Break node) {
-    tree_ir.Statement next = fallthrough.target;
-    if (node.target.binding.next == next) {
-      // Fall through to break target
+    if (isEffectiveBreakTarget(node, fallthrough.target)) {
+      // Fall through to break target or to equivalent break.
       fallthrough.use();
-    } else if (next is tree_ir.Break && next.target == node.target) {
-      // Fall through to equivalent break
-      fallthrough.use();
+    } else if (isEffectiveBreakTarget(node, shortBreak.target)) {
+      // Unlabeled break to the break target or to an equivalent break.
+      shortBreak.use();
+      accumulator.add(new js.Break(null));
     } else {
       usedLabels.add(node.target);
       accumulator.add(new js.Break(node.target.name));
@@ -443,22 +507,20 @@ class CodeGenerator extends tree_ir.StatementVisitor
 
   @override
   void visitLabeledStatement(tree_ir.LabeledStatement node) {
-    accumulator.add(buildLabeled(() => buildBodyStatement(node.body),
-                                 node.label,
-                                 node.next));
+    fallthrough.push(node.next);
+    js.Statement body = buildBodyStatement(node.body);
+    fallthrough.pop();
+    accumulator.add(insertLabel(node.label, body));
     visitStatement(node.next);
   }
 
-  js.Statement buildLabeled(js.Statement buildBody(),
-                            tree_ir.Label label,
-                            tree_ir.Statement fallthroughStatement) {
-    fallthrough.push(fallthroughStatement);
-    js.Statement result = buildBody();
+  /// Wraps a node in a labeled statement unless the label is unused.
+  js.Statement insertLabel(tree_ir.Label label, js.Statement node) {
     if (usedLabels.remove(label)) {
-      result = new js.LabeledStatement(label.name, result);
+      return new js.LabeledStatement(label.name, node);
+    } else {
+      return node;
     }
-    fallthrough.pop();
-    return result;
   }
 
   /// Returns the current [accumulator] wrapped in a block if neccessary.
@@ -491,29 +553,55 @@ class CodeGenerator extends tree_ir.StatementVisitor
     return result;
   }
 
-  js.Statement buildWhile(js.Expression condition,
-                          tree_ir.Statement body,
-                          tree_ir.Label label,
-                          tree_ir.Statement fallthroughStatement) {
-    return buildLabeled(() => new js.While(condition, buildBodyStatement(body)),
-                        label,
-                        fallthroughStatement);
+  js.Expression makeSequence(List<tree_ir.Expression> list) {
+    return list.map(visitExpression).reduce((x,y) => new js.Binary(',', x, y));
   }
 
   @override
-  void visitWhileCondition(tree_ir.WhileCondition node) {
-    accumulator.add(
-        buildWhile(visitExpression(node.condition),
-                   node.body,
-                   node.label,
-                   node));
+  void visitFor(tree_ir.For node) {
+    js.Expression condition = visitExpression(node.condition);
+    shortBreak.push(node.next);
+    shortContinue.push(node);
+    fallthrough.push(node);
+    js.Statement body = buildBodyStatement(node.body);
+    fallthrough.pop();
+    shortContinue.pop();
+    shortBreak.pop();
+    js.Statement loopNode;
+    if (node.updates.isEmpty) {
+      loopNode = new js.While(condition, body);
+    } else { // Compile as a for loop.
+      js.Expression init;
+      if (accumulator.isNotEmpty && 
+          accumulator.last is js.ExpressionStatement) {
+        // Take the preceding expression from the accumulator and use
+        // it as the initializer expression.
+        js.ExpressionStatement initStmt = accumulator.removeLast();
+        init = initStmt.expression;
+      }
+      js.Expression update = makeSequence(node.updates);
+      loopNode = new js.For(init, condition, update, body);
+    }
+    accumulator.add(insertLabel(node.label, loopNode));
     visitStatement(node.next);
   }
 
   @override
   void visitWhileTrue(tree_ir.WhileTrue node) {
-    accumulator.add(
-        buildWhile(new js.LiteralBool(true), node.body, node.label, node));
+    js.Expression condition = new js.LiteralBool(true);
+    // A short break in the while will jump to the current fallthrough target.
+    shortBreak.push(fallthrough.target);
+    shortContinue.push(node);
+    fallthrough.push(node);
+    js.Statement jsBody = buildBodyStatement(node.body);
+    fallthrough.pop();
+    shortContinue.pop();
+    if (shortBreak.useCount > 0) {
+      // Short breaks use the current fallthrough target.
+      fallthrough.use();
+    }
+    shortBreak.pop();
+    accumulator.add(insertLabel(node.label, new js.While(condition, jsBody)));
   }
 
   bool isNull(tree_ir.Expression node) {
@@ -527,7 +615,8 @@ class CodeGenerator extends tree_ir.StatementVisitor
       registry.registerCompileTimeConstant(new NullConstantValue());
       fallthrough.use();
     } else {
-      accumulator.add(new js.Return(visitExpression(node.value)));
+      accumulator.add(new js.Return(visitExpression(node.value))
+            .withSourceInformation(node.sourceInformation));
     }
   }
 
@@ -576,7 +665,8 @@ class CodeGenerator extends tree_ir.StatementVisitor
     }
     js.Expression instance = new js.New(
         glue.constructorAccess(classElement),
-        visitExpressionList(node.arguments));
+        visitExpressionList(node.arguments))
+        .withSourceInformation(node.sourceInformation);
 
     List<tree_ir.Expression> typeInformation = node.typeInformation;
     assert(typeInformation.isEmpty ||
@@ -586,7 +676,8 @@ class CodeGenerator extends tree_ir.StatementVisitor
       js.Expression typeArguments = new js.ArrayInitializer(
           visitExpressionList(typeInformation));
       return buildStaticHelperInvocation(helper,
-          <js.Expression>[instance, typeArguments]);
+          <js.Expression>[instance, typeArguments],
+          sourceInformation: node.sourceInformation);
     } else {
       return instance;
     }
@@ -614,7 +705,8 @@ class CodeGenerator extends tree_ir.StatementVisitor
     js.Name helperName = glue.getInterceptorName(node.interceptedClasses);
     js.Expression globalHolder = glue.getInterceptorLibrary();
     return js.js('#.#(#)',
-        [globalHolder, helperName, visitExpression(node.input)]);
+        [globalHolder, helperName, visitExpression(node.input)])
+            .withSourceInformation(node.sourceInformation);
   }
 
   @override
@@ -664,19 +756,45 @@ class CodeGenerator extends tree_ir.StatementVisitor
     return new js.Assignment(field, value);
   }
 
-  js.Expression buildStaticHelperInvocation(FunctionElement helper,
-                                            List<js.Expression> arguments) {
+  @override
+  js.Expression visitGetLength(tree_ir.GetLength node) {
+    return new js.PropertyAccess.field(visitExpression(node.object), 'length');
+  }
+
+  @override
+  js.Expression visitGetIndex(tree_ir.GetIndex node) {
+    return new js.PropertyAccess(
+        visitExpression(node.object),
+        visitExpression(node.index));
+  }
+
+  @override
+  js.Expression visitSetIndex(tree_ir.SetIndex node) {
+    return js.js('#[#] = #',
+        [visitExpression(node.object),
+         visitExpression(node.index),
+         visitExpression(node.value)]);
+  }
+
+  js.Expression buildStaticHelperInvocation(
+      FunctionElement helper,
+      List<js.Expression> arguments,
+      {SourceInformation sourceInformation}) {
     registry.registerStaticUse(helper);
-    return buildStaticInvoke(helper, arguments);
+    return buildStaticInvoke(
+        helper, arguments, sourceInformation: sourceInformation);
   }
 
   @override
   js.Expression visitReifyRuntimeType(tree_ir.ReifyRuntimeType node) {
-    FunctionElement createType = glue.getCreateRuntimeType();
-    FunctionElement typeToString = glue.getRuntimeTypeToString();
-    return buildStaticHelperInvocation(createType,
-        [buildStaticHelperInvocation(typeToString,
-            [visitExpression(node.value)])]);
+    js.Expression typeToString = buildStaticHelperInvocation(
+        glue.getRuntimeTypeToString(),
+        [visitExpression(node.value)],
+        sourceInformation: node.sourceInformation);
+    return buildStaticHelperInvocation(
+        glue.getCreateRuntimeType(),
+        [typeToString],
+        sourceInformation: node.sourceInformation);
   }
 
   @override
@@ -687,11 +805,13 @@ class CodeGenerator extends tree_ir.StatementVisitor
       js.Expression typeName = glue.getRuntimeTypeName(context);
       return buildStaticHelperInvocation(
           glue.getRuntimeTypeArgument(),
-          [visitExpression(node.target), typeName, index]);
+          [visitExpression(node.target), typeName, index],
+          sourceInformation: node.sourceInformation);
     } else {
       return buildStaticHelperInvocation(
           glue.getTypeArgumentByIndex(),
-          [visitExpression(node.target), index]);
+          [visitExpression(node.target), index],
+          sourceInformation: node.sourceInformation);
     }
   }
 
@@ -740,6 +860,8 @@ class CodeGenerator extends tree_ir.StatementVisitor
         return new js.Binary('>', args[0], args[1]);
       case BuiltinOperator.NumGe:
         return new js.Binary('>=', args[0], args[1]);
+      case BuiltinOperator.NumShl:
+        return js.js('(# << #) >>> 0', args);
       case BuiltinOperator.StringConcatenate:
         if (args.isEmpty) return js.string('');
         return args.reduce((e1,e2) => new js.Binary('+', e1, e2));
@@ -757,14 +879,34 @@ class CodeGenerator extends tree_ir.StatementVisitor
       case BuiltinOperator.IsFalsy:
         return new js.Prefix('!', args[0]);
       case BuiltinOperator.IsNumber:
-        return js.js("typeof # === 'number'", args);
+        return js.js('typeof # === "number"', args);
       case BuiltinOperator.IsNotNumber:
-        return js.js("typeof # !== 'number'", args);
+        return js.js('typeof # !== "number"', args);
       case BuiltinOperator.IsFloor:
-        return js.js("Math.floor(#) === #", args);
+        return js.js('Math.floor(#) === #', args);
       case BuiltinOperator.IsNumberAndFloor:
-        return js.js("typeof # === 'number' && Math.floor(#) === #", args);
+        return js.js('typeof # === "number" && Math.floor(#) === #', args);
     }
+  }
+
+  /// The JS name of a built-in method.
+  static final Map<BuiltinMethod, String> builtinMethodName = 
+    const <BuiltinMethod, String>{
+      BuiltinMethod.Push: 'push',
+      BuiltinMethod.Pop: 'pop',
+  };
+
+  @override
+  js.Expression visitApplyBuiltinMethod(tree_ir.ApplyBuiltinMethod node) {
+    String name = builtinMethodName[node.method];
+    js.Expression receiver = visitExpression(node.receiver);
+    List<js.Expression> args = visitExpressionList(node.arguments);
+    return js.js('#.#(#)', [receiver, name, args]);
+  }
+
+  @override
+  js.Expression visitAwait(tree_ir.Await node) {
+    return new js.Await(visitExpression(node.input));
   }
 
   visitFunctionExpression(tree_ir.FunctionExpression node) {

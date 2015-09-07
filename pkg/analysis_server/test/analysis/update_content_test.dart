@@ -4,6 +4,7 @@
 
 library test.analysis.updateContent;
 
+import 'package:analysis_server/src/analysis_server.dart';
 import 'package:analysis_server/src/constants.dart';
 import 'package:analysis_server/src/protocol.dart';
 import 'package:analysis_server/src/services/index/index.dart';
@@ -16,9 +17,10 @@ import 'package:typed_mock/typed_mock.dart';
 import 'package:unittest/unittest.dart';
 
 import '../analysis_abstract.dart';
+import '../utils.dart';
 
 main() {
-  groupSep = ' | ';
+  initializeTestEnvironment();
   defineReflectiveTests(UpdateContentTest);
 }
 
@@ -54,8 +56,9 @@ class UpdateContentTest extends AbstractAnalysisTest {
     createProject();
     addTestFile('');
     await server.onAnalysisComplete;
-    server.setAnalysisSubscriptions(
-        {AnalysisService.NAVIGATION: [testFile].toSet()});
+    server.setAnalysisSubscriptions({
+      AnalysisService.NAVIGATION: [testFile].toSet()
+    });
     // update file, analyze, but don't sent notifications
     navigationCount = 0;
     server.updateContent('1', {testFile: new AddContentOverlay('foo() {}')});
@@ -109,17 +112,23 @@ class UpdateContentTest extends AbstractAnalysisTest {
 
   test_multiple_contexts() async {
     String fooPath = '/project1/foo.dart';
-    resourceProvider.newFile(fooPath, '''
+    resourceProvider.newFile(
+        fooPath,
+        '''
 library foo;
 import '../project2/baz.dart';
 main() { f(); }''');
     String barPath = '/project2/bar.dart';
-    resourceProvider.newFile(barPath, '''
+    resourceProvider.newFile(
+        barPath,
+        '''
 library bar;
 import 'baz.dart';
 main() { f(); }''');
     String bazPath = '/project2/baz.dart';
-    resourceProvider.newFile(bazPath, '''
+    resourceProvider.newFile(
+        bazPath,
+        '''
 library baz;
 f(int i) {}
 ''');
@@ -177,6 +186,24 @@ f() {}
     expect(_getUserSources(context2), isEmpty);
   }
 
+  test_removeOverlay_incrementalChange() async {
+    createProject();
+    addTestFile('main() { print(1); }');
+    await server.onAnalysisComplete;
+    CompilationUnit unit = _getTestUnit();
+    // add an overlay
+    server.updateContent(
+        '1', {testFile: new AddContentOverlay('main() { print(2); }')});
+    // it was an incremental change
+    await server.onAnalysisComplete;
+    expect(_getTestUnit(), same(unit));
+    // remove overlay
+    server.updateContent('2', {testFile: new RemoveContentOverlay()});
+    // it was an incremental change
+    await server.onAnalysisComplete;
+    expect(_getTestUnit(), same(unit));
+  }
+
   test_sendNoticesAfterNopChange() async {
     createProject();
     addTestFile('');
@@ -212,6 +239,13 @@ f() {}
     await server.onAnalysisComplete;
     // errors should have been resent
     expect(filesErrors, isNotEmpty);
+  }
+
+  CompilationUnit _getTestUnit() {
+    ContextSourcePair pair = server.getContextSourcePair(testFile);
+    AnalysisContext context = pair.context;
+    Source source = pair.source;
+    return context.getResolvedCompilationUnit2(source, source);
   }
 
   List<Source> _getUserSources(AnalysisContext context) {

@@ -6,13 +6,23 @@ library dart2js.mirrors;
 
 import 'dart:collection' show UnmodifiableListView, UnmodifiableMapView;
 
+import '../compiler.dart' show
+    Compiler;
 import '../constants/expressions.dart';
 import '../constants/values.dart';
-import '../elements/elements.dart';
-import '../scanner/scannerlib.dart';
-import '../resolution/resolution.dart' show Scope;
-import '../dart2jslib.dart';
 import '../dart_types.dart';
+import '../diagnostics/invariant.dart' show
+    invariant;
+import '../diagnostics/source_span.dart' show
+    SourceSpan;
+import '../diagnostics/spannable.dart' show
+    NO_LOCATION_SPANNABLE;
+import '../elements/elements.dart';
+import '../resolution/scope.dart' show
+    Scope;
+import '../script.dart';
+import '../tokens/token.dart';
+import '../tokens/token_constants.dart' as Tokens;
 import '../tree/tree.dart';
 import '../util/util.dart'
     show Link,
@@ -205,7 +215,7 @@ abstract class Dart2JsElementMirror extends Dart2JsDeclarationMirror {
   String toString() => _element.toString();
 
   void _appendCommentTokens(Token commentToken) {
-    while (commentToken != null && commentToken.kind == COMMENT_TOKEN) {
+    while (commentToken != null && commentToken.kind == Tokens.COMMENT_TOKEN) {
       _metadata.add(new Dart2JsCommentInstanceMirror(
           mirrorSystem, commentToken.value));
       commentToken = commentToken.next;

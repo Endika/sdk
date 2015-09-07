@@ -4,6 +4,12 @@
 
 part of dart2js.js_emitter;
 
+// Function signatures used in the generation of runtime type information.
+typedef void FunctionTypeSignatureEmitter(Element method,
+                                          FunctionType methodType);
+
+typedef void SubstitutionEmitter(Element element, {bool emitNull});
+
 class TypeTestProperties {
   /// The index of the function type into the metadata.
   ///
@@ -207,10 +213,10 @@ class RuntimeTypeGenerator {
     // [Function] and needs checks for all typedefs that are used in is-checks.
     if (checkedClasses.contains(compiler.functionClass) ||
         checkedFunctionTypes.isNotEmpty) {
-      Element call = cls.lookupLocalMember(Compiler.CALL_OPERATOR_NAME);
+      Element call = cls.lookupLocalMember(Identifiers.call);
       if (call == null) {
         // If [cls] is a closure, it has a synthetic call operator method.
-        call = cls.lookupBackendMember(Compiler.CALL_OPERATOR_NAME);
+        call = cls.lookupBackendMember(Identifiers.call);
       }
       if (call != null && call.isFunction) {
         FunctionElement callFunction = call;

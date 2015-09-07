@@ -2,8 +2,6 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-// TODO(srdjan): fix limitations.
-// - shift amount must be a Smi.
 class _IntegerImplementation extends _Num {
   // The Dart class _Bigint extending _IntegerImplementation requires a
   // default constructor.
@@ -390,19 +388,15 @@ class _IntegerImplementation extends _Num {
     return _binaryGcd(m, t, true);
   }
 
-  // Returns gcd of abs(this) and abs(other), with this != 0 and other !=0.
+  // Returns gcd of abs(this) and abs(other).
   int gcd(int other) {
     if (other is! int) {
       throw new ArgumentError.value(other, "other", "not an integer");
     }
-    if (this == 0) {
-      throw new ArgumentError.value(this, "this", "must not be zero");
-    }
-    if (other == 0) {
-      throw new ArgumentError.value(this, "other", "must not be zero");
-    }
     int x = this.abs();
     int y = other.abs();
+    if (x == 0) return y;
+    if (y == 0) return x;
     if ((x == 1) || (y == 1)) return 1;
     if (other is _Bigint) {
       return _toBigint().gcd(other);

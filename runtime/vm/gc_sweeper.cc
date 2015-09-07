@@ -10,6 +10,7 @@
 #include "vm/lockers.h"
 #include "vm/pages.h"
 #include "vm/thread_pool.h"
+#include "vm/thread_registry.h"
 
 namespace dart {
 
@@ -120,6 +121,7 @@ class SweeperTask : public ThreadPool::Task {
     HeapPage* prev_page = NULL;
 
     while (page != NULL) {
+      task_isolate_->thread_registry()->CheckSafepoint();
       HeapPage* next_page = page->next();
       ASSERT(page->type() == HeapPage::kData);
       bool page_in_use = sweeper.SweepPage(page, freelist_, false);
@@ -137,13 +139,14 @@ class SweeperTask : public ThreadPool::Task {
       if (page == last_) break;
       page = next_page;
     }
+    // Exit isolate cleanly *before* notifying it, to avoid shutdown race.
+    Thread::ExitIsolateAsHelper();
     // This sweeper task is done. Notify the original isolate.
     {
       MonitorLocker ml(old_space_->tasks_lock());
       old_space_->set_tasks(old_space_->tasks() - 1);
       ml.Notify();
     }
-    Thread::ExitIsolateAsHelper();
   }
 
  private:

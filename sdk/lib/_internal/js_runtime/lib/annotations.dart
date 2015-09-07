@@ -51,8 +51,11 @@ class _Patch {
 /// Annotation that marks the declaration as a patch.
 const _Patch patch = const _Patch(null);
 
-/// Annotation that marks the declaration as a patch for the old emitter.
-const _Patch patch_old = const _Patch('old');
+/// Annotation that marks the declaration as a patch for the full emitter.
+const _Patch patch_full = const _Patch('full');
 
-/// Annotation that marks the declaration as a patch for the new emitter.
-const _Patch patch_new = const _Patch('new');
+/// Annotation that marks the declaration as a patch for the lazy emitter.
+const _Patch patch_lazy = const _Patch('lazy');
+
+/// Annotation that marks the declaration as a patch for the startup emitter.
+const _Patch patch_startup = const _Patch('startup');

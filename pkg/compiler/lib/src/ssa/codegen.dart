@@ -1911,8 +1911,12 @@ class SsaCodeGenerator implements HVisitor, HBlockInformationVisitor {
         registry.registerTypeConstant(element);
       }
     }
-    push(backend.emitter.constantReference(constant)
-            .withSourceInformation(sourceInformation));
+    js.Expression expression = backend.emitter.constantReference(constant);
+    if (!constant.isDummy) {
+      // TODO(johnniwinther): Support source information on synthetic constants.
+      expression = expression.withSourceInformation(sourceInformation);
+    }
+    push(expression);
   }
 
   visitConstant(HConstant node) {
@@ -1920,7 +1924,6 @@ class SsaCodeGenerator implements HVisitor, HBlockInformationVisitor {
     generateConstant(node.constant, node.sourceInformation);
 
     registry.registerCompileTimeConstant(node.constant);
-    backend.constants.addCompileTimeConstantForEmission(node.constant);
   }
 
   visitNot(HNot node) {
@@ -2709,7 +2712,9 @@ class SsaCodeGenerator implements HVisitor, HBlockInformationVisitor {
       js.Statement body = new js.Block.empty();
       currentContainer = body;
       if (node.isArgumentTypeCheck) {
-        generateThrowWithHelper('iae', node.checkedInput);
+        generateThrowWithHelper('iae',
+            node.checkedInput,
+            sourceInformation: node.sourceInformation);
       } else if (node.isReceiverTypeCheck) {
         use(node.checkedInput);
         js.Name methodName =
@@ -2858,5 +2863,10 @@ class SsaCodeGenerator implements HVisitor, HBlockInformationVisitor {
     }
     registry.registerStaticUse(helper);
     return backend.emitter.staticFunctionAccess(helper);
+  }
+
+  @override
+  void visitRef(HRef node) {
+    visit(node.value);
   }
 }

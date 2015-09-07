@@ -7,32 +7,31 @@ library dart_types;
 import 'dart:math' show min;
 
 import 'core_types.dart';
-import 'dart2jslib.dart' show Compiler, invariant, Script, Message;
-import 'elements/modelx.dart'
-    show VoidElementX,
-         LibraryElementX,
-         BaseClassElementX,
-         TypeDeclarationElementX,
-         TypedefElementX;
+import 'compiler.dart' show
+    Compiler;
+import 'diagnostics/invariant.dart' show
+    invariant;
+import 'diagnostics/spannable.dart' show
+    CURRENT_ELEMENT_SPANNABLE;
+import 'elements/modelx.dart' show
+    LibraryElementX,
+    TypeDeclarationElementX,
+    TypedefElementX;
 import 'elements/elements.dart';
-import 'ordered_typeset.dart' show OrderedTypeSet;
-import 'util/util.dart' show CURRENT_ELEMENT_SPANNABLE, equalElements;
+import 'ordered_typeset.dart' show
+    OrderedTypeSet;
+import 'util/util.dart' show
+    equalElements;
 
-class TypeKind {
-  final String id;
-
-  const TypeKind(String this.id);
-
-  static const TypeKind FUNCTION = const TypeKind('function');
-  static const TypeKind INTERFACE = const TypeKind('interface');
-  static const TypeKind STATEMENT = const TypeKind('statement');
-  static const TypeKind TYPEDEF = const TypeKind('typedef');
-  static const TypeKind TYPE_VARIABLE = const TypeKind('type variable');
-  static const TypeKind MALFORMED_TYPE = const TypeKind('malformed');
-  static const TypeKind DYNAMIC = const TypeKind('dynamic');
-  static const TypeKind VOID = const TypeKind('void');
-
-  String toString() => id;
+enum TypeKind {
+  FUNCTION,
+  INTERFACE,
+  STATEMENT,
+  TYPEDEF,
+  TYPE_VARIABLE,
+  MALFORMED_TYPE,
+  DYNAMIC,
+  VOID,
 }
 
 abstract class DartType {
@@ -451,9 +450,9 @@ class InterfaceType extends GenericType {
     assert(invariant(element, element.isDeclaration));
   }
 
-  InterfaceType.forUserProvidedBadType(BaseClassElementX element,
-                                       [List<DartType> typeArguments =
-                                           const <DartType>[]])
+  InterfaceType.forUserProvidedBadType(
+      ClassElement element,
+      [List<DartType> typeArguments = const <DartType>[]])
       : super(element, typeArguments, checkTypeArgumentCount: false);
 
   ClassElement get element => super.element;
@@ -734,11 +733,7 @@ class FunctionType extends DartType {
 
   String get name => 'Function';
 
-  int computeArity() {
-    int arity = 0;
-    parameterTypes.forEach((_) { arity++; });
-    return arity;
-  }
+  int computeArity() => parameterTypes.length;
 
   int get hashCode {
     int hash = 3 * returnType.hashCode;

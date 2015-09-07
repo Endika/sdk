@@ -2,9 +2,6 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-// This code was auto-generated, is not intended to be edited, and is subject to
-// significant change. Please see the README file for more information.
-
 library engine.element_handle;
 
 import 'ast.dart';
@@ -515,6 +512,9 @@ abstract class ExecutableElementHandle extends ElementHandle
   List<FunctionElement> get functions => actualElement.functions;
 
   @override
+  bool get hasImplicitReturnType => actualElement.hasImplicitReturnType;
+
+  @override
   bool get isAbstract => actualElement.isAbstract;
 
   @override
@@ -549,6 +549,9 @@ abstract class ExecutableElementHandle extends ElementHandle
 
   @override
   FunctionType get type => actualElement.type;
+
+  @override
+  List<TypeParameterElement> get typeParameters => actualElement.typeParameters;
 }
 
 /**
@@ -605,9 +608,6 @@ class FieldElementHandle extends PropertyInducingElementHandle
 
   @override
   bool get isEnumConstant => actualElement.isEnumConstant;
-
-  @override
-  bool get isStatic => actualElement.isStatic;
 
   @override
   ElementKind get kind => ElementKind.FIELD;
@@ -892,6 +892,7 @@ class MethodElementHandle extends ExecutableElementHandle
  * `ParameterElement`.
  */
 class ParameterElementHandle extends VariableElementHandle
+    with ParameterElementMixin
     implements ParameterElement {
   /**
    * Initialize a newly created element handle to represent the given element.
@@ -917,6 +918,9 @@ class ParameterElementHandle extends VariableElementHandle
 
   @override
   List<ParameterElement> get parameters => actualElement.parameters;
+
+  @override
+  List<TypeParameterElement> get typeParameters => actualElement.typeParameters;
 
   @override
   SourceRange get visibleRange => actualElement.visibleRange;
@@ -1014,9 +1018,6 @@ abstract class PropertyInducingElementHandle extends VariableElementHandle
   PropertyAccessorElement get getter => actualElement.getter;
 
   @override
-  bool get isStatic => actualElement.isStatic;
-
-  @override
   DartType get propagatedType => actualElement.propagatedType;
 
   @override
@@ -1085,6 +1086,9 @@ abstract class VariableElementHandle extends ElementHandle
   VariableElement get actualElement => super.actualElement as VariableElement;
 
   @override
+  bool get hasImplicitType => actualElement.hasImplicitType;
+
+  @override
   FunctionElement get initializer => actualElement.initializer;
 
   @override
@@ -1102,8 +1106,12 @@ abstract class VariableElementHandle extends ElementHandle
       actualElement.isPotentiallyMutatedInScope;
 
   @override
+  bool get isStatic => actualElement.isStatic;
+
+  @override
   DartType get type => actualElement.type;
 }
+
 /**
  * TODO(scheglov) invalid implementation
  */

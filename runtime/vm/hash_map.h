@@ -5,6 +5,8 @@
 #ifndef VM_HASH_MAP_H_
 #define VM_HASH_MAP_H_
 
+#include "vm/zone.h"
+
 namespace dart {
 
 template <typename KeyValueTrait>
@@ -106,9 +108,9 @@ DirectChainedHashMap<KeyValueTrait>::
     array_size_(other.array_size_),
     lists_size_(other.lists_size_),
     count_(other.count_),
-    array_(Isolate::Current()->current_zone()->
+    array_(Thread::Current()->zone()->
            Alloc<HashMapListElement>(other.array_size_)),
-    lists_(Isolate::Current()->current_zone()->
+    lists_(Thread::Current()->zone()->
            Alloc<HashMapListElement>(other.lists_size_)),
     free_list_head_(other.free_list_head_) {
   memmove(array_, other.array_, array_size_ * sizeof(HashMapListElement));
@@ -131,7 +133,7 @@ void DirectChainedHashMap<KeyValueTrait>::Resize(intptr_t new_size) {
   }
 
   HashMapListElement* new_array =
-      Isolate::Current()->current_zone()->Alloc<HashMapListElement>(new_size);
+      Thread::Current()->zone()->Alloc<HashMapListElement>(new_size);
   InitArray(new_array, new_size);
 
   HashMapListElement* old_array = array_;
@@ -169,7 +171,7 @@ void DirectChainedHashMap<T>::ResizeLists(intptr_t new_size) {
   ASSERT(new_size > lists_size_);
 
   HashMapListElement* new_lists =
-      Isolate::Current()->current_zone()->
+      Thread::Current()->zone()->
       Alloc<HashMapListElement>(new_size);
   InitArray(new_lists, new_size);
 

@@ -96,6 +96,11 @@ class MessageHandler {
     return paused_on_exit_;
   }
 
+  // Timestamp of the paused on start or paused on exit.
+  int64_t paused_timestamp() const {
+    return paused_timestamp_;
+  }
+
   class AcquiredQueues : public ValueObject {
    public:
     AcquiredQueues();
@@ -179,6 +184,9 @@ class MessageHandler {
   virtual void NotifyPauseOnStart() {}
   virtual void NotifyPauseOnExit() {}
 
+  // TODO(iposva): Set a local field before entering MessageHandler methods.
+  Thread* thread() const { return Thread::Current(); }
+
  private:
   friend class PortMap;
   friend class MessageHandlerTestPeer;
@@ -207,6 +215,7 @@ class MessageHandler {
   bool pause_on_exit_;
   bool paused_on_start_;
   bool paused_on_exit_;
+  int64_t paused_timestamp_;
   ThreadPool* pool_;
   ThreadPool::Task* task_;
   StartCallback start_callback_;

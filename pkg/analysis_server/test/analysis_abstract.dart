@@ -16,6 +16,7 @@ import 'package:analyzer/file_system/file_system.dart';
 import 'package:analyzer/file_system/memory_file_system.dart';
 import 'package:analyzer/instrumentation/instrumentation.dart';
 import 'package:plugin/manager.dart';
+import 'package:plugin/plugin.dart';
 import 'package:unittest/unittest.dart';
 
 import 'mock_sdk.dart';
@@ -46,6 +47,8 @@ class AbstractAnalysisTest {
   RequestHandler handler;
 
   final List<ServerErrorParams> serverErrors = <ServerErrorParams>[];
+  final List<GeneralAnalysisService> generalServices =
+      <GeneralAnalysisService>[];
   final Map<AnalysisService, List<String>> analysisSubscriptions = {};
 
   String projectPath = '/project';
@@ -74,6 +77,15 @@ class AbstractAnalysisTest {
     return path;
   }
 
+  void addGeneralAnalysisSubscription(GeneralAnalysisService service) {
+    generalServices.add(service);
+    Request request = new AnalysisSetGeneralSubscriptionsParams(generalServices)
+        .toRequest('0');
+    handleSuccessfulRequest(request);
+  }
+
+  void addServerPlugins(List<Plugin> plugins) {}
+
   String addTestFile(String content) {
     addFile(testFile, content);
     this.testCode = content;
@@ -81,12 +93,22 @@ class AbstractAnalysisTest {
   }
 
   AnalysisServer createAnalysisServer(Index index) {
-    ExtensionManager manager = new ExtensionManager();
     ServerPlugin serverPlugin = new ServerPlugin();
-    manager.processPlugins([serverPlugin]);
-    return new AnalysisServer(serverChannel, resourceProvider,
-        packageMapProvider, index, serverPlugin, new AnalysisServerOptions(),
-        new MockSdk(), InstrumentationService.NULL_SERVICE);
+    List<Plugin> plugins = <Plugin>[serverPlugin];
+    addServerPlugins(plugins);
+    // process plugins
+    ExtensionManager manager = new ExtensionManager();
+    manager.processPlugins(plugins);
+    // create server
+    return new AnalysisServer(
+        serverChannel,
+        resourceProvider,
+        packageMapProvider,
+        index,
+        serverPlugin,
+        new AnalysisServerOptions(),
+        new MockSdk(),
+        InstrumentationService.NULL_SERVICE);
   }
 
   Index createIndex() {
@@ -147,13 +169,21 @@ class AbstractAnalysisTest {
     }
   }
 
+  void removeGeneralAnalysisSubscription(GeneralAnalysisService service) {
+    generalServices.remove(service);
+    Request request = new AnalysisSetGeneralSubscriptionsParams(generalServices)
+        .toRequest('0');
+    handleSuccessfulRequest(request);
+  }
+
   void setUp() {
     serverChannel = new MockServerChannel();
     resourceProvider = new MemoryResourceProvider();
     packageMapProvider = new MockPackageMapProvider();
     Index index = createIndex();
     server = createAnalysisServer(index);
-    handler = new AnalysisDomainHandler(server);
+    handler = server.handlers
+        .singleWhere((handler) => handler is AnalysisDomainHandler);
     // listen for notifications
     Stream<Notification> notificationStream =
         serverChannel.notificationController.stream;

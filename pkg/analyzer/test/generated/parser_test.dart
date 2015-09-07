@@ -19,10 +19,11 @@ import 'package:analyzer/src/generated/utilities_dart.dart';
 import 'package:unittest/unittest.dart';
 
 import '../reflective_tests.dart';
+import '../utils.dart';
 import 'test_support.dart';
 
 main() {
-  groupSep = ' | ';
+  initializeTestEnvironment();
   runReflectiveTests(ComplexParserTest);
   runReflectiveTests(ErrorParserTest);
   runReflectiveTests(IncrementalParserTest);
@@ -170,7 +171,8 @@ class ComplexParserTest extends ParserTestCase {
     // a(b)(c).d(e)
     //
     MethodInvocation invocation2 = EngineTestCase.assertInstanceOf(
-        (obj) => obj is MethodInvocation, MethodInvocation,
+        (obj) => obj is MethodInvocation,
+        MethodInvocation,
         propertyAccess1.target);
     expect(invocation2.methodName.name, "d");
     expect(invocation2.typeArguments, isNull);
@@ -182,7 +184,8 @@ class ComplexParserTest extends ParserTestCase {
     //
     FunctionExpressionInvocation invocation3 = EngineTestCase.assertInstanceOf(
         (obj) => obj is FunctionExpressionInvocation,
-        FunctionExpressionInvocation, invocation2.target);
+        FunctionExpressionInvocation,
+        invocation2.target);
     expect(invocation3.typeArguments, isNull);
     ArgumentList argumentList3 = invocation3.argumentList;
     expect(argumentList3, isNotNull);
@@ -191,7 +194,8 @@ class ComplexParserTest extends ParserTestCase {
     // a(b)
     //
     MethodInvocation invocation4 = EngineTestCase.assertInstanceOf(
-        (obj) => obj is MethodInvocation, MethodInvocation,
+        (obj) => obj is MethodInvocation,
+        MethodInvocation,
         invocation3.function);
     expect(invocation4.methodName.name, "a");
     expect(invocation4.typeArguments, isNull);
@@ -208,7 +212,8 @@ class ComplexParserTest extends ParserTestCase {
     // a<E>(b)<F>(c).d>G?(e)
     //
     MethodInvocation invocation2 = EngineTestCase.assertInstanceOf(
-        (obj) => obj is MethodInvocation, MethodInvocation,
+        (obj) => obj is MethodInvocation,
+        MethodInvocation,
         propertyAccess1.target);
     expect(invocation2.methodName.name, "d");
     expect(invocation2.typeArguments, isNotNull);
@@ -220,7 +225,8 @@ class ComplexParserTest extends ParserTestCase {
     //
     FunctionExpressionInvocation invocation3 = EngineTestCase.assertInstanceOf(
         (obj) => obj is FunctionExpressionInvocation,
-        FunctionExpressionInvocation, invocation2.target);
+        FunctionExpressionInvocation,
+        invocation2.target);
     expect(invocation3.typeArguments, isNotNull);
     ArgumentList argumentList3 = invocation3.argumentList;
     expect(argumentList3, isNotNull);
@@ -229,7 +235,8 @@ class ComplexParserTest extends ParserTestCase {
     // a(b)
     //
     MethodInvocation invocation4 = EngineTestCase.assertInstanceOf(
-        (obj) => obj is MethodInvocation, MethodInvocation,
+        (obj) => obj is MethodInvocation,
+        MethodInvocation,
         invocation3.function);
     expect(invocation4.methodName.name, "a");
     expect(invocation4.typeArguments, isNotNull);
@@ -359,7 +366,6 @@ class ComplexParserTest extends ParserTestCase {
   }
 
   void test_conditionalExpression_precedence_ifNullExpression() {
-    _enableNullAwareOperators = true;
     ConditionalExpression expression = parseExpression('a ?? b ? y : z');
     EngineTestCase.assertInstanceOf((obj) => obj is BinaryExpression,
         BinaryExpression, expression.condition);
@@ -409,21 +415,18 @@ class C {
   }
 
   void test_ifNullExpression() {
-    _enableNullAwareOperators = true;
     BinaryExpression expression = parseExpression('x ?? y ?? z');
     EngineTestCase.assertInstanceOf((obj) => obj is BinaryExpression,
         BinaryExpression, expression.leftOperand);
   }
 
   void test_ifNullExpression_precedence_logicalOr_left() {
-    _enableNullAwareOperators = true;
     BinaryExpression expression = parseExpression('x || y ?? z');
     EngineTestCase.assertInstanceOf((obj) => obj is BinaryExpression,
         BinaryExpression, expression.leftOperand);
   }
 
   void test_ifNullExpression_precendce_logicalOr_right() {
-    _enableNullAwareOperators = true;
     BinaryExpression expression = parseExpression('x ?? y || z');
     EngineTestCase.assertInstanceOf((obj) => obj is BinaryExpression,
         BinaryExpression, expression.rightOperand);
@@ -555,32 +558,24 @@ class ErrorParserTest extends ParserTestCase {
 
   void fail_invalidCommentReference__new_nonIdentifier() {
     // This test fails because the method parseCommentReference returns null.
-    parse3("parseCommentReference", <Object>[
-      "new 42",
-      0
-    ], "", [ParserErrorCode.INVALID_COMMENT_REFERENCE]);
+    parse3("parseCommentReference", <Object>["new 42", 0], "",
+        [ParserErrorCode.INVALID_COMMENT_REFERENCE]);
   }
 
   void fail_invalidCommentReference__new_tooMuch() {
-    parse3("parseCommentReference", <Object>[
-      "new a.b.c.d",
-      0
-    ], "", [ParserErrorCode.INVALID_COMMENT_REFERENCE]);
+    parse3("parseCommentReference", <Object>["new a.b.c.d", 0], "",
+        [ParserErrorCode.INVALID_COMMENT_REFERENCE]);
   }
 
   void fail_invalidCommentReference__nonNew_nonIdentifier() {
     // This test fails because the method parseCommentReference returns null.
-    parse3("parseCommentReference", <Object>[
-      "42",
-      0
-    ], "", [ParserErrorCode.INVALID_COMMENT_REFERENCE]);
+    parse3("parseCommentReference", <Object>["42", 0], "",
+        [ParserErrorCode.INVALID_COMMENT_REFERENCE]);
   }
 
   void fail_invalidCommentReference__nonNew_tooMuch() {
-    parse3("parseCommentReference", <Object>[
-      "a.b.c.d",
-      0
-    ], "", [ParserErrorCode.INVALID_COMMENT_REFERENCE]);
+    parse3("parseCommentReference", <Object>["a.b.c.d", 0], "",
+        [ParserErrorCode.INVALID_COMMENT_REFERENCE]);
   }
 
   void fail_missingClosingParenthesis() {
@@ -761,11 +756,11 @@ class ErrorParserTest extends ParserTestCase {
   void test_classTypeAlias_abstractAfterEq() {
     // This syntax has been removed from the language in favor of
     // "abstract class A = B with C;" (issue 18098).
-    parse3("parseCompilationUnitMember", <Object>[emptyCommentAndMetadata()],
-        "class A = abstract B with C;", [
-      ParserErrorCode.EXPECTED_TOKEN,
-      ParserErrorCode.EXPECTED_TOKEN
-    ]);
+    parse3(
+        "parseCompilationUnitMember",
+        <Object>[emptyCommentAndMetadata()],
+        "class A = abstract B with C;",
+        [ParserErrorCode.EXPECTED_TOKEN, ParserErrorCode.EXPECTED_TOKEN]);
   }
 
   void test_colonInPlaceOfIn() {
@@ -922,7 +917,8 @@ class ErrorParserTest extends ParserTestCase {
   }
 
   void test_duplicateLabelInSwitchStatement() {
-    parse4("parseSwitchStatement",
+    parse4(
+        "parseSwitchStatement",
         "switch (e) {l1: case 0: break; l1: case 1: break;}",
         [ParserErrorCode.DUPLICATE_LABEL_IN_SWITCH_STATEMENT]);
   }
@@ -933,13 +929,15 @@ class ErrorParserTest extends ParserTestCase {
   }
 
   void test_enumInClass() {
-    ParserTestCase.parseCompilationUnit(r'''
+    ParserTestCase.parseCompilationUnit(
+        r'''
 class Foo {
   enum Bar {
     Bar1, Bar2, Bar3
   }
 }
-''', [ParserErrorCode.ENUM_IN_CLASS]);
+''',
+        [ParserErrorCode.ENUM_IN_CLASS]);
   }
 
   void test_equalityCannotBeEqualityOperand_eq_eq() {
@@ -993,7 +991,9 @@ class Foo {
   }
 
   void test_expectedExecutable_topLevel_eof() {
-    parse2("parseCompilationUnitMember", <Object>[emptyCommentAndMetadata()],
+    parse2(
+        "parseCompilationUnitMember",
+        <Object>[emptyCommentAndMetadata()],
         "x",
         [new AnalysisError(null, 0, 1, ParserErrorCode.EXPECTED_EXECUTABLE)]);
   }
@@ -1022,19 +1022,17 @@ class Foo {
   }
 
   void test_expectedToken_parseStatement_afterVoid() {
-    ParserTestCase.parseStatement("void}", [
-      ParserErrorCode.EXPECTED_TOKEN,
-      ParserErrorCode.MISSING_IDENTIFIER
-    ]);
+    ParserTestCase.parseStatement("void}",
+        [ParserErrorCode.EXPECTED_TOKEN, ParserErrorCode.MISSING_IDENTIFIER]);
   }
 
   void test_expectedToken_semicolonAfterClass() {
     Token token = TokenFactory.tokenFromKeyword(Keyword.CLASS);
-    parse3("parseClassTypeAlias", <Object>[
-      emptyCommentAndMetadata(),
-      null,
-      token
-    ], "A = B with C", [ParserErrorCode.EXPECTED_TOKEN]);
+    parse3(
+        "parseClassTypeAlias",
+        <Object>[emptyCommentAndMetadata(), null, token],
+        "A = B with C",
+        [ParserErrorCode.EXPECTED_TOKEN]);
   }
 
   void test_expectedToken_semicolonMissingAfterExport() {
@@ -1144,7 +1142,9 @@ class Foo {
   }
 
   void test_externalOperatorWithBody() {
-    parse3("parseClassMember", <Object>["C"],
+    parse3(
+        "parseClassMember",
+        <Object>["C"],
         "external operator +(int value) {}",
         [ParserErrorCode.EXTERNAL_OPERATOR_WITH_BODY]);
   }
@@ -1338,13 +1338,11 @@ class Foo {
   }
 
   void test_invalidOperatorAfterSuper_assignableExpression() {
-    _enableNullAwareOperators = true;
     parse3('parseAssignableExpression', <Object>[false], 'super?.v',
         [ParserErrorCode.INVALID_OPERATOR_FOR_SUPER]);
   }
 
   void test_invalidOperatorAfterSuper_primaryExpression() {
-    _enableNullAwareOperators = true;
     parse4('parsePrimaryExpression', 'super?.v',
         [ParserErrorCode.INVALID_OPERATOR_FOR_SUPER]);
   }
@@ -1355,19 +1353,13 @@ class Foo {
   }
 
   void test_invalidStarAfterAsync() {
-    parse3("parseFunctionBody", <Object>[
-      false,
-      null,
-      false
-    ], "async* => 0;", [ParserErrorCode.INVALID_STAR_AFTER_ASYNC]);
+    parse3("parseFunctionBody", <Object>[false, null, false], "async* => 0;",
+        [ParserErrorCode.INVALID_STAR_AFTER_ASYNC]);
   }
 
   void test_invalidSync() {
-    parse3("parseFunctionBody", <Object>[
-      false,
-      null,
-      false
-    ], "sync* => 0;", [ParserErrorCode.INVALID_SYNC]);
+    parse3("parseFunctionBody", <Object>[false, null, false], "sync* => 0;",
+        [ParserErrorCode.INVALID_SYNC]);
   }
 
   void test_invalidUnicodeEscape_incomplete_noDigits() {
@@ -1497,19 +1489,19 @@ class Foo {
   }
 
   void test_missingFunctionBody_emptyNotAllowed() {
-    parse3("parseFunctionBody", <Object>[
-      false,
-      ParserErrorCode.MISSING_FUNCTION_BODY,
-      false
-    ], ";", [ParserErrorCode.MISSING_FUNCTION_BODY]);
+    parse3(
+        "parseFunctionBody",
+        <Object>[false, ParserErrorCode.MISSING_FUNCTION_BODY, false],
+        ";",
+        [ParserErrorCode.MISSING_FUNCTION_BODY]);
   }
 
   void test_missingFunctionBody_invalid() {
-    parse3("parseFunctionBody", <Object>[
-      false,
-      ParserErrorCode.MISSING_FUNCTION_BODY,
-      false
-    ], "return 0;", [ParserErrorCode.MISSING_FUNCTION_BODY]);
+    parse3(
+        "parseFunctionBody",
+        <Object>[false, ParserErrorCode.MISSING_FUNCTION_BODY, false],
+        "return 0;",
+        [ParserErrorCode.MISSING_FUNCTION_BODY]);
   }
 
   void test_missingFunctionParameters_local_void_block() {
@@ -1552,10 +1544,8 @@ class Foo {
   }
 
   void test_missingIdentifier_beforeClosingCurly() {
-    parse3("parseClassMember", <Object>["C"], "int}", [
-      ParserErrorCode.MISSING_IDENTIFIER,
-      ParserErrorCode.EXPECTED_TOKEN
-    ]);
+    parse3("parseClassMember", <Object>["C"], "int}",
+        [ParserErrorCode.MISSING_IDENTIFIER, ParserErrorCode.EXPECTED_TOKEN]);
   }
 
   void test_missingIdentifier_functionDeclaration_returnTypeWithoutName() {
@@ -1583,11 +1573,8 @@ class Foo {
   }
 
   void test_missingKeywordOperator() {
-    parse3("parseOperator", <Object>[
-      emptyCommentAndMetadata(),
-      null,
-      null
-    ], "+(x) {}", [ParserErrorCode.MISSING_KEYWORD_OPERATOR]);
+    parse3("parseOperator", <Object>[emptyCommentAndMetadata(), null, null],
+        "+(x) {}", [ParserErrorCode.MISSING_KEYWORD_OPERATOR]);
   }
 
   void test_missingKeywordOperator_parseClassMember() {
@@ -1634,11 +1621,8 @@ class Foo {
   }
 
   void test_missingStartAfterSync() {
-    parse3("parseFunctionBody", <Object>[
-      false,
-      null,
-      false
-    ], "sync {}", [ParserErrorCode.MISSING_STAR_AFTER_SYNC]);
+    parse3("parseFunctionBody", <Object>[false, null, false], "sync {}",
+        [ParserErrorCode.MISSING_STAR_AFTER_SYNC]);
   }
 
   void test_missingStatement() {
@@ -1856,13 +1840,17 @@ class Foo {
   }
 
   void test_staticOperator_noReturnType() {
-    parse3("parseClassMember", <Object>["C"],
+    parse3(
+        "parseClassMember",
+        <Object>["C"],
         "static operator +(int x) => x + 1;",
         [ParserErrorCode.STATIC_OPERATOR]);
   }
 
   void test_staticOperator_returnType() {
-    parse3("parseClassMember", <Object>["C"],
+    parse3(
+        "parseClassMember",
+        <Object>["C"],
         "static int operator +(int x) => x + 1;",
         [ParserErrorCode.STATIC_OPERATOR]);
   }
@@ -1893,7 +1881,8 @@ class Foo {
   }
 
   void test_switchHasCaseAfterDefaultCase() {
-    parse4("parseSwitchStatement",
+    parse4(
+        "parseSwitchStatement",
         "switch (a) {default: return 0; case 1: return 1;}",
         [ParserErrorCode.SWITCH_HAS_CASE_AFTER_DEFAULT_CASE]);
   }
@@ -1907,13 +1896,15 @@ class Foo {
   }
 
   void test_switchHasMultipleDefaultCases() {
-    parse4("parseSwitchStatement",
+    parse4(
+        "parseSwitchStatement",
         "switch (a) {default: return 0; default: return 1;}",
         [ParserErrorCode.SWITCH_HAS_MULTIPLE_DEFAULT_CASES]);
   }
 
   void test_switchHasMultipleDefaultCases_repeated() {
-    parse4("parseSwitchStatement",
+    parse4(
+        "parseSwitchStatement",
         "switch (a) {default: return 0; default: return 1; default: return 2;}",
         [
       ParserErrorCode.SWITCH_HAS_MULTIPLE_DEFAULT_CASES,
@@ -1928,19 +1919,25 @@ class Foo {
   }
 
   void test_topLevelOperator_withoutType() {
-    parse3("parseCompilationUnitMember", <Object>[emptyCommentAndMetadata()],
+    parse3(
+        "parseCompilationUnitMember",
+        <Object>[emptyCommentAndMetadata()],
         "operator +(bool x, bool y) => x | y;",
         [ParserErrorCode.TOP_LEVEL_OPERATOR]);
   }
 
   void test_topLevelOperator_withType() {
-    parse3("parseCompilationUnitMember", <Object>[emptyCommentAndMetadata()],
+    parse3(
+        "parseCompilationUnitMember",
+        <Object>[emptyCommentAndMetadata()],
         "bool operator +(bool x, bool y) => x | y;",
         [ParserErrorCode.TOP_LEVEL_OPERATOR]);
   }
 
   void test_topLevelOperator_withVoid() {
-    parse3("parseCompilationUnitMember", <Object>[emptyCommentAndMetadata()],
+    parse3(
+        "parseCompilationUnitMember",
+        <Object>[emptyCommentAndMetadata()],
         "void operator +(bool x, bool y) => x | y;",
         [ParserErrorCode.TOP_LEVEL_OPERATOR]);
   }
@@ -1984,10 +1981,8 @@ class Foo {
   }
 
   void test_unexpectedToken_semicolonBetweenClassMembers() {
-    parse3("parseClassDeclaration", <Object>[
-      emptyCommentAndMetadata(),
-      null
-    ], "class C { int x; ; int y;}", [ParserErrorCode.UNEXPECTED_TOKEN]);
+    parse3("parseClassDeclaration", <Object>[emptyCommentAndMetadata(), null],
+        "class C { int x; ; int y;}", [ParserErrorCode.UNEXPECTED_TOKEN]);
   }
 
   void test_unexpectedToken_semicolonBetweenCompilationUnitMembers() {
@@ -1999,9 +1994,11 @@ class Foo {
     // Although the "unterminated string" error message is produced by the
     // scanner, we need to verify that the parser can handle the tokens
     // produced by the scanner when an unterminated string is encountered.
-    ParserTestCase.parseCompilationUnit(r'''
+    ParserTestCase.parseCompilationUnit(
+        r'''
 void main() {
-  var x = "''', [
+  var x = "''',
+        [
       ScannerErrorCode.UNTERMINATED_STRING_LITERAL,
       ParserErrorCode.EXPECTED_TOKEN,
       ParserErrorCode.EXPECTED_TOKEN
@@ -2012,21 +2009,25 @@ void main() {
     // Although the "unterminated string" error message is produced by the
     // scanner, we need to verify that the parser can handle the tokens
     // produced by the scanner when an unterminated string is encountered.
-    ParserTestCase.parseCompilationUnit(r'''
+    ParserTestCase.parseCompilationUnit(
+        r'''
 void main() {
   var x = "
 ;
 }
-''', [ScannerErrorCode.UNTERMINATED_STRING_LITERAL]);
+''',
+        [ScannerErrorCode.UNTERMINATED_STRING_LITERAL]);
   }
 
   void test_unterminatedString_multiline_at_eof_3_quotes() {
     // Although the "unterminated string" error message is produced by the
     // scanner, we need to verify that the parser can handle the tokens
     // produced by the scanner when an unterminated string is encountered.
-    ParserTestCase.parseCompilationUnit(r'''
+    ParserTestCase.parseCompilationUnit(
+        r'''
 void main() {
-  var x = """''', [
+  var x = """''',
+        [
       ScannerErrorCode.UNTERMINATED_STRING_LITERAL,
       ParserErrorCode.EXPECTED_TOKEN,
       ParserErrorCode.EXPECTED_TOKEN
@@ -2037,9 +2038,11 @@ void main() {
     // Although the "unterminated string" error message is produced by the
     // scanner, we need to verify that the parser can handle the tokens
     // produced by the scanner when an unterminated string is encountered.
-    ParserTestCase.parseCompilationUnit(r'''
+    ParserTestCase.parseCompilationUnit(
+        r'''
 void main() {
-  var x = """"''', [
+  var x = """"''',
+        [
       ScannerErrorCode.UNTERMINATED_STRING_LITERAL,
       ParserErrorCode.EXPECTED_TOKEN,
       ParserErrorCode.EXPECTED_TOKEN
@@ -2050,9 +2053,11 @@ void main() {
     // Although the "unterminated string" error message is produced by the
     // scanner, we need to verify that the parser can handle the tokens
     // produced by the scanner when an unterminated string is encountered.
-    ParserTestCase.parseCompilationUnit(r'''
+    ParserTestCase.parseCompilationUnit(
+        r'''
 void main() {
-  var x = """""''', [
+  var x = """""''',
+        [
       ScannerErrorCode.UNTERMINATED_STRING_LITERAL,
       ParserErrorCode.EXPECTED_TOKEN,
       ParserErrorCode.EXPECTED_TOKEN
@@ -2156,10 +2161,8 @@ void main() {
   }
 
   void test_withWithoutExtends() {
-    parse3("parseClassDeclaration", <Object>[
-      emptyCommentAndMetadata(),
-      null
-    ], "class A with B, C {}", [ParserErrorCode.WITH_WITHOUT_EXTENDS]);
+    parse3("parseClassDeclaration", <Object>[emptyCommentAndMetadata(), null],
+        "class A with B, C {}", [ParserErrorCode.WITH_WITHOUT_EXTENDS]);
   }
 
   void test_wrongSeparatorForNamedParameter() {
@@ -2355,10 +2358,14 @@ class IncrementalParserTest extends EngineTestCase {
   }
 
   void test_insert_statement_in_method_with_mismatched_braces() {
-    _assertParse('''
+    _assertParse(
+        '''
 class C {
   void f() {
-''', '', 'g();', '''
+''',
+        '',
+        'g();',
+        '''
     if (b) {
 
 
@@ -2539,9 +2546,12 @@ class C {
     expect(incrementalTokens, isNotNull);
     IncrementalParser incrementalParser = new IncrementalParser(
         source, incrementalScanner.tokenMap, incrementalListener);
-    CompilationUnit incrementalUnit = incrementalParser.reparse(originalUnit,
-        incrementalScanner.leftToken, incrementalScanner.rightToken,
-        replaceStart, prefix.length + removed.length);
+    CompilationUnit incrementalUnit = incrementalParser.reparse(
+        originalUnit,
+        incrementalScanner.leftToken,
+        incrementalScanner.rightToken,
+        replaceStart,
+        prefix.length + removed.length);
     expect(incrementalUnit, isNotNull);
     //
     // Validate that the results of the incremental parse are the same as the
@@ -2586,12 +2596,6 @@ class ParserTestCase extends EngineTestCase {
   bool enableGenericMethods = false;
 
   /**
-   * If non-null, this value is used to override the default value of
-   * [Scanner.enableNullAwareOperators] before scanning.
-   */
-  bool _enableNullAwareOperators;
-
-  /**
    * Return a CommentAndMetadata object with the given values that can be used for testing.
    *
    * @param comment the comment to be wrapped in the object
@@ -2634,9 +2638,6 @@ class ParserTestCase extends EngineTestCase {
     //
     Scanner scanner =
         new Scanner(null, new CharSequenceReader(source), listener);
-    if (_enableNullAwareOperators != null) {
-      scanner.enableNullAwareOperators = _enableNullAwareOperators;
-    }
     Token tokenStream = scanner.tokenize();
     listener.setLineInfo(new TestSource(), scanner.lineStarts);
     //
@@ -2771,9 +2772,6 @@ class ParserTestCase extends EngineTestCase {
     GatheringErrorListener listener = new GatheringErrorListener();
     Scanner scanner =
         new Scanner(null, new CharSequenceReader(source), listener);
-    if (_enableNullAwareOperators != null) {
-      scanner.enableNullAwareOperators = _enableNullAwareOperators;
-    }
     listener.setLineInfo(new TestSource(), scanner.lineStarts);
     Token token = scanner.tokenize();
     Parser parser = createParser(listener);
@@ -3200,9 +3198,11 @@ Map<Symbol, convertStringToSymbolMap(Map<String, dynamic> map) {
   }
 
   void test_classTypeAlias_withBody() {
-    ParserTestCase.parseCompilationUnit(r'''
+    ParserTestCase.parseCompilationUnit(
+        r'''
 class A {}
-class B = Object with A {}''', [ParserErrorCode.EXPECTED_TOKEN]);
+class B = Object with A {}''',
+        [ParserErrorCode.EXPECTED_TOKEN]);
   }
 
   void test_conditionalExpression_missingElse() {
@@ -3320,10 +3320,8 @@ class B = Object with A {}''', [ParserErrorCode.EXPECTED_TOKEN]);
 
   void test_functionExpression_in_ConstructorFieldInitializer() {
     CompilationUnit unit = ParserTestCase.parseCompilationUnit(
-        "class A { A() : a = (){}; var v; }", [
-      ParserErrorCode.MISSING_IDENTIFIER,
-      ParserErrorCode.UNEXPECTED_TOKEN
-    ]);
+        "class A { A() : a = (){}; var v; }",
+        [ParserErrorCode.MISSING_IDENTIFIER, ParserErrorCode.UNEXPECTED_TOKEN]);
     // Make sure we recovered and parsed "var v" correctly
     ClassDeclaration declaration = unit.declarations[0] as ClassDeclaration;
     NodeList<ClassMember> members = declaration.members;
@@ -3338,6 +3336,17 @@ class B = Object with A {}''', [ParserErrorCode.EXPECTED_TOKEN]);
 
   void test_functionExpression_named() {
     parseExpression("m(f() => 0);", [ParserErrorCode.EXPECTED_TOKEN]);
+  }
+
+  void test_declarationBeforeDirective() {
+    CompilationUnit unit = ParserTestCase.parseCompilationUnit(
+        "class foo { } import 'bar.dart';",
+        [ParserErrorCode.DIRECTIVE_AFTER_DECLARATION]);
+    expect(unit.directives, hasLength(1));
+    expect(unit.declarations, hasLength(1));
+    ClassDeclaration classDecl = unit.childEntities.first;
+    expect(classDecl, isNotNull);
+    expect(classDecl.name.name, 'foo');
   }
 
   void test_importDirectivePartial_as() {
@@ -3368,10 +3377,8 @@ class B = Object with A {}''', [ParserErrorCode.EXPECTED_TOKEN]);
   }
 
   void test_incomplete_conditionalExpression() {
-    parseExpression("x ? 0", [
-      ParserErrorCode.EXPECTED_TOKEN,
-      ParserErrorCode.MISSING_IDENTIFIER
-    ]);
+    parseExpression("x ? 0",
+        [ParserErrorCode.EXPECTED_TOKEN, ParserErrorCode.MISSING_IDENTIFIER]);
   }
 
   void test_incomplete_constructorInitializers_empty() {
@@ -3420,10 +3427,8 @@ class B = Object with A {}''', [ParserErrorCode.EXPECTED_TOKEN]);
   }
 
   void test_incomplete_topLevelVariable_const() {
-    CompilationUnit unit = ParserTestCase.parseCompilationUnit("const ", [
-      ParserErrorCode.MISSING_IDENTIFIER,
-      ParserErrorCode.EXPECTED_TOKEN
-    ]);
+    CompilationUnit unit = ParserTestCase.parseCompilationUnit("const ",
+        [ParserErrorCode.MISSING_IDENTIFIER, ParserErrorCode.EXPECTED_TOKEN]);
     NodeList<CompilationUnitMember> declarations = unit.declarations;
     expect(declarations, hasLength(1));
     CompilationUnitMember member = declarations[0];
@@ -3437,10 +3442,8 @@ class B = Object with A {}''', [ParserErrorCode.EXPECTED_TOKEN]);
   }
 
   void test_incomplete_topLevelVariable_final() {
-    CompilationUnit unit = ParserTestCase.parseCompilationUnit("final ", [
-      ParserErrorCode.MISSING_IDENTIFIER,
-      ParserErrorCode.EXPECTED_TOKEN
-    ]);
+    CompilationUnit unit = ParserTestCase.parseCompilationUnit("final ",
+        [ParserErrorCode.MISSING_IDENTIFIER, ParserErrorCode.EXPECTED_TOKEN]);
     NodeList<CompilationUnitMember> declarations = unit.declarations;
     expect(declarations, hasLength(1));
     CompilationUnitMember member = declarations[0];
@@ -3454,10 +3457,8 @@ class B = Object with A {}''', [ParserErrorCode.EXPECTED_TOKEN]);
   }
 
   void test_incomplete_topLevelVariable_var() {
-    CompilationUnit unit = ParserTestCase.parseCompilationUnit("var ", [
-      ParserErrorCode.MISSING_IDENTIFIER,
-      ParserErrorCode.EXPECTED_TOKEN
-    ]);
+    CompilationUnit unit = ParserTestCase.parseCompilationUnit("var ",
+        [ParserErrorCode.MISSING_IDENTIFIER, ParserErrorCode.EXPECTED_TOKEN]);
     NodeList<CompilationUnitMember> declarations = unit.declarations;
     expect(declarations, hasLength(1));
     CompilationUnitMember member = declarations[0];
@@ -3471,10 +3472,12 @@ class B = Object with A {}''', [ParserErrorCode.EXPECTED_TOKEN]);
   }
 
   void test_incompleteField_const() {
-    CompilationUnit unit = ParserTestCase.parseCompilationUnit(r'''
+    CompilationUnit unit = ParserTestCase.parseCompilationUnit(
+        r'''
 class C {
   const
-}''', [ParserErrorCode.MISSING_IDENTIFIER, ParserErrorCode.EXPECTED_TOKEN]);
+}''',
+        [ParserErrorCode.MISSING_IDENTIFIER, ParserErrorCode.EXPECTED_TOKEN]);
     NodeList<CompilationUnitMember> declarations = unit.declarations;
     expect(declarations, hasLength(1));
     CompilationUnitMember unitMember = declarations[0];
@@ -3495,10 +3498,12 @@ class C {
   }
 
   void test_incompleteField_final() {
-    CompilationUnit unit = ParserTestCase.parseCompilationUnit(r'''
+    CompilationUnit unit = ParserTestCase.parseCompilationUnit(
+        r'''
 class C {
   final
-}''', [ParserErrorCode.MISSING_IDENTIFIER, ParserErrorCode.EXPECTED_TOKEN]);
+}''',
+        [ParserErrorCode.MISSING_IDENTIFIER, ParserErrorCode.EXPECTED_TOKEN]);
     NodeList<CompilationUnitMember> declarations = unit.declarations;
     expect(declarations, hasLength(1));
     CompilationUnitMember unitMember = declarations[0];
@@ -3519,10 +3524,12 @@ class C {
   }
 
   void test_incompleteField_var() {
-    CompilationUnit unit = ParserTestCase.parseCompilationUnit(r'''
+    CompilationUnit unit = ParserTestCase.parseCompilationUnit(
+        r'''
 class C {
   var
-}''', [ParserErrorCode.MISSING_IDENTIFIER, ParserErrorCode.EXPECTED_TOKEN]);
+}''',
+        [ParserErrorCode.MISSING_IDENTIFIER, ParserErrorCode.EXPECTED_TOKEN]);
     NodeList<CompilationUnitMember> declarations = unit.declarations;
     expect(declarations, hasLength(1));
     CompilationUnitMember unitMember = declarations[0];
@@ -3680,11 +3687,13 @@ class C {
   }
 
   void test_missingGet() {
-    CompilationUnit unit = ParserTestCase.parseCompilationUnit(r'''
+    CompilationUnit unit = ParserTestCase.parseCompilationUnit(
+        r'''
 class C {
   int length {}
   void foo() {}
-}''', [ParserErrorCode.MISSING_GET]);
+}''',
+        [ParserErrorCode.MISSING_GET]);
     expect(unit, isNotNull);
     ClassDeclaration classDeclaration =
         unit.declarations[0] as ClassDeclaration;
@@ -3941,7 +3950,8 @@ class ResolutionCopierTest extends EngineTestCase {
 
   void test_visitAssignmentExpression() {
     AssignmentExpression fromNode = AstFactory.assignmentExpression(
-        AstFactory.identifier3("a"), TokenType.PLUS_EQ,
+        AstFactory.identifier3("a"),
+        TokenType.PLUS_EQ,
         AstFactory.identifier3("b"));
     DartType propagatedType = ElementFactory.classElement2("C").type;
     MethodElement propagatedElement =
@@ -3953,7 +3963,8 @@ class ResolutionCopierTest extends EngineTestCase {
     fromNode.staticElement = staticElement;
     fromNode.staticType = staticType;
     AssignmentExpression toNode = AstFactory.assignmentExpression(
-        AstFactory.identifier3("a"), TokenType.PLUS_EQ,
+        AstFactory.identifier3("a"),
+        TokenType.PLUS_EQ,
         AstFactory.identifier3("b"));
     ResolutionCopier.copyResolutionData(fromNode, toNode);
     expect(toNode.propagatedElement, same(propagatedElement));
@@ -3964,7 +3975,8 @@ class ResolutionCopierTest extends EngineTestCase {
 
   void test_visitBinaryExpression() {
     BinaryExpression fromNode = AstFactory.binaryExpression(
-        AstFactory.identifier3("a"), TokenType.PLUS,
+        AstFactory.identifier3("a"),
+        TokenType.PLUS,
         AstFactory.identifier3("b"));
     DartType propagatedType = ElementFactory.classElement2("C").type;
     MethodElement propagatedElement =
@@ -3976,7 +3988,8 @@ class ResolutionCopierTest extends EngineTestCase {
     fromNode.staticElement = staticElement;
     fromNode.staticType = staticType;
     BinaryExpression toNode = AstFactory.binaryExpression(
-        AstFactory.identifier3("a"), TokenType.PLUS,
+        AstFactory.identifier3("a"),
+        TokenType.PLUS,
         AstFactory.identifier3("b"));
     ResolutionCopier.copyResolutionData(fromNode, toNode);
     expect(toNode.propagatedElement, same(propagatedElement));
@@ -4023,14 +4036,16 @@ class ResolutionCopierTest extends EngineTestCase {
 
   void test_visitConditionalExpression() {
     ConditionalExpression fromNode = AstFactory.conditionalExpression(
-        AstFactory.identifier3("c"), AstFactory.identifier3("a"),
+        AstFactory.identifier3("c"),
+        AstFactory.identifier3("a"),
         AstFactory.identifier3("b"));
     DartType propagatedType = ElementFactory.classElement2("C").type;
     fromNode.propagatedType = propagatedType;
     DartType staticType = ElementFactory.classElement2("C").type;
     fromNode.staticType = staticType;
     ConditionalExpression toNode = AstFactory.conditionalExpression(
-        AstFactory.identifier3("c"), AstFactory.identifier3("a"),
+        AstFactory.identifier3("c"),
+        AstFactory.identifier3("a"),
         AstFactory.identifier3("b"));
     ResolutionCopier.copyResolutionData(fromNode, toNode);
     expect(toNode.propagatedType, same(propagatedType));
@@ -4041,14 +4056,18 @@ class ResolutionCopierTest extends EngineTestCase {
     String className = "A";
     String constructorName = "c";
     ConstructorDeclaration fromNode = AstFactory.constructorDeclaration(
-        AstFactory.identifier3(className), constructorName,
-        AstFactory.formalParameterList(), null);
+        AstFactory.identifier3(className),
+        constructorName,
+        AstFactory.formalParameterList(),
+        null);
     ConstructorElement element = ElementFactory.constructorElement2(
         ElementFactory.classElement2(className), constructorName);
     fromNode.element = element;
     ConstructorDeclaration toNode = AstFactory.constructorDeclaration(
-        AstFactory.identifier3(className), constructorName,
-        AstFactory.formalParameterList(), null);
+        AstFactory.identifier3(className),
+        constructorName,
+        AstFactory.formalParameterList(),
+        null);
     ResolutionCopier.copyResolutionData(fromNode, toNode);
     expect(toNode.element, same(element));
   }
@@ -4567,7 +4586,8 @@ class SimpleParserTest extends ParserTestCase {
     CommentReference reference =
         parse("parseCommentReference", <Object>["this", 5], "");
     SimpleIdentifier identifier = EngineTestCase.assertInstanceOf(
-        (obj) => obj is SimpleIdentifier, SimpleIdentifier,
+        (obj) => obj is SimpleIdentifier,
+        SimpleIdentifier,
         reference.identifier);
     expect(identifier.token, isNotNull);
     expect(identifier.name, "a");
@@ -5076,7 +5096,6 @@ class SimpleParserTest extends ParserTestCase {
   }
 
   void test_parseAssignableExpression_expression_question_dot() {
-    _enableNullAwareOperators = true;
     PropertyAccess propertyAccess =
         parse("parseAssignableExpression", <Object>[false], "(x)?.y");
     expect(propertyAccess.target, isNotNull);
@@ -5136,7 +5155,6 @@ class SimpleParserTest extends ParserTestCase {
   }
 
   void test_parseAssignableExpression_identifier_question_dot() {
-    _enableNullAwareOperators = true;
     PropertyAccess propertyAccess =
         parse("parseAssignableExpression", <Object>[false], "x?.y");
     expect(propertyAccess.target, isNotNull);
@@ -5179,15 +5197,12 @@ class SimpleParserTest extends ParserTestCase {
   }
 
   void test_parseAssignableSelector_none() {
-    SimpleIdentifier selector = parse("parseAssignableSelector", <Object>[
-      new SimpleIdentifier(null),
-      true
-    ], ";");
+    SimpleIdentifier selector = parse("parseAssignableSelector",
+        <Object>[new SimpleIdentifier(null), true], ";");
     expect(selector, isNotNull);
   }
 
   void test_parseAssignableSelector_question_dot() {
-    _enableNullAwareOperators = true;
     PropertyAccess selector =
         parse("parseAssignableSelector", <Object>[null, true], "?.x");
     expect(selector.operator.type, TokenType.QUESTION_PERIOD);
@@ -5225,7 +5240,8 @@ class SimpleParserTest extends ParserTestCase {
     Statement statement = (body as BlockFunctionBody).block.statements[0];
     EngineTestCase.assertInstanceOf(
         (obj) => obj is VariableDeclarationStatement,
-        VariableDeclarationStatement, statement);
+        VariableDeclarationStatement,
+        statement);
   }
 
   void test_parseBitwiseAndExpression_normal() {
@@ -5484,10 +5500,13 @@ class SimpleParserTest extends ParserTestCase {
   }
 
   void test_parseClassDeclaration_abstract() {
-    ClassDeclaration declaration = parse("parseClassDeclaration", <Object>[
-      emptyCommentAndMetadata(),
-      TokenFactory.tokenFromKeyword(Keyword.ABSTRACT)
-    ], "class A {}");
+    ClassDeclaration declaration = parse(
+        "parseClassDeclaration",
+        <Object>[
+          emptyCommentAndMetadata(),
+          TokenFactory.tokenFromKeyword(Keyword.ABSTRACT)
+        ],
+        "class A {}");
     expect(declaration.documentationComment, isNull);
     expect(declaration.abstractKeyword, isNotNull);
     expect(declaration.extendsClause, isNull);
@@ -5501,10 +5520,8 @@ class SimpleParserTest extends ParserTestCase {
   }
 
   void test_parseClassDeclaration_empty() {
-    ClassDeclaration declaration = parse("parseClassDeclaration", <Object>[
-      emptyCommentAndMetadata(),
-      null
-    ], "class A {}");
+    ClassDeclaration declaration = parse("parseClassDeclaration",
+        <Object>[emptyCommentAndMetadata(), null], "class A {}");
     expect(declaration.documentationComment, isNull);
     expect(declaration.abstractKeyword, isNull);
     expect(declaration.extendsClause, isNull);
@@ -5518,10 +5535,8 @@ class SimpleParserTest extends ParserTestCase {
   }
 
   void test_parseClassDeclaration_extends() {
-    ClassDeclaration declaration = parse("parseClassDeclaration", <Object>[
-      emptyCommentAndMetadata(),
-      null
-    ], "class A extends B {}");
+    ClassDeclaration declaration = parse("parseClassDeclaration",
+        <Object>[emptyCommentAndMetadata(), null], "class A extends B {}");
     expect(declaration.documentationComment, isNull);
     expect(declaration.abstractKeyword, isNull);
     expect(declaration.extendsClause, isNotNull);
@@ -5535,10 +5550,10 @@ class SimpleParserTest extends ParserTestCase {
   }
 
   void test_parseClassDeclaration_extendsAndImplements() {
-    ClassDeclaration declaration = parse("parseClassDeclaration", <Object>[
-      emptyCommentAndMetadata(),
-      null
-    ], "class A extends B implements C {}");
+    ClassDeclaration declaration = parse(
+        "parseClassDeclaration",
+        <Object>[emptyCommentAndMetadata(), null],
+        "class A extends B implements C {}");
     expect(declaration.documentationComment, isNull);
     expect(declaration.abstractKeyword, isNull);
     expect(declaration.extendsClause, isNotNull);
@@ -5552,10 +5567,10 @@ class SimpleParserTest extends ParserTestCase {
   }
 
   void test_parseClassDeclaration_extendsAndWith() {
-    ClassDeclaration declaration = parse("parseClassDeclaration", <Object>[
-      emptyCommentAndMetadata(),
-      null
-    ], "class A extends B with C {}");
+    ClassDeclaration declaration = parse(
+        "parseClassDeclaration",
+        <Object>[emptyCommentAndMetadata(), null],
+        "class A extends B with C {}");
     expect(declaration.documentationComment, isNull);
     expect(declaration.abstractKeyword, isNull);
     expect(declaration.classKeyword, isNotNull);
@@ -5570,10 +5585,10 @@ class SimpleParserTest extends ParserTestCase {
   }
 
   void test_parseClassDeclaration_extendsAndWithAndImplements() {
-    ClassDeclaration declaration = parse("parseClassDeclaration", <Object>[
-      emptyCommentAndMetadata(),
-      null
-    ], "class A extends B with C implements D {}");
+    ClassDeclaration declaration = parse(
+        "parseClassDeclaration",
+        <Object>[emptyCommentAndMetadata(), null],
+        "class A extends B with C implements D {}");
     expect(declaration.documentationComment, isNull);
     expect(declaration.abstractKeyword, isNull);
     expect(declaration.classKeyword, isNotNull);
@@ -5588,10 +5603,8 @@ class SimpleParserTest extends ParserTestCase {
   }
 
   void test_parseClassDeclaration_implements() {
-    ClassDeclaration declaration = parse("parseClassDeclaration", <Object>[
-      emptyCommentAndMetadata(),
-      null
-    ], "class A implements C {}");
+    ClassDeclaration declaration = parse("parseClassDeclaration",
+        <Object>[emptyCommentAndMetadata(), null], "class A implements C {}");
     expect(declaration.documentationComment, isNull);
     expect(declaration.abstractKeyword, isNull);
     expect(declaration.extendsClause, isNull);
@@ -5605,10 +5618,10 @@ class SimpleParserTest extends ParserTestCase {
   }
 
   void test_parseClassDeclaration_native() {
-    ClassDeclaration declaration = parse("parseClassDeclaration", <Object>[
-      emptyCommentAndMetadata(),
-      null
-    ], "class A native 'nativeValue' {}");
+    ClassDeclaration declaration = parse(
+        "parseClassDeclaration",
+        <Object>[emptyCommentAndMetadata(), null],
+        "class A native 'nativeValue' {}");
     NativeClause nativeClause = declaration.nativeClause;
     expect(nativeClause, isNotNull);
     expect(nativeClause.nativeKeyword, isNotNull);
@@ -5618,10 +5631,8 @@ class SimpleParserTest extends ParserTestCase {
   }
 
   void test_parseClassDeclaration_nonEmpty() {
-    ClassDeclaration declaration = parse("parseClassDeclaration", <Object>[
-      emptyCommentAndMetadata(),
-      null
-    ], "class A {var f;}");
+    ClassDeclaration declaration = parse("parseClassDeclaration",
+        <Object>[emptyCommentAndMetadata(), null], "class A {var f;}");
     expect(declaration.documentationComment, isNull);
     expect(declaration.abstractKeyword, isNull);
     expect(declaration.extendsClause, isNull);
@@ -5635,10 +5646,10 @@ class SimpleParserTest extends ParserTestCase {
   }
 
   void test_parseClassDeclaration_typeAlias_implementsC() {
-    ClassTypeAlias typeAlias = parse("parseClassDeclaration", <Object>[
-      emptyCommentAndMetadata(),
-      null
-    ], "class A = Object with B implements C;");
+    ClassTypeAlias typeAlias = parse(
+        "parseClassDeclaration",
+        <Object>[emptyCommentAndMetadata(), null],
+        "class A = Object with B implements C;");
     expect(typeAlias.typedefKeyword, isNotNull);
     expect(typeAlias.name, isNotNull);
     expect(typeAlias.typeParameters, isNull);
@@ -5650,10 +5661,8 @@ class SimpleParserTest extends ParserTestCase {
   }
 
   void test_parseClassDeclaration_typeAlias_withB() {
-    ClassTypeAlias typeAlias = parse("parseClassDeclaration", <Object>[
-      emptyCommentAndMetadata(),
-      null
-    ], "class A = Object with B;");
+    ClassTypeAlias typeAlias = parse("parseClassDeclaration",
+        <Object>[emptyCommentAndMetadata(), null], "class A = Object with B;");
     expect(typeAlias.typedefKeyword, isNotNull);
     expect(typeAlias.name, isNotNull);
     expect(typeAlias.typeParameters, isNull);
@@ -5665,10 +5674,8 @@ class SimpleParserTest extends ParserTestCase {
   }
 
   void test_parseClassDeclaration_typeParameters() {
-    ClassDeclaration declaration = parse("parseClassDeclaration", <Object>[
-      emptyCommentAndMetadata(),
-      null
-    ], "class A<B> {}");
+    ClassDeclaration declaration = parse("parseClassDeclaration",
+        <Object>[emptyCommentAndMetadata(), null], "class A<B> {}");
     expect(declaration.documentationComment, isNull);
     expect(declaration.abstractKeyword, isNull);
     expect(declaration.extendsClause, isNull);
@@ -6076,11 +6083,10 @@ class SimpleParserTest extends ParserTestCase {
   void test_parseClassTypeAlias_abstract() {
     Token classToken = TokenFactory.tokenFromKeyword(Keyword.CLASS);
     Token abstractToken = TokenFactory.tokenFromKeyword(Keyword.ABSTRACT);
-    ClassTypeAlias classTypeAlias = parse("parseClassTypeAlias", <Object>[
-      emptyCommentAndMetadata(),
-      abstractToken,
-      classToken
-    ], "A = B with C;");
+    ClassTypeAlias classTypeAlias = parse(
+        "parseClassTypeAlias",
+        <Object>[emptyCommentAndMetadata(), abstractToken, classToken],
+        "A = B with C;");
     expect(classTypeAlias.typedefKeyword, isNotNull);
     expect(classTypeAlias.name.name, "A");
     expect(classTypeAlias.equals, isNotNull);
@@ -6093,11 +6099,10 @@ class SimpleParserTest extends ParserTestCase {
 
   void test_parseClassTypeAlias_implements() {
     Token token = TokenFactory.tokenFromKeyword(Keyword.CLASS);
-    ClassTypeAlias classTypeAlias = parse("parseClassTypeAlias", <Object>[
-      emptyCommentAndMetadata(),
-      null,
-      token
-    ], "A = B with C implements D;");
+    ClassTypeAlias classTypeAlias = parse(
+        "parseClassTypeAlias",
+        <Object>[emptyCommentAndMetadata(), null, token],
+        "A = B with C implements D;");
     expect(classTypeAlias.typedefKeyword, isNotNull);
     expect(classTypeAlias.name.name, "A");
     expect(classTypeAlias.equals, isNotNull);
@@ -6110,11 +6115,8 @@ class SimpleParserTest extends ParserTestCase {
 
   void test_parseClassTypeAlias_with() {
     Token token = TokenFactory.tokenFromKeyword(Keyword.CLASS);
-    ClassTypeAlias classTypeAlias = parse("parseClassTypeAlias", <Object>[
-      emptyCommentAndMetadata(),
-      null,
-      token
-    ], "A = B with C;");
+    ClassTypeAlias classTypeAlias = parse("parseClassTypeAlias",
+        <Object>[emptyCommentAndMetadata(), null, token], "A = B with C;");
     expect(classTypeAlias.typedefKeyword, isNotNull);
     expect(classTypeAlias.name.name, "A");
     expect(classTypeAlias.equals, isNotNull);
@@ -6127,11 +6129,10 @@ class SimpleParserTest extends ParserTestCase {
 
   void test_parseClassTypeAlias_with_implements() {
     Token token = TokenFactory.tokenFromKeyword(Keyword.CLASS);
-    ClassTypeAlias classTypeAlias = parse("parseClassTypeAlias", <Object>[
-      emptyCommentAndMetadata(),
-      null,
-      token
-    ], "A = B with C implements D;");
+    ClassTypeAlias classTypeAlias = parse(
+        "parseClassTypeAlias",
+        <Object>[emptyCommentAndMetadata(), null, token],
+        "A = B with C implements D;");
     expect(classTypeAlias.typedefKeyword, isNotNull);
     expect(classTypeAlias.name.name, "A");
     expect(classTypeAlias.equals, isNotNull);
@@ -6257,7 +6258,8 @@ class SimpleParserTest extends ParserTestCase {
   }
 
   void test_parseCommentAndMetadata_singleLine() {
-    CommentAndMetadata commentAndMetadata = parse4("parseCommentAndMetadata",
+    CommentAndMetadata commentAndMetadata = parse4(
+        "parseCommentAndMetadata",
         r'''
 /// 1
 /// 2
@@ -6270,7 +6272,8 @@ void''');
     CommentReference reference =
         parse("parseCommentReference", <Object>["new a.b", 7], "");
     PrefixedIdentifier prefixedIdentifier = EngineTestCase.assertInstanceOf(
-        (obj) => obj is PrefixedIdentifier, PrefixedIdentifier,
+        (obj) => obj is PrefixedIdentifier,
+        PrefixedIdentifier,
         reference.identifier);
     SimpleIdentifier prefix = prefixedIdentifier.prefix;
     expect(prefix.token, isNotNull);
@@ -6287,7 +6290,8 @@ void''');
     CommentReference reference =
         parse("parseCommentReference", <Object>["new a", 5], "");
     SimpleIdentifier identifier = EngineTestCase.assertInstanceOf(
-        (obj) => obj is SimpleIdentifier, SimpleIdentifier,
+        (obj) => obj is SimpleIdentifier,
+        SimpleIdentifier,
         reference.identifier);
     expect(identifier.token, isNotNull);
     expect(identifier.name, "a");
@@ -6298,7 +6302,8 @@ void''');
     CommentReference reference =
         parse("parseCommentReference", <Object>["a.b", 7], "");
     PrefixedIdentifier prefixedIdentifier = EngineTestCase.assertInstanceOf(
-        (obj) => obj is PrefixedIdentifier, PrefixedIdentifier,
+        (obj) => obj is PrefixedIdentifier,
+        PrefixedIdentifier,
         reference.identifier);
     SimpleIdentifier prefix = prefixedIdentifier.prefix;
     expect(prefix.token, isNotNull);
@@ -6315,7 +6320,8 @@ void''');
     CommentReference reference =
         parse("parseCommentReference", <Object>["a", 5], "");
     SimpleIdentifier identifier = EngineTestCase.assertInstanceOf(
-        (obj) => obj is SimpleIdentifier, SimpleIdentifier,
+        (obj) => obj is SimpleIdentifier,
+        SimpleIdentifier,
         reference.identifier);
     expect(identifier.token, isNotNull);
     expect(identifier.name, "a");
@@ -6326,7 +6332,8 @@ void''');
     CommentReference reference =
         parse("parseCommentReference", <Object>["", 5], "");
     SimpleIdentifier identifier = EngineTestCase.assertInstanceOf(
-        (obj) => obj is SimpleIdentifier, SimpleIdentifier,
+        (obj) => obj is SimpleIdentifier,
+        SimpleIdentifier,
         reference.identifier);
     expect(identifier, isNotNull);
     expect(identifier.isSynthetic, isTrue);
@@ -6593,7 +6600,8 @@ void''');
 
   void test_parseCompilationUnitMember_abstractAsPrefix() {
     TopLevelVariableDeclaration declaration = parse(
-        "parseCompilationUnitMember", <Object>[emptyCommentAndMetadata()],
+        "parseCompilationUnitMember",
+        <Object>[emptyCommentAndMetadata()],
         "abstract.A _abstract = new abstract.A();");
     expect(declaration.semicolon, isNotNull);
     expect(declaration.variables, isNotNull);
@@ -6615,7 +6623,8 @@ void''');
 
   void test_parseCompilationUnitMember_constVariable() {
     TopLevelVariableDeclaration declaration = parse(
-        "parseCompilationUnitMember", <Object>[emptyCommentAndMetadata()],
+        "parseCompilationUnitMember",
+        <Object>[emptyCommentAndMetadata()],
         "const int x = 0;");
     expect(declaration.semicolon, isNotNull);
     expect(declaration.variables, isNotNull);
@@ -6623,7 +6632,8 @@ void''');
 
   void test_parseCompilationUnitMember_finalVariable() {
     TopLevelVariableDeclaration declaration = parse(
-        "parseCompilationUnitMember", <Object>[emptyCommentAndMetadata()],
+        "parseCompilationUnitMember",
+        <Object>[emptyCommentAndMetadata()],
         "final x = 0;");
     expect(declaration.semicolon, isNotNull);
     expect(declaration.variables, isNotNull);
@@ -6741,7 +6751,8 @@ void''');
   }
 
   void test_parseCompilationUnitMember_typeAlias_generic() {
-    ClassTypeAlias typeAlias = parse("parseCompilationUnitMember",
+    ClassTypeAlias typeAlias = parse(
+        "parseCompilationUnitMember",
         <Object>[emptyCommentAndMetadata()],
         "class C<E> = S<E> with M<E> implements I<E>;");
     expect(typeAlias.typedefKeyword, isNotNull);
@@ -6756,7 +6767,8 @@ void''');
   }
 
   void test_parseCompilationUnitMember_typeAlias_implements() {
-    ClassTypeAlias typeAlias = parse("parseCompilationUnitMember",
+    ClassTypeAlias typeAlias = parse(
+        "parseCompilationUnitMember",
         <Object>[emptyCommentAndMetadata()],
         "class C = S with M implements I;");
     expect(typeAlias.typedefKeyword, isNotNull);
@@ -6793,7 +6805,8 @@ void''');
 
   void test_parseCompilationUnitMember_variable() {
     TopLevelVariableDeclaration declaration = parse(
-        "parseCompilationUnitMember", <Object>[emptyCommentAndMetadata()],
+        "parseCompilationUnitMember",
+        <Object>[emptyCommentAndMetadata()],
         "var x = 0;");
     expect(declaration.semicolon, isNotNull);
     expect(declaration.variables, isNotNull);
@@ -6801,7 +6814,8 @@ void''');
 
   void test_parseCompilationUnitMember_variableGet() {
     TopLevelVariableDeclaration declaration = parse(
-        "parseCompilationUnitMember", <Object>[emptyCommentAndMetadata()],
+        "parseCompilationUnitMember",
+        <Object>[emptyCommentAndMetadata()],
         "String get = null;");
     expect(declaration.semicolon, isNotNull);
     expect(declaration.variables, isNotNull);
@@ -6809,7 +6823,8 @@ void''');
 
   void test_parseCompilationUnitMember_variableSet() {
     TopLevelVariableDeclaration declaration = parse(
-        "parseCompilationUnitMember", <Object>[emptyCommentAndMetadata()],
+        "parseCompilationUnitMember",
+        <Object>[emptyCommentAndMetadata()],
         "String set = null;");
     expect(declaration.semicolon, isNotNull);
     expect(declaration.variables, isNotNull);
@@ -6892,7 +6907,8 @@ void''');
     ConstructorInitializer initializer = initializers[0];
     EngineTestCase.assertInstanceOf((obj) => obj is ConstructorFieldInitializer,
         ConstructorFieldInitializer, initializer);
-    EngineTestCase.assertInstanceOf((obj) => obj is ParenthesizedExpression,
+    EngineTestCase.assertInstanceOf(
+        (obj) => obj is ParenthesizedExpression,
         ParenthesizedExpression,
         (initializer as ConstructorFieldInitializer).expression);
     EngineTestCase.assertInstanceOf(
@@ -7146,7 +7162,8 @@ void''');
   }
 
   void test_parseExportDirective_hide() {
-    ExportDirective directive = parse("parseExportDirective",
+    ExportDirective directive = parse(
+        "parseExportDirective",
         <Object>[emptyCommentAndMetadata()],
         "export 'lib/lib.dart' hide A, B;");
     expect(directive.keyword, isNotNull);
@@ -7156,7 +7173,8 @@ void''');
   }
 
   void test_parseExportDirective_hide_show() {
-    ExportDirective directive = parse("parseExportDirective",
+    ExportDirective directive = parse(
+        "parseExportDirective",
         <Object>[emptyCommentAndMetadata()],
         "export 'lib/lib.dart' hide A show B;");
     expect(directive.keyword, isNotNull);
@@ -7175,7 +7193,8 @@ void''');
   }
 
   void test_parseExportDirective_show() {
-    ExportDirective directive = parse("parseExportDirective",
+    ExportDirective directive = parse(
+        "parseExportDirective",
         <Object>[emptyCommentAndMetadata()],
         "export 'lib/lib.dart' show A, B;");
     expect(directive.keyword, isNotNull);
@@ -7185,7 +7204,8 @@ void''');
   }
 
   void test_parseExportDirective_show_hide() {
-    ExportDirective directive = parse("parseExportDirective",
+    ExportDirective directive = parse(
+        "parseExportDirective",
         <Object>[emptyCommentAndMetadata()],
         "export 'lib/lib.dart' show B hide A;");
     expect(directive.keyword, isNotNull);
@@ -7668,8 +7688,8 @@ void''');
   }
 
   void test_parseFormalParameterList_prefixedType_partial() {
-    FormalParameterList parameterList = parse4("parseFormalParameterList",
-        "(io.)", [
+    FormalParameterList parameterList = parse4(
+        "parseFormalParameterList", "(io.)", [
       ParserErrorCode.MISSING_IDENTIFIER,
       ParserErrorCode.MISSING_IDENTIFIER
     ]);
@@ -7682,8 +7702,8 @@ void''');
   }
 
   void test_parseFormalParameterList_prefixedType_partial2() {
-    FormalParameterList parameterList = parse4("parseFormalParameterList",
-        "(io.,a)", [
+    FormalParameterList parameterList = parse4(
+        "parseFormalParameterList", "(io.,a)", [
       ParserErrorCode.MISSING_IDENTIFIER,
       ParserErrorCode.MISSING_IDENTIFIER
     ]);
@@ -8026,11 +8046,8 @@ void''');
 
   void test_parseFunctionBody_skip_block_invalid() {
     ParserTestCase.parseFunctionBodies = false;
-    FunctionBody functionBody = parse3("parseFunctionBody", <Object>[
-      false,
-      null,
-      false
-    ], "{", [ParserErrorCode.EXPECTED_TOKEN]);
+    FunctionBody functionBody = parse3("parseFunctionBody",
+        <Object>[false, null, false], "{", [ParserErrorCode.EXPECTED_TOKEN]);
     EngineTestCase.assertInstanceOf(
         (obj) => obj is EmptyFunctionBody, EmptyFunctionBody, functionBody);
   }
@@ -8151,12 +8168,10 @@ void''');
   void test_parseGetter_nonStatic() {
     Comment comment = Comment.createDocumentationComment(new List<Token>(0));
     TypeName returnType = new TypeName(new SimpleIdentifier(null), null);
-    MethodDeclaration method = parse("parseGetter", <Object>[
-      commentAndMetadata(comment),
-      null,
-      null,
-      returnType
-    ], "get a;");
+    MethodDeclaration method = parse(
+        "parseGetter",
+        <Object>[commentAndMetadata(comment), null, null, returnType],
+        "get a;");
     expect(method.body, isNotNull);
     expect(method.documentationComment, comment);
     expect(method.externalKeyword, isNull);
@@ -8172,12 +8187,10 @@ void''');
     Comment comment = Comment.createDocumentationComment(new List<Token>(0));
     Token staticKeyword = TokenFactory.tokenFromKeyword(Keyword.STATIC);
     TypeName returnType = new TypeName(new SimpleIdentifier(null), null);
-    MethodDeclaration method = parse("parseGetter", <Object>[
-      commentAndMetadata(comment),
-      null,
-      staticKeyword,
-      returnType
-    ], "get a => 42;");
+    MethodDeclaration method = parse(
+        "parseGetter",
+        <Object>[commentAndMetadata(comment), null, staticKeyword, returnType],
+        "get a => 42;");
     expect(method.body, isNotNull);
     expect(method.documentationComment, comment);
     expect(method.externalKeyword, isNull);
@@ -8259,7 +8272,8 @@ void''');
   }
 
   void test_parseImportDirective_deferred() {
-    ImportDirective directive = parse("parseImportDirective",
+    ImportDirective directive = parse(
+        "parseImportDirective",
         <Object>[emptyCommentAndMetadata()],
         "import 'lib/lib.dart' deferred as a;");
     expect(directive.keyword, isNotNull);
@@ -8272,7 +8286,8 @@ void''');
   }
 
   void test_parseImportDirective_hide() {
-    ImportDirective directive = parse("parseImportDirective",
+    ImportDirective directive = parse(
+        "parseImportDirective",
         <Object>[emptyCommentAndMetadata()],
         "import 'lib/lib.dart' hide A, B;");
     expect(directive.keyword, isNotNull);
@@ -8309,7 +8324,8 @@ void''');
   }
 
   void test_parseImportDirective_prefix_hide_show() {
-    ImportDirective directive = parse("parseImportDirective",
+    ImportDirective directive = parse(
+        "parseImportDirective",
         <Object>[emptyCommentAndMetadata()],
         "import 'lib/lib.dart' as a hide A show B;");
     expect(directive.keyword, isNotNull);
@@ -8322,7 +8338,8 @@ void''');
   }
 
   void test_parseImportDirective_prefix_show_hide() {
-    ImportDirective directive = parse("parseImportDirective",
+    ImportDirective directive = parse(
+        "parseImportDirective",
         <Object>[emptyCommentAndMetadata()],
         "import 'lib/lib.dart' as a show B hide A;");
     expect(directive.keyword, isNotNull);
@@ -8335,7 +8352,8 @@ void''');
   }
 
   void test_parseImportDirective_show() {
-    ImportDirective directive = parse("parseImportDirective",
+    ImportDirective directive = parse(
+        "parseImportDirective",
         <Object>[emptyCommentAndMetadata()],
         "import 'lib/lib.dart' show A, B;");
     expect(directive.keyword, isNotNull);
@@ -8351,13 +8369,10 @@ void''');
     Comment comment = Comment.createDocumentationComment(new List<Token>(0));
     Token staticKeyword = TokenFactory.tokenFromKeyword(Keyword.STATIC);
     TypeName type = new TypeName(new SimpleIdentifier(null), null);
-    FieldDeclaration declaration = parse("parseInitializedIdentifierList",
-        <Object>[
-      commentAndMetadata(comment),
-      staticKeyword,
-      null,
-      type
-    ], "a = 1, b, c = 3;");
+    FieldDeclaration declaration = parse(
+        "parseInitializedIdentifierList",
+        <Object>[commentAndMetadata(comment), staticKeyword, null, type],
+        "a = 1, b, c = 3;");
     expect(declaration.documentationComment, comment);
     VariableDeclarationList fields = declaration.fields;
     expect(fields, isNotNull);
@@ -8372,13 +8387,10 @@ void''');
     Comment comment = Comment.createDocumentationComment(new List<Token>(0));
     Token staticKeyword = TokenFactory.tokenFromKeyword(Keyword.STATIC);
     Token varKeyword = TokenFactory.tokenFromKeyword(Keyword.VAR);
-    FieldDeclaration declaration = parse("parseInitializedIdentifierList",
-        <Object>[
-      commentAndMetadata(comment),
-      staticKeyword,
-      varKeyword,
-      null
-    ], "a = 1, b, c = 3;");
+    FieldDeclaration declaration = parse(
+        "parseInitializedIdentifierList",
+        <Object>[commentAndMetadata(comment), staticKeyword, varKeyword, null],
+        "a = 1, b, c = 3;");
     expect(declaration.documentationComment, comment);
     VariableDeclarationList fields = declaration.fields;
     expect(fields, isNotNull);
@@ -8761,7 +8773,8 @@ void''');
         parse4("parseNonLabeledStatement", "(a) {return a + a;} (3);");
     EngineTestCase.assertInstanceOf(
         (obj) => obj is FunctionExpressionInvocation,
-        FunctionExpressionInvocation, statement.expression);
+        FunctionExpressionInvocation,
+        statement.expression);
     FunctionExpressionInvocation invocation =
         statement.expression as FunctionExpressionInvocation;
     EngineTestCase.assertInstanceOf((obj) => obj is FunctionExpression,
@@ -8990,11 +9003,10 @@ void''');
   void test_parseOperator() {
     Comment comment = Comment.createDocumentationComment(new List<Token>(0));
     TypeName returnType = new TypeName(new SimpleIdentifier(null), null);
-    MethodDeclaration method = parse("parseOperator", <Object>[
-      commentAndMetadata(comment),
-      null,
-      returnType
-    ], "operator +(A a);");
+    MethodDeclaration method = parse(
+        "parseOperator",
+        <Object>[commentAndMetadata(comment), null, returnType],
+        "operator +(A a);");
     expect(method.body, isNotNull);
     expect(method.documentationComment, comment);
     expect(method.externalKeyword, isNull);
@@ -9058,7 +9070,6 @@ void''');
   }
 
   void test_parsePostfixExpression_none_methodInvocation_question_dot() {
-    _enableNullAwareOperators = true;
     MethodInvocation expression = parse4('parsePostfixExpression', 'a?.m()');
     expect(expression.target, isNotNull);
     expect(expression.operator.type, TokenType.QUESTION_PERIOD);
@@ -9069,7 +9080,6 @@ void''');
 
   void test_parsePostfixExpression_none_methodInvocation_question_dot_typeArguments() {
     enableGenericMethods = true;
-    _enableNullAwareOperators = true;
     MethodInvocation expression = parse4('parsePostfixExpression', 'a?.m<E>()');
     expect(expression.target, isNotNull);
     expect(expression.operator.type, TokenType.QUESTION_PERIOD);
@@ -9343,12 +9353,10 @@ void''');
   void test_parseSetter_nonStatic() {
     Comment comment = Comment.createDocumentationComment(new List<Token>(0));
     TypeName returnType = new TypeName(new SimpleIdentifier(null), null);
-    MethodDeclaration method = parse("parseSetter", <Object>[
-      commentAndMetadata(comment),
-      null,
-      null,
-      returnType
-    ], "set a(var x);");
+    MethodDeclaration method = parse(
+        "parseSetter",
+        <Object>[commentAndMetadata(comment), null, null, returnType],
+        "set a(var x);");
     expect(method.body, isNotNull);
     expect(method.documentationComment, comment);
     expect(method.externalKeyword, isNull);
@@ -9365,12 +9373,10 @@ void''');
     Comment comment = Comment.createDocumentationComment(new List<Token>(0));
     Token staticKeyword = TokenFactory.tokenFromKeyword(Keyword.STATIC);
     TypeName returnType = new TypeName(new SimpleIdentifier(null), null);
-    MethodDeclaration method = parse("parseSetter", <Object>[
-      commentAndMetadata(comment),
-      null,
-      staticKeyword,
-      returnType
-    ], "set a(var x) {}");
+    MethodDeclaration method = parse(
+        "parseSetter",
+        <Object>[commentAndMetadata(comment), null, staticKeyword, returnType],
+        "set a(var x) {}");
     expect(method.body, isNotNull);
     expect(method.documentationComment, comment);
     expect(method.externalKeyword, isNull);
@@ -10260,7 +10266,8 @@ void''');
   void test_parseVariableDeclarationListAfterMetadata_const_noType() {
     VariableDeclarationList declarationList = parse(
         "parseVariableDeclarationListAfterMetadata",
-        <Object>[emptyCommentAndMetadata()], "const a");
+        <Object>[emptyCommentAndMetadata()],
+        "const a");
     expect(declarationList.keyword, isNotNull);
     expect(declarationList.type, isNull);
     expect(declarationList.variables, hasLength(1));
@@ -10269,7 +10276,8 @@ void''');
   void test_parseVariableDeclarationListAfterMetadata_const_type() {
     VariableDeclarationList declarationList = parse(
         "parseVariableDeclarationListAfterMetadata",
-        <Object>[emptyCommentAndMetadata()], "const A a");
+        <Object>[emptyCommentAndMetadata()],
+        "const A a");
     expect(declarationList.keyword, isNotNull);
     expect(declarationList.type, isNotNull);
     expect(declarationList.variables, hasLength(1));
@@ -10278,7 +10286,8 @@ void''');
   void test_parseVariableDeclarationListAfterMetadata_final_noType() {
     VariableDeclarationList declarationList = parse(
         "parseVariableDeclarationListAfterMetadata",
-        <Object>[emptyCommentAndMetadata()], "final a");
+        <Object>[emptyCommentAndMetadata()],
+        "final a");
     expect(declarationList.keyword, isNotNull);
     expect(declarationList.type, isNull);
     expect(declarationList.variables, hasLength(1));
@@ -10287,7 +10296,8 @@ void''');
   void test_parseVariableDeclarationListAfterMetadata_final_type() {
     VariableDeclarationList declarationList = parse(
         "parseVariableDeclarationListAfterMetadata",
-        <Object>[emptyCommentAndMetadata()], "final A a");
+        <Object>[emptyCommentAndMetadata()],
+        "final A a");
     expect(declarationList.keyword, isNotNull);
     expect(declarationList.type, isNotNull);
     expect(declarationList.variables, hasLength(1));
@@ -10296,7 +10306,8 @@ void''');
   void test_parseVariableDeclarationListAfterMetadata_type_multiple() {
     VariableDeclarationList declarationList = parse(
         "parseVariableDeclarationListAfterMetadata",
-        <Object>[emptyCommentAndMetadata()], "A a, b, c");
+        <Object>[emptyCommentAndMetadata()],
+        "A a, b, c");
     expect(declarationList.keyword, isNull);
     expect(declarationList.type, isNotNull);
     expect(declarationList.variables, hasLength(3));
@@ -10305,7 +10316,8 @@ void''');
   void test_parseVariableDeclarationListAfterMetadata_type_single() {
     VariableDeclarationList declarationList = parse(
         "parseVariableDeclarationListAfterMetadata",
-        <Object>[emptyCommentAndMetadata()], "A a");
+        <Object>[emptyCommentAndMetadata()],
+        "A a");
     expect(declarationList.keyword, isNull);
     expect(declarationList.type, isNotNull);
     expect(declarationList.variables, hasLength(1));
@@ -10314,7 +10326,8 @@ void''');
   void test_parseVariableDeclarationListAfterMetadata_var_multiple() {
     VariableDeclarationList declarationList = parse(
         "parseVariableDeclarationListAfterMetadata",
-        <Object>[emptyCommentAndMetadata()], "var a, b, c");
+        <Object>[emptyCommentAndMetadata()],
+        "var a, b, c");
     expect(declarationList.keyword, isNotNull);
     expect(declarationList.type, isNull);
     expect(declarationList.variables, hasLength(3));
@@ -10323,7 +10336,8 @@ void''');
   void test_parseVariableDeclarationListAfterMetadata_var_single() {
     VariableDeclarationList declarationList = parse(
         "parseVariableDeclarationListAfterMetadata",
-        <Object>[emptyCommentAndMetadata()], "var a");
+        <Object>[emptyCommentAndMetadata()],
+        "var a");
     expect(declarationList.keyword, isNotNull);
     expect(declarationList.type, isNull);
     expect(declarationList.variables, hasLength(1));
@@ -10332,11 +10346,9 @@ void''');
   void test_parseVariableDeclarationListAfterType_type() {
     TypeName type = new TypeName(new SimpleIdentifier(null), null);
     VariableDeclarationList declarationList = parse(
-        "parseVariableDeclarationListAfterType", <Object>[
-      emptyCommentAndMetadata(),
-      null,
-      type
-    ], "a");
+        "parseVariableDeclarationListAfterType",
+        <Object>[emptyCommentAndMetadata(), null, type],
+        "a");
     expect(declarationList.keyword, isNull);
     expect(declarationList.type, type);
     expect(declarationList.variables, hasLength(1));
@@ -10345,11 +10357,9 @@ void''');
   void test_parseVariableDeclarationListAfterType_var() {
     Token keyword = TokenFactory.tokenFromKeyword(Keyword.VAR);
     VariableDeclarationList declarationList = parse(
-        "parseVariableDeclarationListAfterType", <Object>[
-      emptyCommentAndMetadata(),
-      keyword,
-      null
-    ], "a, b, c");
+        "parseVariableDeclarationListAfterType",
+        <Object>[emptyCommentAndMetadata(), keyword, null],
+        "a, b, c");
     expect(declarationList.keyword, keyword);
     expect(declarationList.type, isNull);
     expect(declarationList.variables, hasLength(3));
@@ -10358,7 +10368,8 @@ void''');
   void test_parseVariableDeclarationStatementAfterMetadata_multiple() {
     VariableDeclarationStatement statement = parse(
         "parseVariableDeclarationStatementAfterMetadata",
-        <Object>[emptyCommentAndMetadata()], "var x, y, z;");
+        <Object>[emptyCommentAndMetadata()],
+        "var x, y, z;");
     expect(statement.semicolon, isNotNull);
     VariableDeclarationList variableList = statement.variables;
     expect(variableList, isNotNull);
@@ -10368,7 +10379,8 @@ void''');
   void test_parseVariableDeclarationStatementAfterMetadata_single() {
     VariableDeclarationStatement statement = parse(
         "parseVariableDeclarationStatementAfterMetadata",
-        <Object>[emptyCommentAndMetadata()], "var x;");
+        <Object>[emptyCommentAndMetadata()],
+        "var x;");
     expect(statement.semicolon, isNotNull);
     VariableDeclarationList variableList = statement.variables;
     expect(variableList, isNotNull);
@@ -10533,11 +10545,9 @@ void''');
     AnalysisErrorListener listener =
         new AnalysisErrorListener_SimpleParserTest_computeStringValue();
     Parser parser = new Parser(null, listener);
-    return invokeParserMethodImpl(parser, "computeStringValue", <Object>[
-      lexeme,
-      first,
-      last
-    ], null) as String;
+    return invokeParserMethodImpl(
+            parser, "computeStringValue", <Object>[lexeme, first, last], null)
+        as String;
   }
 
   /**
@@ -10576,8 +10586,8 @@ void''');
    */
   bool _isFunctionDeclaration(String source) {
     GatheringErrorListener listener = new GatheringErrorListener();
-    return invokeParserMethod2(
-        "isFunctionDeclaration", source, listener) as bool;
+    return invokeParserMethod2("isFunctionDeclaration", source, listener)
+        as bool;
   }
 
   /**
@@ -10600,8 +10610,9 @@ void''');
     // Parse the source.
     //
     Parser parser = new Parser(null, listener);
-    return invokeParserMethodImpl(parser, "isFunctionExpression",
-        <Object>[tokenStream], tokenStream) as bool;
+    return invokeParserMethodImpl(
+            parser, "isFunctionExpression", <Object>[tokenStream], tokenStream)
+        as bool;
   }
 
   /**

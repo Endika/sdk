@@ -72,7 +72,6 @@ void CodeCoverage::CompileAndAdd(const Function& function,
   }
   Thread* thread = Thread::Current();
   Zone* zone = thread->zone();
-  Isolate* isolate = thread->isolate();
   // Make sure we have the unoptimized code for this function available.
   if (Compiler::EnsureUnoptimizedCode(thread, function) != Error::null()) {
     // Ignore the error and this function entirely.
@@ -96,7 +95,7 @@ void CodeCoverage::CompileAndAdd(const Function& function,
   PcDescriptors::Iterator iter(descriptors,
       RawPcDescriptors::kIcCall | RawPcDescriptors::kUnoptStaticCall);
   while (iter.MoveNext()) {
-    HANDLESCOPE(isolate);
+    HANDLESCOPE(thread);
     const ICData* ic_data = (*ic_data_array)[iter.DeoptId()];
     if (!ic_data->IsNull()) {
       const intptr_t token_pos = iter.TokenPos();
@@ -104,32 +103,33 @@ void CodeCoverage::CompileAndAdd(const Function& function,
       if ((token_pos < begin_pos) || (token_pos > end_pos)) {
         continue;
       }
-      intptr_t line = pos_to_line[token_pos];
-#if defined(DEBUG)
-      const Script& script = Script::Handle(zone, function.script());
-      intptr_t test_line = -1;
-      script.GetTokenLocation(token_pos, &test_line, NULL);
-      ASSERT(test_line == line);
-#endif
-      // Merge hit data where possible.
-      if (last_line == line) {
-        last_count += ic_data->AggregateCount();
-      } else {
-        if ((last_line != -1) && !as_call_sites) {
-          hits_or_sites.AddValue(last_line);
-          hits_or_sites.AddValue(last_count);
-        }
-        last_count = ic_data->AggregateCount();
-        last_line = line;
-      }
       if (as_call_sites) {
         bool is_static_call = iter.Kind() == RawPcDescriptors::kUnoptStaticCall;
         ic_data->PrintToJSONArray(hits_or_sites, token_pos, is_static_call);
+      } else {
+        intptr_t line = pos_to_line[token_pos];
+#if defined(DEBUG)
+        const Script& script = Script::Handle(zone, function.script());
+        intptr_t test_line = -1;
+        script.GetTokenLocation(token_pos, &test_line, NULL);
+        ASSERT(test_line == line);
+#endif
+        // Merge hit data where possible.
+        if (last_line == line) {
+          last_count += ic_data->AggregateCount();
+        } else {
+          if ((last_line != -1)) {
+            hits_or_sites.AddValue(last_line);
+            hits_or_sites.AddValue(last_count);
+          }
+          last_count = ic_data->AggregateCount();
+          last_line = line;
+        }
       }
     }
   }
   // Write last hit value if needed.
-  if ((last_line != -1) && !as_call_sites) {
+  if (!as_call_sites && (last_line != -1)) {
     hits_or_sites.AddValue(last_line);
     hits_or_sites.AddValue(last_count);
   }
@@ -141,7 +141,8 @@ void CodeCoverage::PrintClass(const Library& lib,
                               const JSONArray& jsarr,
                               CoverageFilter* filter,
                               bool as_call_sites) {
-  Isolate* isolate = Isolate::Current();
+  Thread* thread = Thread::Current();
+  Isolate* isolate = thread->isolate();
   if (cls.EnsureIsFinalized(isolate) != Error::null()) {
     // Only classes that have been finalized do have a meaningful list of
     // functions.
@@ -156,7 +157,7 @@ void CodeCoverage::PrintClass(const Library& lib,
   GrowableArray<intptr_t> pos_to_line;
   int i = 0;
   while (i < functions.Length()) {
-    HANDLESCOPE(isolate);
+    HANDLESCOPE(thread);
     function ^= functions.At(i);
     script = function.script();
     saved_url = script.url();
@@ -164,7 +165,9 @@ void CodeCoverage::PrintClass(const Library& lib,
       i++;
       continue;
     }
-    ComputeTokenPosToLineNumberMap(script, &pos_to_line);
+    if (!as_call_sites) {
+      ComputeTokenPosToLineNumberMap(script, &pos_to_line);
+    }
     JSONObject jsobj(&jsarr);
     jsobj.AddProperty("source", saved_url.ToCString());
     jsobj.AddProperty("script", script);
@@ -185,10 +188,6 @@ void CodeCoverage::PrintClass(const Library& lib,
         continue;
       }
       CompileAndAdd(function, hits_or_sites, pos_to_line, as_call_sites);
-      if (function.HasImplicitClosureFunction()) {
-        function = function.ImplicitClosureFunction();
-        CompileAndAdd(function, hits_or_sites, pos_to_line, as_call_sites);
-      }
       i++;
     }
   }
@@ -201,7 +200,7 @@ void CodeCoverage::PrintClass(const Library& lib,
     // We need to keep rechecking the length of the closures array, as handling
     // a closure potentially adds new entries to the end.
     while (i < closures.Length()) {
-      HANDLESCOPE(isolate);
+      HANDLESCOPE(thread);
       function ^= closures.At(i);
       script = function.script();
       saved_url = script.url();
@@ -248,11 +247,11 @@ void CodeCoverage::Write(Isolate* isolate) {
   JSONStream stream;
   PrintJSON(isolate, &stream, NULL, false);
 
-  const char* format = "%s/dart-cov-%" Pd "-%" Pd ".json";
+  const char* format = "%s/dart-cov-%" Pd "-%" Pd64 ".json";
   intptr_t pid = OS::ProcessId();
   intptr_t len = OS::SNPrint(NULL, 0, format,
                              FLAG_coverage_dir, pid, isolate->main_port());
-  char* filename = Isolate::Current()->current_zone()->Alloc<char>(len + 1);
+  char* filename = Thread::Current()->zone()->Alloc<char>(len + 1);
   OS::SNPrint(filename, len + 1, format,
               FLAG_coverage_dir, pid, isolate->main_port());
   void* file = (*file_open)(filename, true);

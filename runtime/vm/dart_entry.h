@@ -91,6 +91,8 @@ class ArgumentsDescriptor : public ValueObject {
   // A cache of VM heap allocated arguments descriptors.
   static RawArray* cached_args_descriptors_[kCachedDescriptorCount];
 
+  friend class FullSnapshotWriter;
+  friend class VmIsolateSnapshotReader;
   DISALLOW_COPY_AND_ASSIGN(ArgumentsDescriptor);
 };
 
@@ -162,6 +164,9 @@ class DartLibraryCalls : public AllStatic {
   // Returns null on success, a RawError on failure.
   static RawObject* HandleMessage(const Object& handler,
                                   const Instance& dart_message);
+
+  // Returns null on success, a RawError on failure.
+  static RawObject* DrainMicrotaskQueue();
 
   // map[key] = value;
   //

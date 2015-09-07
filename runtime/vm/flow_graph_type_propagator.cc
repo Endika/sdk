@@ -15,6 +15,7 @@ DEFINE_FLAG(bool, trace_type_propagation, false,
             "Trace flow graph type propagation");
 
 DECLARE_FLAG(bool, propagate_types);
+DECLARE_FLAG(bool, trace_cha);
 DECLARE_FLAG(bool, use_cha_deopt);
 
 
@@ -461,9 +462,10 @@ void CompileType::Union(CompileType* other) {
 
   const AbstractType* compile_type = ToAbstractType();
   const AbstractType* other_compile_type = other->ToAbstractType();
-  if (compile_type->IsMoreSpecificThan(*other_compile_type, NULL)) {
+  if (compile_type->IsMoreSpecificThan(*other_compile_type, NULL, Heap::kOld)) {
     type_ = other_compile_type;
-  } else if (other_compile_type->IsMoreSpecificThan(*compile_type, NULL)) {
+  } else if (other_compile_type->
+      IsMoreSpecificThan(*compile_type, NULL, Heap::kOld)) {
   // Nothing to do.
   } else {
   // Can't unify.
@@ -549,6 +551,10 @@ intptr_t CompileType::ToNullableCid() {
           // Type of a private class cannot change through later loaded libs.
           cid_ = type_class.id();
         } else if (FLAG_use_cha_deopt) {
+          if (FLAG_trace_cha) {
+            ISL_Print("  **(CHA) Compile type not subclassed: %s\n",
+                type_class.ToCString());
+          }
           cha->AddToLeafClasses(type_class);
           cid_ = type_class.id();
         } else {
@@ -654,7 +660,7 @@ bool CompileType::CanComputeIsInstanceOf(const AbstractType& type,
     return false;
   }
 
-  *is_instance = compile_type.IsMoreSpecificThan(type, NULL);
+  *is_instance = compile_type.IsMoreSpecificThan(type, NULL, Heap::kOld);
   return *is_instance;
 }
 
@@ -669,7 +675,7 @@ bool CompileType::IsMoreSpecificThan(const AbstractType& other) {
     return IsNull();
   }
 
-  return ToAbstractType()->IsMoreSpecificThan(other, NULL);
+  return ToAbstractType()->IsMoreSpecificThan(other, NULL, Heap::kOld);
 }
 
 
@@ -748,8 +754,10 @@ CompileType ParameterInstr::ComputeType() const {
     // Set parameter types here in order to prevent unnecessary CheckClassInstr
     // from being generated.
     switch (index()) {
+      case RegExpMacroAssembler::kParamRegExpIndex:
+        return CompileType::FromCid(kJSRegExpCid);
       case RegExpMacroAssembler::kParamStringIndex:
-        return CompileType::FromCid(function.regexp_cid());
+        return CompileType::FromCid(function.string_specialization_cid());
       case RegExpMacroAssembler::kParamStartOffsetIndex:
         return CompileType::FromCid(kSmiCid);
       default: UNREACHABLE();
@@ -786,6 +794,11 @@ CompileType ParameterInstr::ComputeType() const {
           cid = type_class.id();
         } else {
           if (FLAG_use_cha_deopt) {
+            if (FLAG_trace_cha) {
+              ISL_Print("  **(CHA) Computing exact type of parameters, "
+                  "no subclasses: %s\n",
+                  type_class.ToCString());
+            }
             thread->cha()->AddToLeafClasses(type_class);
             cid = type_class.id();
           }
@@ -986,7 +999,7 @@ CompileType LoadStaticFieldInstr::ComputeType() const {
   }
   ASSERT(field.is_static());
   if (field.is_final()) {
-    const Instance& obj = Instance::Handle(field.value());
+    const Instance& obj = Instance::Handle(field.StaticValue());
     if ((obj.raw() != Object::sentinel().raw()) &&
         (obj.raw() != Object::transition_sentinel().raw()) &&
         !obj.IsNull()) {
@@ -1038,10 +1051,9 @@ CompileType LoadFieldInstr::ComputeType() const {
   }
 
   const AbstractType* abstract_type = NULL;
-  if (Isolate::Current()->flags().type_checks()) {
-    ASSERT(!type().HasResolvedTypeClass() ||
-           !Field::IsExternalizableCid(Class::Handle(
-                type().type_class()).id()));
+  if (Isolate::Current()->flags().type_checks() &&
+      type().HasResolvedTypeClass() &&
+      !Field::IsExternalizableCid(Class::Handle(type().type_class()).id())) {
     abstract_type = &type();
   }
 

@@ -253,12 +253,14 @@ class StaticTypeAnalyzer extends SimpleAstVisitor<Object> {
     }
     ExecutableElement staticMethodElement = node.staticElement;
     DartType staticType = _computeStaticReturnType(staticMethodElement);
-    staticType = _refineBinaryExpressionType(node, staticType);
+    staticType = _refineBinaryExpressionType(node, staticType, _getStaticType);
     _recordStaticType(node, staticType);
     MethodElement propagatedMethodElement = node.propagatedElement;
     if (!identical(propagatedMethodElement, staticMethodElement)) {
       DartType propagatedType =
           _computeStaticReturnType(propagatedMethodElement);
+      propagatedType =
+          _refineBinaryExpressionType(node, propagatedType, _getBestType);
       _resolver.recordPropagatedTypeIfBetter(node, propagatedType);
     }
     return null;
@@ -299,6 +301,14 @@ class StaticTypeAnalyzer extends SimpleAstVisitor<Object> {
   Object visitConditionalExpression(ConditionalExpression node) {
     _analyzeLeastUpperBound(node, node.thenExpression, node.elseExpression);
     return null;
+  }
+
+  @override
+  Object visitDeclaredIdentifier(DeclaredIdentifier node) {
+    super.visitDeclaredIdentifier(node);
+    if (_resolver.definingLibrary.context.analysisOptions.strongMode) {
+      _inferForEachLoopVariableType(node);
+    }
   }
 
   /**
@@ -541,8 +551,10 @@ class StaticTypeAnalyzer extends SimpleAstVisitor<Object> {
         }
       }
     }
-    _recordStaticType(node, _typeProvider.mapType
-        .substitute4(<DartType>[staticKeyType, staticValueType]));
+    _recordStaticType(
+        node,
+        _typeProvider.mapType
+            .substitute4(<DartType>[staticKeyType, staticValueType]));
     return null;
   }
 
@@ -1180,6 +1192,9 @@ class StaticTypeAnalyzer extends SimpleAstVisitor<Object> {
   @override
   Object visitVariableDeclaration(VariableDeclaration node) {
     Expression initializer = node.initializer;
+    if (_resolver.definingLibrary.context.analysisOptions.strongMode) {
+      _inferLocalVariableType(node, initializer);
+    }
     if (initializer != null) {
       DartType rightType = initializer.bestType;
       SimpleIdentifier name = node.name;
@@ -1380,6 +1395,50 @@ class StaticTypeAnalyzer extends SimpleAstVisitor<Object> {
     }
   }
 
+  // TODO(vsm): Use leafp's matchType here?
+  DartType _findIteratedType(InterfaceType type, DartType targetType) {
+    // Set by _find if match is found
+    DartType result = null;
+    // Elements we've already visited on a given inheritance path.
+    HashSet<ClassElement> visitedClasses = null;
+
+    bool _find(InterfaceType type) {
+      ClassElement element = type.element;
+      if (type == _typeProvider.objectType || element == null) {
+        return false;
+      }
+      if (element == targetType.element) {
+        List<DartType> typeArguments = type.typeArguments;
+        assert(typeArguments.length == 1);
+        result = typeArguments[0];
+        return true;
+      }
+      if (visitedClasses == null) {
+        visitedClasses = new HashSet<ClassElement>();
+      }
+      // Already visited this class along this path
+      if (!visitedClasses.add(element)) {
+        return false;
+      }
+      try {
+        return _find(type.superclass) ||
+            type.interfaces.any(_find) ||
+            type.mixins.any(_find);
+      } finally {
+        visitedClasses.remove(element);
+      }
+    }
+    _find(type);
+    return result;
+  }
+
+  /**
+   * Return the best type of the given [expression].
+   */
+  DartType _getBestType(Expression expression) {
+    return expression.bestType;
+  }
+
   /**
    * If the given element name can be mapped to the name of a class defined within the given
    * library, return the type specified by the argument.
@@ -1507,10 +1566,7 @@ class StaticTypeAnalyzer extends SimpleAstVisitor<Object> {
   }
 
   /**
-   * Return the static type of the given expression.
-   *
-   * @param expression the expression whose type is to be returned
-   * @return the static type of the given expression
+   * Return the static type of the given [expression].
    */
   DartType _getStaticType(Expression expression) {
     DartType type = expression.staticType;
@@ -1595,6 +1651,42 @@ class StaticTypeAnalyzer extends SimpleAstVisitor<Object> {
       }
     }
     return returnType;
+  }
+
+  void _inferForEachLoopVariableType(DeclaredIdentifier loopVariable) {
+    if (loopVariable != null &&
+        loopVariable.type == null &&
+        loopVariable.parent is ForEachStatement) {
+      ForEachStatement loop = loopVariable.parent;
+      if (loop.iterable != null) {
+        Expression expr = loop.iterable;
+        LocalVariableElementImpl element = loopVariable.element;
+        DartType exprType = expr.staticType;
+        if (exprType is InterfaceType) {
+          DartType targetType = (loop.awaitKeyword == null)
+              ? _typeProvider.iterableType
+              : _typeProvider.streamType;
+          DartType iteratedType = _findIteratedType(exprType, targetType);
+          if (element != null && iteratedType != null) {
+            element.type = iteratedType;
+            loopVariable.identifier.staticType = iteratedType;
+          }
+        }
+      }
+    }
+  }
+
+  void _inferLocalVariableType(
+      VariableDeclaration node, Expression initializer) {
+    if (initializer != null &&
+        (node.parent as VariableDeclarationList).type == null &&
+        (node.element is LocalVariableElementImpl) &&
+        (initializer.staticType != null) &&
+        (!initializer.staticType.isBottom)) {
+      LocalVariableElementImpl element = node.element;
+      element.type = initializer.staticType;
+      node.name.staticType = initializer.staticType;
+    }
   }
 
   /**
@@ -1697,15 +1789,15 @@ class StaticTypeAnalyzer extends SimpleAstVisitor<Object> {
   }
 
   /**
-   * Attempts to make a better guess for the static type of the given binary expression.
-   *
-   * @param node the binary expression to analyze
-   * @param staticType the static type of the expression as resolved
-   * @return the better type guess, or the same static type as given
+   * Attempts to make a better guess for the type of the given binary
+   * [expression], given that resolution has so far produced the [currentType].
+   * The [typeAccessor] is used to access the corresponding type of the left
+   * and right operands.
    */
   DartType _refineBinaryExpressionType(
-      BinaryExpression node, DartType staticType) {
-    sc.TokenType operator = node.operator.type;
+      BinaryExpression expression, DartType currentType,
+      [DartType typeAccessor(Expression node)]) {
+    sc.TokenType operator = expression.operator.type;
     // bool
     if (operator == sc.TokenType.AMPERSAND_AMPERSAND ||
         operator == sc.TokenType.BAR_BAR ||
@@ -1714,14 +1806,14 @@ class StaticTypeAnalyzer extends SimpleAstVisitor<Object> {
       return _typeProvider.boolType;
     }
     DartType intType = _typeProvider.intType;
-    if (_getStaticType(node.leftOperand) == intType) {
+    if (typeAccessor(expression.leftOperand) == intType) {
       // int op double
       if (operator == sc.TokenType.MINUS ||
           operator == sc.TokenType.PERCENT ||
           operator == sc.TokenType.PLUS ||
           operator == sc.TokenType.STAR) {
         DartType doubleType = _typeProvider.doubleType;
-        if (_getStaticType(node.rightOperand) == doubleType) {
+        if (typeAccessor(expression.rightOperand) == doubleType) {
           return doubleType;
         }
       }
@@ -1731,13 +1823,13 @@ class StaticTypeAnalyzer extends SimpleAstVisitor<Object> {
           operator == sc.TokenType.PLUS ||
           operator == sc.TokenType.STAR ||
           operator == sc.TokenType.TILDE_SLASH) {
-        if (_getStaticType(node.rightOperand) == intType) {
-          staticType = intType;
+        if (typeAccessor(expression.rightOperand) == intType) {
+          return intType;
         }
       }
     }
     // default
-    return staticType;
+    return currentType;
   }
 
   /**

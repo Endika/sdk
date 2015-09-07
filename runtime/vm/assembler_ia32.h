@@ -17,6 +17,7 @@ namespace dart {
 
 // Forward declarations.
 class RuntimeEntry;
+class StubEntry;
 
 class Immediate : public ValueObject {
  public:
@@ -731,6 +732,11 @@ class Assembler : public ValueObject {
 
   void CallRuntime(const RuntimeEntry& entry, intptr_t argument_count);
 
+  void Call(const StubEntry& stub_entry);
+
+  void Jmp(const StubEntry& stub_entry);
+  void J(Condition condition, const StubEntry& stub_entry);
+
   /*
    * Loading and comparing classes of objects.
    */
@@ -871,18 +877,29 @@ class Assembler : public ValueObject {
     return kEntryPointToPcMarkerOffset;
   }
 
+  // If allocation tracing for |cid| is enabled, will jump to |trace| label,
+  // which will allocate in the runtime where tracing occurs.
+  void MaybeTraceAllocation(intptr_t cid,
+                            Register temp_reg,
+                            Label* trace,
+                            bool near_jump,
+                            bool inline_isolate = true);
+
   void UpdateAllocationStats(intptr_t cid,
                              Register temp_reg,
-                             Heap::Space space);
+                             Heap::Space space,
+                             bool inline_isolate = true);
 
   void UpdateAllocationStatsWithSize(intptr_t cid,
                                      Register size_reg,
                                      Register temp_reg,
-                                     Heap::Space space);
+                                     Heap::Space space,
+                                     bool inline_isolate = true);
   void UpdateAllocationStatsWithSize(intptr_t cid,
                                      intptr_t instance_size,
                                      Register temp_reg,
-                                     Heap::Space space);
+                                     Heap::Space space,
+                                     bool inline_isolate = true);
 
   // Inlined allocation of an instance of class 'cls', code has no runtime
   // calls. Jump to 'failure' if the instance cannot be allocated here.
@@ -899,7 +916,8 @@ class Assembler : public ValueObject {
                         Label* failure,
                         bool near_jump,
                         Register instance,
-                        Register end_address);
+                        Register end_address,
+                        Register temp);
 
   // Debugging and bringup support.
   void Stop(const char* message);

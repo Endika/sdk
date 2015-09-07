@@ -5,7 +5,6 @@
 // Test file for testing source mappings of invocations.
 
 var counter = 0;
-var bucket;
 
 main(args) {
   counter++;
@@ -36,6 +35,7 @@ invokes(parameter) {
   parameter();
   localVariable();
   localFunction();
+  (parameter)();
 
   parameter.dynamicInvoke();
   new C(parameter).instanceInvokes();

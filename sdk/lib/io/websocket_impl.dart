@@ -857,6 +857,13 @@ class _WebSocketImpl extends Stream with _ServiceObject implements WebSocket {
                              [this._serverSide = false]) {
     _consumer = new _WebSocketConsumer(this, _socket);
     _sink = new _StreamSinkImpl(_consumer);
+    _sink.done.catchError((e) {
+        if (!_controller.isClosed) {
+          _close(WebSocketStatus.ABNORMAL_CLOSURE);
+          _controller.addError(e);
+          _controller.close();
+        }
+      });
     _readyState = WebSocket.OPEN;
 
     var transformer = new _WebSocketProtocolTransformer(_serverSide);
@@ -888,7 +895,7 @@ class _WebSocketImpl extends Stream with _ServiceObject implements WebSocket {
           if (_readyState == WebSocket.OPEN) {
             _readyState = WebSocket.CLOSING;
             if (!_isReservedStatusCode(transformer.closeCode)) {
-              _close(transformer.closeCode);
+              _close(transformer.closeCode, transformer.closeReason);
             } else {
               _close();
             }
@@ -903,6 +910,10 @@ class _WebSocketImpl extends Stream with _ServiceObject implements WebSocket {
     _subscription.pause();
     _controller = new StreamController(sync: true,
                                        onListen: _subscription.resume,
+                                       onCancel: () {
+                                         _subscription.cancel();
+                                         _subscription = null;
+                                       },
                                        onPause: _subscription.pause,
                                        onResume: _subscription.resume);
 
@@ -965,7 +976,7 @@ class _WebSocketImpl extends Stream with _ServiceObject implements WebSocket {
       //      processed if received.
       //   2) set a timer terminate the connection if a close frame is
       //      not received.
-      if (!_controller.hasListener) {
+      if (!_controller.hasListener && _subscription != null) {
         _controller.stream.drain().catchError((_) => {});
       }
       if (_closeTimer == null) {
@@ -974,7 +985,7 @@ class _WebSocketImpl extends Stream with _ServiceObject implements WebSocket {
           // Reuse code and reason from the local close.
           _closeCode = _outCloseCode;
           _closeReason = _outCloseReason;
-          _subscription.cancel();
+          if (_subscription != null) _subscription.cancel();
           _controller.close();
           _webSockets.remove(_serviceId);
         });
@@ -988,6 +999,10 @@ class _WebSocketImpl extends Stream with _ServiceObject implements WebSocket {
     if (_outCloseCode == null) {
       _outCloseCode = code;
       _outCloseReason = reason;
+    }
+    if (_closeCode == null) {
+      _closeCode = code;
+      _closeReason = reason;
     }
     _writeClosed = true;
     _consumer.closeSocket();

@@ -1,13 +1,12 @@
 // Copyright (c) 2015, the Dart project authors.  Please see the AUTHORS file
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
-// VMOptions=--compile_all --error_on_bad_type --error_on_bad_override
+// VMOptions=--error_on_bad_type --error_on_bad_override
 
 import 'package:observatory/service_io.dart';
 import 'package:unittest/unittest.dart';
 import 'test_helper.dart';
 import 'dart:async';
-import 'dart:developer';
 
 doThrow() {
   throw "TheException"; // Line 13.
@@ -34,8 +33,9 @@ var tests = [
   var onPaused = null;
   var onResume = null;
 
+  var stream = await isolate.vm.getEventStream(VM.kDebugStream);
   var subscription;
-  subscription = isolate.vm.events.stream.listen((ServiceEvent event) {
+  subscription = stream.listen((ServiceEvent event) {
     print("Event $event");
     if (event.kind == ServiceEvent.kPauseException) {
       if (onPaused == null) throw "Unexpected pause event $event";

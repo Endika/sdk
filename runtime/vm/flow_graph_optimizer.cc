@@ -51,6 +51,8 @@ DEFINE_FLAG(bool, trace_smi_widening, false, "Trace Smi->Int32 widening pass.");
 
 DECLARE_FLAG(bool, polymorphic_with_deopt);
 DECLARE_FLAG(bool, source_lines);
+DECLARE_FLAG(bool, trace_cha);
+DECLARE_FLAG(bool, trace_field_guards);
 DECLARE_FLAG(bool, trace_type_check_elimination);
 DECLARE_FLAG(bool, warn_on_javascript_compatibility);
 
@@ -769,7 +771,7 @@ void FlowGraphOptimizer::ConvertUse(Value* use, Representation from_rep) {
 void FlowGraphOptimizer::ConvertEnvironmentUse(Value* use,
                                                Representation from_rep) {
   const Representation to_rep = kTagged;
-  if (from_rep == to_rep || to_rep == kNoRepresentation) {
+  if (from_rep == to_rep) {
     return;
   }
   InsertConversion(from_rep, to_rep, use, /*is_environment_use=*/ true);
@@ -2334,6 +2336,11 @@ bool FlowGraphOptimizer::InstanceCallNeedsClassCheck(
         : call->function_name();
     const Class& cls = Class::Handle(Z, function.Owner());
     if (!thread()->cha()->HasOverride(cls, name)) {
+      if (FLAG_trace_cha) {
+        ISL_Print("  **(CHA) Instance call needs no check, "
+            "no overrides of '%s' '%s'\n",
+            name.ToCString(), cls.ToCString());
+      }
       thread()->cha()->AddToLeafClasses(cls);
       return false;
     }
@@ -4028,6 +4035,11 @@ bool FlowGraphOptimizer::TypeCheckAsClassEquality(const AbstractType& type) {
   // Private classes cannot be subclassed by later loaded libs.
   if (!type_class.IsPrivate()) {
     if (FLAG_use_cha_deopt) {
+      if (FLAG_trace_cha) {
+        ISL_Print("  **(CHA) Typecheck as class equality since no "
+            "subclasses: %s\n",
+            type_class.ToCString());
+      }
       thread()->cha()->AddToLeafClasses(type_class);
     } else {
       return false;
@@ -4109,12 +4121,40 @@ static bool TryExpandTestCidsResult(ZoneGrowableArray<intptr_t>* results,
 void FlowGraphOptimizer::ReplaceWithInstanceOf(InstanceCallInstr* call) {
   ASSERT(Token::IsTypeTestOperator(call->token_kind()));
   Definition* left = call->ArgumentAt(0);
-  Definition* instantiator = call->ArgumentAt(1);
-  Definition* type_args = call->ArgumentAt(2);
-  const AbstractType& type =
-      AbstractType::Cast(call->ArgumentAt(3)->AsConstant()->value());
-  const bool negate = Bool::Cast(
-      call->ArgumentAt(4)->OriginalDefinition()->AsConstant()->value()).value();
+  Definition* instantiator = NULL;
+  Definition* type_args = NULL;
+  AbstractType& type = AbstractType::ZoneHandle(Z);
+  bool negate = false;
+  if (call->ArgumentCount() == 2) {
+    instantiator = flow_graph()->constant_null();
+    type_args = flow_graph()->constant_null();
+    if (call->function_name().raw() ==
+        Library::PrivateCoreLibName(Symbols::_instanceOfNum()).raw()) {
+      type = Type::Number();
+    } else if (call->function_name().raw() ==
+        Library::PrivateCoreLibName(Symbols::_instanceOfInt()).raw()) {
+      type = Type::IntType();
+    } else if (call->function_name().raw() ==
+        Library::PrivateCoreLibName(Symbols::_instanceOfSmi()).raw()) {
+      type = Type::SmiType();
+    } else if (call->function_name().raw() ==
+        Library::PrivateCoreLibName(Symbols::_instanceOfDouble()).raw()) {
+      type = Type::Double();
+    } else if (call->function_name().raw() ==
+        Library::PrivateCoreLibName(Symbols::_instanceOfString()).raw()) {
+      type = Type::StringType();
+    } else {
+      UNIMPLEMENTED();
+    }
+    negate = Bool::Cast(call->ArgumentAt(1)->OriginalDefinition()
+        ->AsConstant()->value()).value();
+  } else {
+    instantiator = call->ArgumentAt(1);
+    type_args = call->ArgumentAt(2);
+    type = AbstractType::Cast(call->ArgumentAt(3)->AsConstant()->value()).raw();
+    negate = Bool::Cast(call->ArgumentAt(4)->OriginalDefinition()
+        ->AsConstant()->value()).value();
+  }
   const ICData& unary_checks =
       ICData::ZoneHandle(Z, call->ic_data()->AsUnaryClassChecks());
   if (FLAG_warn_on_javascript_compatibility &&
@@ -4568,14 +4608,25 @@ void FlowGraphOptimizer::VisitStoreInstanceField(
         Function::Handle(Z, owner.LookupGetterFunction(field_name));
     const Function& setter =
         Function::Handle(Z, owner.LookupSetterFunction(field_name));
-    bool result = !getter.IsNull()
-               && !setter.IsNull()
-               && (setter.usage_counter() > 0)
-               && (FLAG_getter_setter_ratio * setter.usage_counter() >=
-                   getter.usage_counter());
-    if (!result) {
-      if (FLAG_trace_optimization) {
+    bool unboxed_field = false;
+    if (!getter.IsNull() && !setter.IsNull()) {
+      if (field.is_double_initialized()) {
+        unboxed_field = true;
+      } else if ((setter.usage_counter() > 0) &&
+                 ((FLAG_getter_setter_ratio * setter.usage_counter()) >=
+                   getter.usage_counter())) {
+        unboxed_field = true;
+      }
+    }
+    if (!unboxed_field) {
+      if (FLAG_trace_optimization || FLAG_trace_field_guards) {
         ISL_Print("Disabling unboxing of %s\n", field.ToCString());
+        if (!setter.IsNull()) {
+          OS::Print("  setter usage count: %" Pd "\n", setter.usage_counter());
+        }
+        if (!getter.IsNull()) {
+          OS::Print("  getter usage count: %" Pd "\n", getter.usage_counter());
+        }
       }
       field.set_is_unboxing_candidate(false);
       field.DeoptimizeDependentCode();
@@ -5508,7 +5559,7 @@ class Place : public ValueObject {
     if (def == NULL) {
       return "*";
     } else {
-      return Isolate::Current()->current_zone()->PrintToString(
+      return Thread::Current()->zone()->PrintToString(
             "v%" Pd, def->ssa_temp_index());
     }
   }
@@ -5521,34 +5572,34 @@ class Place : public ValueObject {
       case kField: {
         const char* field_name = String::Handle(field().name()).ToCString();
         if (field().is_static()) {
-          return Isolate::Current()->current_zone()->PrintToString(
+          return Thread::Current()->zone()->PrintToString(
               "<%s>", field_name);
         } else {
-          return Isolate::Current()->current_zone()->PrintToString(
+          return Thread::Current()->zone()->PrintToString(
               "<%s.%s>", DefinitionName(instance()), field_name);
         }
       }
 
       case kVMField:
-        return Isolate::Current()->current_zone()->PrintToString(
+        return Thread::Current()->zone()->PrintToString(
             "<%s.@%" Pd ">",
             DefinitionName(instance()),
             offset_in_bytes());
 
       case kIndexed:
-        return Isolate::Current()->current_zone()->PrintToString(
+        return Thread::Current()->zone()->PrintToString(
             "<%s[%s]>",
             DefinitionName(instance()),
             DefinitionName(index()));
 
       case kConstantIndexed:
         if (element_size() == kNoSize) {
-          return Isolate::Current()->current_zone()->PrintToString(
+          return Thread::Current()->zone()->PrintToString(
               "<%s[%" Pd "]>",
               DefinitionName(instance()),
               index_constant());
         } else {
-          return Isolate::Current()->current_zone()->PrintToString(
+          return Thread::Current()->zone()->PrintToString(
               "<%s[%" Pd "|%" Pd "]>",
               DefinitionName(instance()),
               index_constant(),

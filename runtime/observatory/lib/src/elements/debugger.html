@@ -234,7 +234,8 @@
       .flex-item-vars {
         flex-grow: 5;
         flex-shrink: 0;
-        flex-basis: 225px;
+        flex-basis: 250px;
+        overflow-x: hidden;
       }
     </style>
     <div id="frameOuter" class="frameOuter">
@@ -270,7 +271,8 @@
                   <div class="memberItem">
                     <div class="memberName">{{ v['name']}}</div>
                     <div class="memberValue">
-                      <any-service-ref ref="{{ v['value'] }}">
+                      <any-service-ref ref="{{ v['value'] }}"
+                                       expandKey="{{ makeExpandKey(v['name']) }}">
                       </any-service-ref>
                     </div>
                   </div>
@@ -370,8 +372,8 @@
             <div class="flex-item-script">
               <template if="{{ message.handler != null }}">
               <source-inset height="{{ scriptHeight }}"
-                              location="{{ message.handler.location }}"
-                              inDebuggerContext="{{ true }}">
+                            location="{{ message.handler.location }}"
+                            inDebuggerContext="{{ true }}">
               </source-inset>
               </template>
             </div>
@@ -420,13 +422,18 @@
         line-height: 125%;
         color: red;
       }
+      .green {
+        font: normal 14px consolas, courier, monospace;
+        white-space: pre;
+        line-height: 125%;
+        color: green;
+      }
       .spacer {
         height: 20px;
       }
     </style>
     <div id="consoleText" class="console">
-      <!-- Console output is added programmatically here using the 'normal'
-           and 'bold' styles. -->
+      <!-- Console output is added programmatically -->
     </div>
   </template>
 </polymer-element>
@@ -437,6 +444,7 @@
     <style>
       .textBox {
         margin: 20px;
+        padding: 5px;
         font: 400 16px consolas, courier, monospace;
         width: 95%;
       }

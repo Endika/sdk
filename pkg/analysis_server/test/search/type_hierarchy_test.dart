@@ -14,9 +14,10 @@ import 'package:test_reflective_loader/test_reflective_loader.dart';
 import 'package:unittest/unittest.dart';
 
 import '../analysis_abstract.dart';
+import '../utils.dart';
 
 main() {
-  groupSep = ' | ';
+  initializeTestEnvironment();
   defineReflectiveTests(GetTypeHierarchyTest);
 }
 
@@ -109,13 +110,16 @@ class B extends A<int> {
   test_class_extends_fileAndPackageUris() async {
     // prepare packages
     String pkgFile = '/packages/pkgA/libA.dart';
-    resourceProvider.newFile(pkgFile, '''
+    resourceProvider.newFile(
+        pkgFile,
+        '''
 library lib_a;
 class A {}
 class B extends A {}
 ''');
-    packageMapProvider.packageMap['pkgA'] =
-        [resourceProvider.getResource('/packages/pkgA')];
+    packageMapProvider.packageMap['pkgA'] = [
+      resourceProvider.getResource('/packages/pkgA')
+    ];
     // reference the package from a project
     addTestFile('''
 import 'package:pkgA/libA.dart';
@@ -787,18 +791,90 @@ class D extends C {
         itemD.memberElement.location.offset, findOffset('test(x) {} // in D'));
   }
 
-  Request _createGetTypeHierarchyRequest(String search) {
-    return new SearchGetTypeHierarchyParams(testFile, findOffset(search))
-        .toRequest(requestId);
+  test_superOnly() async {
+    addTestFile('''
+class A {}
+class B {}
+class C extends A implements B {}
+class D extends C {}
+''');
+    List<TypeHierarchyItem> items =
+        await _getTypeHierarchy('C extends', superOnly: true);
+    expect(_toJson(items), [
+      {
+        'classElement': {
+          'kind': 'CLASS',
+          'name': 'C',
+          'location': anything,
+          'flags': 0
+        },
+        'superclass': 1,
+        'interfaces': [3],
+        'mixins': [],
+        'subclasses': []
+      },
+      {
+        'classElement': {
+          'kind': 'CLASS',
+          'name': 'A',
+          'location': anything,
+          'flags': 0
+        },
+        'superclass': 2,
+        'interfaces': [],
+        'mixins': [],
+        'subclasses': []
+      },
+      {
+        'classElement': {
+          'kind': 'CLASS',
+          'name': 'Object',
+          'location': anything,
+          'flags': 0
+        },
+        'interfaces': [],
+        'mixins': [],
+        'subclasses': []
+      },
+      {
+        'classElement': {
+          'kind': 'CLASS',
+          'name': 'B',
+          'location': anything,
+          'flags': 0
+        },
+        'superclass': 2,
+        'interfaces': [],
+        'mixins': [],
+        'subclasses': []
+      }
+    ]);
   }
 
-  Future<List<TypeHierarchyItem>> _getTypeHierarchy(String search) async {
+  test_superOnly_fileDoesNotExist() async {
+    Request request = new SearchGetTypeHierarchyParams(
+        '/does/not/exist.dart', 0,
+        superOnly: true).toRequest(requestId);
+    Response response = await serverChannel.sendRequest(request);
+    List<TypeHierarchyItem> items =
+        new SearchGetTypeHierarchyResult.fromResponse(response).hierarchyItems;
+    expect(items, isNull);
+  }
+
+  Request _createGetTypeHierarchyRequest(String search, {bool superOnly}) {
+    return new SearchGetTypeHierarchyParams(testFile, findOffset(search),
+        superOnly: superOnly).toRequest(requestId);
+  }
+
+  Future<List<TypeHierarchyItem>> _getTypeHierarchy(String search,
+      {bool superOnly}) async {
     await waitForTasksFinished();
-    Request request = _createGetTypeHierarchyRequest(search);
+    Request request =
+        _createGetTypeHierarchyRequest(search, superOnly: superOnly);
     Response response = await serverChannel.sendRequest(request);
     expect(serverErrors, isEmpty);
-    return new SearchGetTypeHierarchyResult.fromResponse(
-        response).hierarchyItems;
+    return new SearchGetTypeHierarchyResult.fromResponse(response)
+        .hierarchyItems;
   }
 
   List _toJson(List<TypeHierarchyItem> items) {

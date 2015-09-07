@@ -13,10 +13,11 @@ import 'package:analysis_server/src/services/refactoring/refactoring.dart';
 import 'package:test_reflective_loader/test_reflective_loader.dart';
 import 'package:unittest/unittest.dart';
 
+import '../../utils.dart';
 import 'abstract_refactoring.dart';
 
 main() {
-  groupSep = ' | ';
+  initializeTestEnvironment();
   defineReflectiveTests(ExtractMethodTest);
 }
 
@@ -872,7 +873,8 @@ main() {
     // check
     RefactoringStatus status = await refactoring.checkInitialConditions();
     assertRefactoringStatus(status, RefactoringProblemSeverity.FATAL,
-        expectedMessage: 'Cannot extract closure as method, it references 1 external variable(s).');
+        expectedMessage:
+            'Cannot extract closure as method, it references 1 external variable(s).');
   }
 
   test_closure_bad_referencesParameter() async {
@@ -886,7 +888,8 @@ main(int k) {
     // check
     RefactoringStatus status = await refactoring.checkInitialConditions();
     assertRefactoringStatus(status, RefactoringProblemSeverity.FATAL,
-        expectedMessage: 'Cannot extract closure as method, it references 1 external variable(s).');
+        expectedMessage:
+            'Cannot extract closure as method, it references 1 external variable(s).');
   }
 
   test_fromTopLevelVariableInitializerClosure() {
@@ -1804,7 +1807,7 @@ main() {
   var a = res(v1, v2); // marker
 }
 
-num res(int v1, int v2) => v1 + v2 + v1;
+int res(int v1, int v2) => v1 + v2 + v1;
 ''');
   }
 
@@ -2668,7 +2671,9 @@ void res() {
   }
 
   void _addLibraryReturningAsync() {
-    addSource('/asyncLib.dart', r'''
+    addSource(
+        '/asyncLib.dart',
+        r'''
 library asyncLib;
 import 'dart:async';
 Future<int> newFuture() => null;

@@ -26,6 +26,7 @@ namespace dart {
 
 // Forward declarations.
 class RuntimeEntry;
+class StubEntry;
 
 class Immediate : public ValueObject {
  public:
@@ -241,7 +242,7 @@ class Assembler : public ValueObject {
         delay_slot_available_(false),
         in_delay_slot_(false),
         comments_(),
-        allow_constant_pool_(true) { }
+        constant_pool_allowed_(true) { }
   ~Assembler() { }
 
   void PopRegister(Register r) { Pop(r); }
@@ -304,13 +305,20 @@ class Assembler : public ValueObject {
 
   void UpdateAllocationStats(intptr_t cid,
                              Register temp_reg,
-                             Heap::Space space);
+                             Heap::Space space,
+                             bool inline_isolate = true);
 
   void UpdateAllocationStatsWithSize(intptr_t cid,
                                      Register size_reg,
                                      Register temp_reg,
-                                     Heap::Space space);
+                                     Heap::Space space,
+                                     bool inline_isolate = true);
 
+
+  void MaybeTraceAllocation(intptr_t cid,
+                            Register temp_reg,
+                            Label* trace,
+                            bool inline_isolate = true);
 
   // Inlined allocation of an instance of class 'cls', code has no runtime
   // calls. Jump to 'failure' if the instance cannot be allocated here.
@@ -904,42 +912,15 @@ class Assembler : public ValueObject {
     SubuDetectOverflow(rd, rs, rd, ro);
   }
 
-  void Branch(const ExternalLabel* label) {
-    ASSERT(!in_delay_slot_);
-    LoadImmediate(TMP, label->address());
-    jr(TMP);
-  }
+  void Branch(const StubEntry& stub_entry);
 
-  void BranchPatchable(const ExternalLabel* label) {
-    ASSERT(!in_delay_slot_);
-    const uint16_t low = Utils::Low16Bits(label->address());
-    const uint16_t high = Utils::High16Bits(label->address());
-    lui(T9, Immediate(high));
-    ori(T9, T9, Immediate(low));
-    jr(T9);
-    delay_slot_available_ = false;  // CodePatcher expects a nop.
-  }
+  void BranchPatchable(const StubEntry& stub_entry);
 
-  void BranchLink(const ExternalLabel* label) {
-    ASSERT(!in_delay_slot_);
-    LoadImmediate(T9, label->address());
-    jalr(T9);
-  }
+  void BranchLink(const ExternalLabel* label, Patchability patchable);
+  void BranchLink(const StubEntry& stub_entry,
+                  Patchability patchable = kNotPatchable);
 
-  void BranchLink(const ExternalLabel* label, Patchability patchable) {
-    ASSERT(!in_delay_slot_);
-    const int32_t offset = ObjectPool::element_offset(
-        object_pool_wrapper_.FindExternalLabel(label, patchable));
-    LoadWordFromPoolOffset(T9, offset - kHeapObjectTag);
-    jalr(T9);
-    if (patchable == kPatchable) {
-      delay_slot_available_ = false;  // CodePatcher expects a nop.
-    }
-  }
-
-  void BranchLinkPatchable(const ExternalLabel* label) {
-    BranchLink(label, kPatchable);
-  }
+  void BranchLinkPatchable(const StubEntry& stub_entry);
 
   void Drop(intptr_t stack_elements) {
     ASSERT(stack_elements >= 0);
@@ -1539,6 +1520,7 @@ class Assembler : public ValueObject {
 
   void LoadWordFromPoolOffset(Register rd, int32_t offset);
   void LoadObject(Register rd, const Object& object);
+  void LoadUniqueObject(Register rd, const Object& object);
   void LoadExternalLabel(Register rd,
                          const ExternalLabel* label,
                          Patchability patchable);
@@ -1615,11 +1597,11 @@ class Assembler : public ValueObject {
   static bool IsSafe(const Object& object) { return true; }
   static bool IsSafeSmi(const Object& object) { return object.IsSmi(); }
 
-  bool allow_constant_pool() const {
-    return allow_constant_pool_;
+  bool constant_pool_allowed() const {
+    return constant_pool_allowed_;
   }
-  void set_allow_constant_pool(bool b) {
-    allow_constant_pool_ = b;
+  void set_constant_pool_allowed(bool b) {
+    constant_pool_allowed_ = b;
   }
 
  private:
@@ -1649,7 +1631,11 @@ class Assembler : public ValueObject {
 
   GrowableArray<CodeComment*> comments_;
 
-  bool allow_constant_pool_;
+  bool constant_pool_allowed_;
+
+  void BranchLink(const ExternalLabel* label);
+
+  void LoadObjectHelper(Register rd, const Object& object, bool is_unique);
 
   void Emit(int32_t value) {
     // Emitting an instruction clears the delay slot state.

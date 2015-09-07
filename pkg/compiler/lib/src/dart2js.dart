@@ -66,9 +66,9 @@ String extractParameter(String argument, {bool isOptionalArgument: false}) {
   return m[2];
 }
 
-String extractPath(String argument) {
+String extractPath(String argument, {bool isDirectory: true}) {
   String path = nativeToUriPath(extractParameter(argument));
-  return path.endsWith("/") ? path : "$path/";
+  return !path.endsWith("/") && isDirectory ? "$path/" : path;
 }
 
 void parseCommandLine(List<OptionHandler> handlers, List<String> argv) {
@@ -143,7 +143,8 @@ Future<api.CompilationResult> compile(List<String> argv) {
   }
 
   setPackageConfig(String argument) {
-    packageConfig = currentDirectory.resolve(extractPath(argument));
+    packageConfig =
+        currentDirectory.resolve(extractPath(argument, isDirectory: false));
   }
 
   setOutput(Iterator<String> arguments) {
@@ -317,6 +318,7 @@ Future<api.CompilationResult> compile(List<String> argv) {
     new OptionHandler('--library-root=.+', setLibraryRoot),
     new OptionHandler('--out=.+|-o.*', setOutput, multipleArguments: true),
     new OptionHandler('--allow-mock-compilation', passThrough),
+    new OptionHandler('--fast-startup', passThrough),
     new OptionHandler('--minify|-m', implyCompilation),
     new OptionHandler('--preserve-uris', passThrough),
     new OptionHandler('--force-strip=.*', setStrip),
@@ -359,7 +361,12 @@ Future<api.CompilationResult> compile(List<String> argv) {
           "Async-await is supported by default.",
           api.Diagnostic.HINT);
     }),
-    new OptionHandler('--enable-null-aware-operators', passThrough),
+    new OptionHandler('--enable-null-aware-operators',  (_) {
+      diagnosticHandler.info(
+          "Option '--enable-null-aware-operators' is no longer needed. "
+          "Null aware operators are supported by default.",
+          api.Diagnostic.HINT);
+    }),
     new OptionHandler('--enable-enum', (_) {
       diagnosticHandler.info(
           "Option '--enable-enum' is no longer needed. "
@@ -497,8 +504,8 @@ void writeString(Uri uri, String text) {
 
 void fail(String message) {
   if (diagnosticHandler != null) {
-    diagnosticHandler.diagnosticHandler(
-        null, -1, -1, message, api.Diagnostic.ERROR);
+    diagnosticHandler.report(
+        null, null, -1, -1, message, api.Diagnostic.ERROR);
   } else {
     print('Error: $message');
   }

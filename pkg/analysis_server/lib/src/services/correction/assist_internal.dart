@@ -87,6 +87,8 @@ class AssistProcessor {
     _addProposal_convertToIsNot_onIs();
     _addProposal_convertToIsNot_onNot();
     _addProposal_convertToIsNotEmpty();
+    _addProposal_convertToFieldParameter();
+    _addProposal_convertToNormalParameter();
     _addProposal_encapsulateField();
     _addProposal_exchangeOperands();
     _addProposal_importAddShow();
@@ -392,18 +394,30 @@ class AssistProcessor {
   void _addProposal_convertToBlockFunctionBody() {
     FunctionBody body = getEnclosingFunctionBody();
     // prepare expression body
-    if (body is! ExpressionFunctionBody) {
+    if (body is! ExpressionFunctionBody || body.isGenerator) {
       _coverageMarker();
       return;
     }
     Expression returnValue = (body as ExpressionFunctionBody).expression;
+    DartType returnValueType = returnValue.staticType;
+    String returnValueCode = _getNodeText(returnValue);
     // prepare prefix
     String prefix = utils.getNodePrefix(body.parent);
-    // add change
     String indent = utils.getIndent(1);
-    String returnSource = 'return ' + _getNodeText(returnValue);
-    String newBodySource = '{$eol$prefix$indent$returnSource;$eol$prefix}';
-    _addReplaceEdit(rangeNode(body), newBodySource);
+    // add change
+    SourceBuilder sb = new SourceBuilder(file, body.offset);
+    if (body.isAsynchronous) {
+      sb.append('async ');
+    }
+    sb.append('{$eol$prefix$indent');
+    if (!returnValueType.isVoid) {
+      sb.append('return ');
+    }
+    sb.append(returnValueCode);
+    sb.append(';');
+    sb.setExitOffset();
+    sb.append('$eol$prefix}');
+    _insertBuilder(sb, body.length);
     // add proposal
     _addAssist(DartAssistKind.CONVERT_INTO_BLOCK_BODY, []);
   }
@@ -411,7 +425,7 @@ class AssistProcessor {
   void _addProposal_convertToExpressionFunctionBody() {
     // prepare current body
     FunctionBody body = getEnclosingFunctionBody();
-    if (body is! BlockFunctionBody) {
+    if (body is! BlockFunctionBody || body.isGenerator) {
       _coverageMarker();
       return;
     }
@@ -421,26 +435,119 @@ class AssistProcessor {
       _coverageMarker();
       return;
     }
-    if (statements[0] is! ReturnStatement) {
-      _coverageMarker();
-      return;
-    }
-    ReturnStatement returnStatement = statements[0] as ReturnStatement;
+    Statement onlyStatement = statements.first;
     // prepare returned expression
-    Expression returnExpression = returnStatement.expression;
+    Expression returnExpression;
+    if (onlyStatement is ReturnStatement) {
+      returnExpression = onlyStatement.expression;
+    } else if (onlyStatement is ExpressionStatement) {
+      returnExpression = onlyStatement.expression;
+    }
     if (returnExpression == null) {
       _coverageMarker();
       return;
     }
     // add change
-    String newBodySource = '=> ${_getNodeText(returnExpression)}';
+    SourceBuilder sb = new SourceBuilder(file, body.offset);
+    if (body.isAsynchronous) {
+      sb.append('async ');
+    }
+    sb.append('=> ');
+    sb.append(_getNodeText(returnExpression));
     if (body.parent is! FunctionExpression ||
         body.parent.parent is FunctionDeclaration) {
-      newBodySource += ';';
+      sb.append(';');
     }
-    _addReplaceEdit(rangeNode(body), newBodySource);
+    _insertBuilder(sb, body.length);
     // add proposal
     _addAssist(DartAssistKind.CONVERT_INTO_EXPRESSION_BODY, []);
+  }
+
+  void _addProposal_convertToFieldParameter() {
+    if (node == null) {
+      return;
+    }
+    // prepare ConstructorDeclaration
+    ConstructorDeclaration constructor =
+        node.getAncestor((node) => node is ConstructorDeclaration);
+    if (constructor == null) {
+      return;
+    }
+    FormalParameterList parameterList = constructor.parameters;
+    List<ConstructorInitializer> initializers = constructor.initializers;
+    // prepare parameter
+    SimpleFormalParameter parameter;
+    if (node.parent is SimpleFormalParameter &&
+        node.parent.parent is FormalParameterList &&
+        node.parent.parent.parent is ConstructorDeclaration) {
+      parameter = node.parent;
+    }
+    if (node is SimpleIdentifier &&
+        node.parent is ConstructorFieldInitializer) {
+      String name = (node as SimpleIdentifier).name;
+      ConstructorFieldInitializer initializer = node.parent;
+      if (initializer.expression == node) {
+        for (FormalParameter formalParameter in parameterList.parameters) {
+          if (formalParameter is SimpleFormalParameter &&
+              formalParameter.identifier.name == name) {
+            parameter = formalParameter;
+          }
+        }
+      }
+    }
+    // analyze parameter
+    if (parameter != null) {
+      String parameterName = parameter.identifier.name;
+      ParameterElement parameterElement = parameter.element;
+      // check number of references
+      {
+        int numOfReferences = 0;
+        AstVisitor visitor =
+            new _SimpleIdentifierRecursiveAstVisitor((SimpleIdentifier node) {
+          if (node.staticElement == parameterElement) {
+            numOfReferences++;
+          }
+        });
+        for (ConstructorInitializer initializer in initializers) {
+          initializer.accept(visitor);
+        }
+        if (numOfReferences != 1) {
+          return;
+        }
+      }
+      // find the field initializer
+      ConstructorFieldInitializer parameterInitializer;
+      for (ConstructorInitializer initializer in initializers) {
+        if (initializer is ConstructorFieldInitializer) {
+          Expression expression = initializer.expression;
+          if (expression is SimpleIdentifier &&
+              expression.name == parameterName) {
+            parameterInitializer = initializer;
+          }
+        }
+      }
+      if (parameterInitializer == null) {
+        return;
+      }
+      String fieldName = parameterInitializer.fieldName.name;
+      // replace parameter
+      _addReplaceEdit(rangeNode(parameter), 'this.$fieldName');
+      // remove initializer
+      int initializerIndex = initializers.indexOf(parameterInitializer);
+      if (initializers.length == 1) {
+        _addRemoveEdit(rangeEndEnd(parameterList, parameterInitializer));
+      } else {
+        if (initializerIndex == 0) {
+          ConstructorInitializer next = initializers[initializerIndex + 1];
+          _addRemoveEdit(rangeStartStart(parameterInitializer, next));
+        } else {
+          ConstructorInitializer prev = initializers[initializerIndex - 1];
+          _addRemoveEdit(rangeEndEnd(prev, parameterInitializer));
+        }
+      }
+      // add proposal
+      _addAssist(DartAssistKind.CONVERT_TO_FIELD_PARAMETER, []);
+    }
   }
 
   void _addProposal_convertToForIndexLoop() {
@@ -671,6 +778,38 @@ class AssistProcessor {
     _addReplaceEdit(rangeNode(isEmptyIdentifier), 'isNotEmpty');
     // add proposal
     _addAssist(DartAssistKind.CONVERT_INTO_IS_NOT_EMPTY, []);
+  }
+
+  void _addProposal_convertToNormalParameter() {
+    if (node is SimpleIdentifier &&
+        node.parent is FieldFormalParameter &&
+        node.parent.parent is FormalParameterList &&
+        node.parent.parent.parent is ConstructorDeclaration) {
+      ConstructorDeclaration constructor = node.parent.parent.parent;
+      FormalParameterList parameterList = node.parent.parent;
+      FieldFormalParameter parameter = node.parent;
+      ParameterElement parameterElement = parameter.element;
+      String name = (node as SimpleIdentifier).name;
+      // prepare type
+      DartType type = parameterElement.type;
+      Set<LibraryElement> librariesToImport = new Set<LibraryElement>();
+      String typeCode = utils.getTypeSource(type, librariesToImport);
+      // replace parameter
+      if (type.isDynamic) {
+        _addReplaceEdit(rangeNode(parameter), name);
+      } else {
+        _addReplaceEdit(rangeNode(parameter), '$typeCode $name');
+      }
+      // add field initializer
+      List<ConstructorInitializer> initializers = constructor.initializers;
+      if (initializers.isEmpty) {
+        _addInsertEdit(parameterList.end, ' : $name = $name');
+      } else {
+        _addInsertEdit(initializers.last.end, ', $name = $name');
+      }
+      // add proposal
+      _addAssist(DartAssistKind.CONVERT_TO_NORMAL_PARAMETER, []);
+    }
   }
 
   void _addProposal_encapsulateField() {

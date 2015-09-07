@@ -68,8 +68,8 @@ class Heap {
 
   ~Heap();
 
-  Scavenger* new_space() const { return new_space_; }
-  PageSpace* old_space() const { return old_space_; }
+  Scavenger* new_space() { return &new_space_; }
+  PageSpace* old_space() { return &old_space_; }
 
   uword Allocate(intptr_t size, Space space) {
     ASSERT(!read_only_);
@@ -105,14 +105,9 @@ class Heap {
   bool CodeContains(uword addr) const;
   bool StubCodeContains(uword addr) const;
 
-  // Visit all pointers. Caller must ensure concurrent sweeper is not running,
-  // and the visitor must not allocate (see issue 21620).
-  void VisitObjectPointers(ObjectPointerVisitor* visitor) const;
-
-  // Visit all objects, including FreeListElement "objects". Caller must ensure
-  // concurrent sweeper is not running, and the visitor must not allocate (see
-  // issue 21620).
-  void VisitObjects(ObjectVisitor* visitor) const;
+  void IterateObjects(ObjectVisitor* visitor) const;
+  void IterateOldObjects(ObjectVisitor* visitor) const;
+  void IterateObjectPointers(ObjectVisitor* visitor) const;
 
   // Find an object by visiting all pointers in the specified heap space,
   // the 'visitor' is used to determine if an object is found or not.
@@ -121,8 +116,7 @@ class Heap {
   // point.
   // The 'visitor' function should return false if the object is not found,
   // traversal through the heap space continues.
-  // Returns null object if nothing is found. Must be called within a
-  // NoSafepointScope.
+  // Returns null object if nothing is found.
   RawInstructions* FindObjectInCodeSpace(FindObjectVisitor* visitor) const;
   RawObject* FindOldObject(FindObjectVisitor* visitor) const;
   RawObject* FindNewObject(FindObjectVisitor* visitor) const;
@@ -142,13 +136,13 @@ class Heap {
   // Protect access to the heap.
   void WriteProtect(bool read_only);
   void WriteProtectCode(bool read_only) {
-    old_space_->WriteProtectCode(read_only);
+    old_space_.WriteProtectCode(read_only);
   }
 
   // Accessors for inlined allocation in generated code.
-  uword TopAddress(Space space);
-  uword EndAddress(Space space);
-  Space SpaceForAllocation(intptr_t class_id) const;
+  static intptr_t TopOffset(Space space);
+  static intptr_t EndOffset(Space space);
+  static Space SpaceForAllocation(intptr_t class_id);
 
   // Initialize the heap and register it with the isolate.
   static void Init(Isolate* isolate,
@@ -225,7 +219,7 @@ class Heap {
     stats_.data_[id] = value;
   }
 
-  bool gc_in_progress() const { return gc_in_progress_; }
+  bool gc_in_progress();
 
   static bool IsAllocatableInNewSpace(intptr_t size) {
     return size <= kNewAllocatableSize;
@@ -234,8 +228,8 @@ class Heap {
   void PrintToJSONObject(Space space, JSONObject* object) const;
 
   // The heap map contains the sizes and class ids for the objects in each page.
-  void PrintHeapMapToJSONStream(Isolate* isolate, JSONStream* stream) const {
-    return old_space_->PrintHeapMapToJSONStream(isolate, stream);
+  void PrintHeapMapToJSONStream(Isolate* isolate, JSONStream* stream) {
+    return old_space_.PrintHeapMapToJSONStream(isolate, stream);
   }
 
   Isolate* isolate() const { return isolate_; }
@@ -284,12 +278,28 @@ class Heap {
   uword AllocateOld(intptr_t size, HeapPage::PageType type);
   uword AllocatePretenured(intptr_t size);
 
+  // Visit all pointers. Caller must ensure concurrent sweeper is not running,
+  // and the visitor must not allocate.
+  void VisitObjectPointers(ObjectPointerVisitor* visitor) const;
+
+  // Visit all objects, including FreeListElement "objects". Caller must ensure
+  // concurrent sweeper is not running, and the visitor must not allocate.
+  void VisitObjects(ObjectVisitor* visitor) const;
+
+  // Like Verify, but does not wait for concurrent sweeper, so caller must
+  // ensure thread-safety.
+  bool VerifyGC(MarkExpectation mark_expectation = kForbidMarked) const;
+
   // GC stats collection.
   void RecordBeforeGC(Space space, GCReason reason);
   void RecordAfterGC();
   void PrintStats();
   void UpdateClassHeapStatsBeforeGC(Heap::Space space);
   void UpdatePretenurePolicy();
+
+  // Updates gc_in_progress.
+  void BeginGC();
+  void EndGC();
 
   // If this heap is non-empty, updates start and end to the smallest range that
   // contains both the original [start, end) and the [lowest, highest) addresses
@@ -299,8 +309,8 @@ class Heap {
   Isolate* isolate_;
 
   // The different spaces used for allocation.
-  Scavenger* new_space_;
-  PageSpace* old_space_;
+  Scavenger new_space_;
+  PageSpace old_space_;
 
   WeakTable* new_weak_tables_[kNumWeakSelectors];
   WeakTable* old_weak_tables_[kNumWeakSelectors];
@@ -312,34 +322,27 @@ class Heap {
   bool read_only_;
 
   // GC on the heap is in progress.
+  Mutex gc_in_progress_mutex_;
   bool gc_in_progress_;
 
   int pretenure_policy_;
 
   friend class ServiceEvent;
-  friend class GCTestHelper;
+  friend class PageSpace;  // VerifyGC
   DISALLOW_COPY_AND_ASSIGN(Heap);
 };
 
 
-// Within a NoSafepointScope, the thread must not reach any safepoint. Used
-// around code that manipulates raw object pointers directly without handles.
-#if defined(DEBUG)
-class NoSafepointScope : public StackResource {
+class HeapIterationScope : public StackResource {
  public:
-  NoSafepointScope();
-  ~NoSafepointScope();
+  HeapIterationScope();
+  ~HeapIterationScope();
  private:
-  DISALLOW_COPY_AND_ASSIGN(NoSafepointScope);
+  NoSafepointScope no_safepoint_scope_;
+  PageSpace* old_space_;
+
+  DISALLOW_COPY_AND_ASSIGN(HeapIterationScope);
 };
-#else  // defined(DEBUG)
-class NoSafepointScope : public ValueObject {
- public:
-  NoSafepointScope() {}
- private:
-  DISALLOW_COPY_AND_ASSIGN(NoSafepointScope);
-};
-#endif  // defined(DEBUG)
 
 
 class NoHeapGrowthControlScope : public StackResource {

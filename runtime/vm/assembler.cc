@@ -24,7 +24,7 @@ DECLARE_FLAG(bool, disassemble);
 DECLARE_FLAG(bool, disassemble_optimized);
 
 static uword NewContents(intptr_t capacity) {
-  Zone* zone = Isolate::Current()->current_zone();
+  Zone* zone = Thread::Current()->zone();
   uword result = zone->AllocUnsafe(capacity);
 #if defined(DEBUG)
   // Initialize the buffer with kBreakPointInstruction to force a break
@@ -254,8 +254,6 @@ intptr_t ObjectPoolWrapper::AddImmediate(uword imm) {
 
 intptr_t ObjectPoolWrapper::AddObject(ObjectPool::Entry entry,
                                       Patchability patchable) {
-  // The object pool cannot be used in the vm isolate.
-  ASSERT(Isolate::Current() != Dart::vm_isolate());
   object_pool_.Add(entry);
   if (patchable == kNotPatchable) {
     // The object isn't patchable. Record the index for fast lookup.
@@ -268,18 +266,14 @@ intptr_t ObjectPoolWrapper::AddObject(ObjectPool::Entry entry,
 
 intptr_t ObjectPoolWrapper::AddExternalLabel(const ExternalLabel* label,
                                              Patchability patchable) {
-  ASSERT(Isolate::Current() != Dart::vm_isolate());
   return AddObject(ObjectPool::Entry(label->address(),
-                                     ObjectPool::kImmediate),
+                                     ObjectPool::kExternalLabel),
                    patchable);
 }
 
 
 intptr_t ObjectPoolWrapper::FindObject(ObjectPool::Entry entry,
                                        Patchability patchable) {
-  // The object pool cannot be used in the vm isolate.
-  ASSERT(Isolate::Current() != Dart::vm_isolate());
-
   // If the object is not patchable, check if we've already got it in the
   // object pool.
   if (patchable == kNotPatchable) {
@@ -306,10 +300,8 @@ intptr_t ObjectPoolWrapper::FindImmediate(uword imm) {
 
 intptr_t ObjectPoolWrapper::FindExternalLabel(const ExternalLabel* label,
                                               Patchability patchable) {
-  // The object pool cannot be used in the vm isolate.
-  ASSERT(Isolate::Current() != Dart::vm_isolate());
   return FindObject(ObjectPool::Entry(label->address(),
-                                      ObjectPool::kImmediate),
+                                      ObjectPool::kExternalLabel),
                     patchable);
 }
 
@@ -320,9 +312,10 @@ RawObjectPool* ObjectPoolWrapper::MakeObjectPool() {
     return Object::empty_object_pool().raw();
   }
   const ObjectPool& result = ObjectPool::Handle(ObjectPool::New(len));
+  const TypedData& info_array = TypedData::Handle(result.info_array());
   for (intptr_t i = 0; i < len; ++i) {
     ObjectPool::EntryType info = object_pool_[i].type_;
-    result.SetInfoAt(i, info);
+    info_array.SetInt8(i, static_cast<int8_t>(info));
     if (info == ObjectPool::kTaggedObject) {
       result.SetObjectAt(i, *object_pool_[i].obj_);
     } else {

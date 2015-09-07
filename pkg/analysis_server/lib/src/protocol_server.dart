@@ -47,6 +47,23 @@ void doSourceChange_addSourceEdit(SourceChange change,
   change.addEdit(file, fileStamp, edit);
 }
 
+String getReturnTypeString(engine.Element element) {
+  if (element is engine.ExecutableElement) {
+    if (element.kind == engine.ElementKind.SETTER) {
+      return null;
+    } else {
+      return element.returnType.toString();
+    }
+  } else if (element is engine.VariableElement) {
+    engine.DartType type = element.type;
+    return type != null ? type.displayName : 'dynamic';
+  } else if (element is engine.FunctionTypeAliasElement) {
+    return element.returnType.toString();
+  } else {
+    return null;
+  }
+}
+
 /**
  * Construct based on error information from the analyzer engine.
  */
@@ -86,9 +103,12 @@ Element newElement_fromEngine(engine.Element element) {
   String name = element.displayName;
   String elementTypeParameters = _getTypeParametersString(element);
   String elementParameters = _getParametersString(element);
-  String elementReturnType = _getReturnTypeString(element);
+  String elementReturnType = getReturnTypeString(element);
   ElementKind kind = newElementKind_fromEngineElement(element);
-  return new Element(kind, name, Element.makeFlags(
+  return new Element(
+      kind,
+      name,
+      Element.makeFlags(
           isPrivate: element.isPrivate,
           isDeprecated: element.isDeprecated,
           isAbstract: _isAbstract(element),
@@ -103,7 +123,7 @@ Element newElement_fromEngine(engine.Element element) {
 
 /**
  * Construct based on a value from the analyzer engine.
- * This does not take into account that 
+ * This does not take into account that
  * instances of ClassElement can be an enum and
  * instances of FieldElement can be an enum constant.
  * Use [newElementKind_fromEngineElement] where possible.
@@ -167,7 +187,8 @@ ElementKind newElementKind_fromEngineElement(engine.Element element) {
   if (element is engine.ClassElement && element.isEnum) {
     return ElementKind.ENUM;
   }
-  if (element is engine.FieldElement && element.isEnumConstant &&
+  if (element is engine.FieldElement &&
+      element.isEnumConstant &&
       // MyEnum.values and MyEnum.one.index return isEnumConstant = true
       // so these additional checks are necessary.
       // TODO(danrubel) MyEnum.values is constant, but is a list
@@ -234,16 +255,6 @@ Location newLocation_fromUnit(
   engine.AnalysisContext context = unitElement.context;
   engine.Source source = unitElement.source;
   return _locationForArgs(context, source, range);
-}
-
-NavigationTarget newNavigationTarget_fromElement(
-    engine.Element element, int fileToIndex(String file)) {
-  ElementKind kind = newElementKind_fromEngine(element.kind);
-  Location location = newLocation_fromElement(element);
-  String file = location.file;
-  int fileIndex = fileToIndex(file);
-  return new NavigationTarget(kind, fileIndex, location.offset, location.length,
-      location.startLine, location.startColumn);
 }
 
 /**
@@ -336,36 +347,20 @@ String _getParametersString(engine.Element element) {
       sb.write(', ');
     }
     if (closeOptionalString.isEmpty) {
-      if (parameter.kind == engine.ParameterKind.NAMED) {
+      engine.ParameterKind kind = parameter.parameterKind;
+      if (kind == engine.ParameterKind.NAMED) {
         sb.write('{');
         closeOptionalString = '}';
       }
-      if (parameter.kind == engine.ParameterKind.POSITIONAL) {
+      if (kind == engine.ParameterKind.POSITIONAL) {
         sb.write('[');
         closeOptionalString = ']';
       }
     }
-    sb.write(parameter.toString());
+    parameter.appendToWithoutDelimiters(sb);
   }
   sb.write(closeOptionalString);
   return '(' + sb.toString() + ')';
-}
-
-String _getReturnTypeString(engine.Element element) {
-  if (element is engine.ExecutableElement) {
-    if (element.kind == engine.ElementKind.SETTER) {
-      return null;
-    } else {
-      return element.returnType.toString();
-    }
-  } else if (element is engine.VariableElement) {
-    engine.DartType type = element.type;
-    return type != null ? type.displayName : 'dynamic';
-  } else if (element is engine.FunctionTypeAliasElement) {
-    return element.returnType.toString();
-  } else {
-    return null;
-  }
 }
 
 String _getTypeParametersString(engine.Element element) {

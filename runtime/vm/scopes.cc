@@ -249,6 +249,13 @@ int LocalScope::AllocateVariables(int first_parameter_index,
 }
 
 
+// The parser creates internal variables that start with ":"
+static bool IsInternalIdentifier(const String& str) {
+  ASSERT(str.Length() > 0);
+  return str.CharAt(0) == ':';
+}
+
+
 RawLocalVarDescriptors* LocalScope::GetVarDescriptors(const Function& func) {
   GrowableArray<VarDesc> vars(8);
   // First enter all variables from scopes of outer functions.
@@ -257,9 +264,19 @@ RawLocalVarDescriptors* LocalScope::GetVarDescriptors(const Function& func) {
   if (!context_scope.IsNull()) {
     ASSERT(func.IsLocalFunction());
     for (int i = 0; i < context_scope.num_variables(); i++) {
+      String& name = String::Handle(context_scope.NameAt(i));
+      RawLocalVarDescriptors::VarInfoKind kind;
+      if (!IsInternalIdentifier(name)) {
+        kind = RawLocalVarDescriptors::kContextVar;
+      } else if (name.raw() == Symbols::AsyncOperation().raw()) {
+        kind = RawLocalVarDescriptors::kAsyncOperation;
+      } else {
+        continue;
+      }
+
       VarDesc desc;
-      desc.name = &String::Handle(context_scope.NameAt(i));
-      desc.info.set_kind(RawLocalVarDescriptors::kContextVar);
+      desc.name = &name;
+      desc.info.set_kind(kind);
       desc.info.scope_id = context_scope.ContextLevelAt(i);
       desc.info.begin_pos = begin_token_pos();
       desc.info.end_pos = end_token_pos();
@@ -281,13 +298,6 @@ RawLocalVarDescriptors* LocalScope::GetVarDescriptors(const Function& func) {
     var_desc.SetVar(i, *(vars[i].name), &vars[i].info);
   }
   return var_desc.raw();
-}
-
-
-// The parser creates internal variables that start with ":"
-static bool IsInternalIdentifier(const String& str) {
-  ASSERT(str.Length() > 0);
-  return str.CharAt(0) == ':';
 }
 
 
@@ -337,6 +347,23 @@ void LocalScope::CollectLocalVariables(GrowableArray<VarDesc>* vars,
         desc.info.end_pos = 0;
         desc.info.set_index(var->index());
         vars->Add(desc);
+      } else if (var->name().raw() == Symbols::AsyncOperation().raw()) {
+        // The async continuation.
+        ASSERT(var->is_captured());
+        VarDesc desc;
+        desc.name = &var->name();
+        desc.info.set_kind(RawLocalVarDescriptors::kAsyncOperation);
+        if (var->is_captured()) {
+          ASSERT(var->owner() != NULL);
+          ASSERT(var->owner()->context_level() >= 0);
+          desc.info.scope_id = var->owner()->context_level();
+        } else {
+          desc.info.scope_id = *scope_id;
+        }
+        desc.info.begin_pos = 0;
+        desc.info.end_pos = 0;
+        desc.info.set_index(var->index());
+        vars->Add(desc);
       }
     }
   }
@@ -377,18 +404,10 @@ LocalVariable* LocalScope::LookupVariable(const String& name, bool test_only) {
   LocalScope* current_scope = this;
   while (current_scope != NULL) {
     LocalVariable* var = current_scope->LocalLookupVariable(name);
-    if ((var != NULL) && !var->is_invisible_) {
-      if (!test_only) {
-        if (var->owner()->function_level() != function_level()) {
-          var->set_is_captured();
-        }
-        // Insert aliases of the variable in intermediate scopes.
-        LocalScope* intermediate_scope = this;
-        while (intermediate_scope != current_scope) {
-          intermediate_scope->variables_.Add(var);
-          ASSERT(var->owner() != intermediate_scope);  // Item is an alias.
-          intermediate_scope = intermediate_scope->parent();
-        }
+    // If testing only, return the variable even if invisible.
+    if ((var != NULL) && (!var->is_invisible_ || test_only)) {
+      if (!test_only && (var->owner()->function_level() != function_level())) {
+        CaptureVariable(var);
       }
       return var;
     }
@@ -398,27 +417,29 @@ LocalVariable* LocalScope::LookupVariable(const String& name, bool test_only) {
 }
 
 
-bool LocalScope::CaptureVariable(const String& name) {
-  ASSERT(name.IsSymbol());
-  LocalScope* current_scope = this;
-  while (current_scope != NULL) {
-    LocalVariable* var = current_scope->LocalLookupVariable(name);
-    if (var != NULL) {
-      if (var->owner()->function_level() != function_level()) {
-        var->set_is_captured();
-      }
-      // Insert aliases of the variable in intermediate scopes.
-      LocalScope* intermediate_scope = this;
-      while (intermediate_scope != current_scope) {
-        intermediate_scope->variables_.Add(var);
-        ASSERT(var->owner() != intermediate_scope);  // Item is an alias.
-        intermediate_scope = intermediate_scope->parent();
-      }
-      return true;
+void LocalScope::CaptureVariable(LocalVariable* variable) {
+  ASSERT(variable != NULL);
+  // The variable must exist in an enclosing scope, not necessarily in this one.
+  variable->set_is_captured();
+  const int variable_function_level = variable->owner()->function_level();
+  LocalScope* scope = this;
+  while (scope->function_level() != variable_function_level) {
+    // Insert an alias of the variable in the top scope of each function
+    // level so that the variable is found in the context.
+    LocalScope* parent_scope = scope->parent();
+    while ((parent_scope != NULL) &&
+           (parent_scope->function_level() == scope->function_level())) {
+      scope = parent_scope;
+      parent_scope = scope->parent();
     }
-    current_scope = current_scope->parent();
+    // An alias may already have been added in this scope, and in that case,
+    // in parent scopes as needed. If so, we are done.
+    if (!scope->AddVariable(variable)) {
+      return;
+    }
+    ASSERT(variable->owner() != scope);  // Item is an alias.
+    scope = parent_scope;
   }
-  return false;
 }
 
 
@@ -493,9 +514,10 @@ SourceLabel* LocalScope::CheckUnresolvedLabels() {
 
 int LocalScope::NumCapturedVariables() const {
   // It is not necessary to traverse parent scopes, since we are only interested
-  // in the captured variables referenced in this scope. If this scope
-  // references a captured variable declared in a parent scope, it will contain
-  // an alias for that variable.
+  // in the captured variables referenced in this scope. If this scope is the
+  // top scope at function level 1 and it (or its children scopes) references a
+  // captured variable declared in a parent scope at function level 0, it will
+  // contain an alias for that variable.
 
   // Since code generation for nested functions is postponed until first
   // invocation, the function level of the closure scope can only be 1.
@@ -526,7 +548,7 @@ RawContextScope* LocalScope::PreserveOuterScope(int current_context_level)
 
   // Create a ContextScope with space for num_captured_vars descriptors.
   const ContextScope& context_scope =
-      ContextScope::Handle(ContextScope::New(num_captured_vars));
+      ContextScope::Handle(ContextScope::New(num_captured_vars, false));
 
   // Create a descriptor for each referenced captured variable of enclosing
   // functions to preserve its name and its context allocation information.
@@ -595,24 +617,23 @@ LocalScope* LocalScope::RestoreOuterScope(const ContextScope& context_scope) {
 }
 
 
-void LocalScope::RecursivelyCaptureAllVariables() {
-  bool found = false;
-  for (intptr_t i = 0; i < num_variables(); i++) {
-    if ((VariableAt(i)->name().raw() == Symbols::StackTraceVar().raw()) ||
-        (VariableAt(i)->name().raw() == Symbols::ExceptionVar().raw()) ||
-        (VariableAt(i)->name().raw() == Symbols::SavedTryContextVar().raw())) {
-      // Don't capture those variables because the VM expects them to be on the
-      // stack.
-      continue;
+void LocalScope::CaptureLocalVariables(LocalScope* top_scope) {
+  ASSERT(top_scope->function_level() == function_level());
+  LocalScope* scope = this;
+  while (scope != top_scope->parent()) {
+    for (intptr_t i = 0; i < scope->num_variables(); i++) {
+      LocalVariable* variable = scope->VariableAt(i);
+      if ((variable->name().raw() == Symbols::StackTraceVar().raw()) ||
+          (variable->name().raw() == Symbols::ExceptionVar().raw()) ||
+          (variable->name().raw() == Symbols::SavedTryContextVar().raw())) {
+        // Don't capture those variables because the VM expects them to be on
+        // the stack.
+        continue;
+      }
+      scope->CaptureVariable(variable);
     }
-    found = CaptureVariable(VariableAt(i)->name());
-    // Also manually set the variable as captured as CaptureVariable() does not
-    // handle capturing variables on the same scope level.
-    VariableAt(i)->set_is_captured();
-    ASSERT(found);
+    scope = scope->parent();
   }
-  if (sibling() != NULL) { sibling()->RecursivelyCaptureAllVariables(); }
-  if (child() != NULL) { child()->RecursivelyCaptureAllVariables(); }
 }
 
 
@@ -621,7 +642,7 @@ RawContextScope* LocalScope::CreateImplicitClosureScope(const Function& func) {
 
   // Create a ContextScope with space for kNumCapturedVars descriptors.
   const ContextScope& context_scope =
-      ContextScope::Handle(ContextScope::New(kNumCapturedVars));
+      ContextScope::Handle(ContextScope::New(kNumCapturedVars, true));
 
   // Create a descriptor for 'this' variable.
   context_scope.SetTokenIndexAt(0, func.token_pos());

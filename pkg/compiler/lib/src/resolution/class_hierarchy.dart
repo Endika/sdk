@@ -2,7 +2,44 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-part of resolution;
+library dart2js.resolution.class_hierarchy;
+
+import '../compiler.dart' show
+    Compiler;
+import '../dart_types.dart';
+import '../diagnostics/invariant.dart' show
+    invariant;
+import '../diagnostics/messages.dart' show
+    MessageKind;
+import '../elements/elements.dart';
+import '../elements/modelx.dart' show
+    BaseClassElementX,
+    ErroneousElementX,
+    MixinApplicationElementX,
+    SynthesizedConstructorElementX,
+    TypeVariableElementX;
+import '../ordered_typeset.dart' show
+    OrderedTypeSet,
+    OrderedTypeSetBuilder;
+import '../tree/tree.dart';
+import '../util/util.dart' show
+    Link,
+    Setlet;
+import '../universe/universe.dart' show
+    CallStructure,
+    Selector;
+
+import 'enum_creator.dart';
+import 'members.dart' show
+    lookupInScope;
+import 'registry.dart' show
+    ResolutionRegistry;
+import 'resolution_common.dart' show
+    CommonResolverVisitor,
+    MappingVisitor;
+import 'scope.dart' show
+    Scope,
+    TypeDeclarationScope;
 
 class TypeDefinitionVisitor extends MappingVisitor<DartType> {
   Scope scope;
@@ -164,9 +201,9 @@ class ClassResolverVisitor extends TypeDefinitionVisitor {
         registry.registerThrowNoSuchMethod();
       } else {
         ConstructorElement superConstructor = superMember;
-        Selector callToMatch = new Selector.call("", element.library, 0);
         superConstructor.computeType(compiler);
-        if (!callToMatch.applies(superConstructor, compiler.world)) {
+        if (!CallStructure.NO_ARGS.signatureApplies(
+                superConstructor.functionSignature)) {
           MessageKind kind = MessageKind.NO_MATCHING_CONSTRUCTOR_FOR_IMPLICIT;
           compiler.reportError(node, kind);
           superMember = new ErroneousElementX(kind, {}, '', element);
@@ -270,21 +307,22 @@ class ClassResolverVisitor extends TypeDefinitionVisitor {
         new Modifiers.withFlags(new NodeList.empty(), Modifiers.FLAG_ABSTRACT));
     // Create synthetic type variables for the mixin application.
     List<DartType> typeVariables = <DartType>[];
-    element.typeVariables.forEach((TypeVariableType type) {
+    int index = 0;
+    for (TypeVariableType type in element.typeVariables) {
       TypeVariableElementX typeVariableElement = new TypeVariableElementX(
-          type.name, mixinApplication, type.element.node);
+          type.name, mixinApplication, index, type.element.node);
       TypeVariableType typeVariable = new TypeVariableType(typeVariableElement);
       typeVariables.add(typeVariable);
-    });
+      index++;
+    }
     // Setup bounds on the synthetic type variables.
-    int index = 0;
-    element.typeVariables.forEach((TypeVariableType type) {
-      TypeVariableType typeVariable = typeVariables[index++];
+    for (TypeVariableType type in element.typeVariables) {
+      TypeVariableType typeVariable = typeVariables[type.element.index];
       TypeVariableElementX typeVariableElement = typeVariable.element;
       typeVariableElement.typeCache = typeVariable;
       typeVariableElement.boundCache =
           type.element.bound.subst(typeVariables, element.typeVariables);
-    });
+    }
     // Setup this and raw type for the mixin application.
     mixinApplication.computeThisAndRawType(compiler, typeVariables);
     // Substitute in synthetic type variables in super and mixin types.
@@ -309,8 +347,11 @@ class ClassResolverVisitor extends TypeDefinitionVisitor {
 
   FunctionElement createForwardingConstructor(ConstructorElement target,
                                               ClassElement enclosing) {
-    return new SynthesizedConstructorElementX.notForDefault(
-        target.name, target, enclosing);
+    FunctionElement constructor =
+        new SynthesizedConstructorElementX.notForDefault(
+            target.name, target, enclosing);
+    constructor.computeType(compiler);
+    return constructor;
   }
 
   void doApplyMixinTo(MixinApplicationElementX mixinApplication,
@@ -365,7 +406,7 @@ class ClassResolverVisitor extends TypeDefinitionVisitor {
       if (!member.isGenerativeConstructor) return;
       FunctionElement forwarder =
           createForwardingConstructor(member, mixinApplication);
-      if (isPrivateName(member.name) &&
+      if (Name.isPrivateName(member.name) &&
           mixinApplication.library != superclass.library) {
         // Do not create a forwarder to the super constructor, because the mixin
         // application is in a different library than the constructor in the
@@ -566,8 +607,10 @@ class ClassSupertypeResolver extends CommonResolverVisitor {
       super(compiler);
 
   void loadSupertype(ClassElement element, Node from) {
-    compiler.resolver.loadSupertypes(element, from);
-    element.ensureResolved(compiler);
+    if (!element.isResolved) {
+      compiler.resolver.loadSupertypes(element, from);
+      element.ensureResolved(compiler);
+    }
   }
 
   void visitNodeList(NodeList node) {

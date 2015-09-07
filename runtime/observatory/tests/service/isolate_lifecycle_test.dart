@@ -1,9 +1,10 @@
 // Copyright (c) 2015, the Dart project authors.  Please see the AUTHORS file
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
-// VMOptions=--compile-all --error_on_bad_type --error_on_bad_override
+// VMOptions=--error_on_bad_type --error_on_bad_override
 
 import 'dart:async';
+import 'dart:developer';
 import 'dart:isolate' as I;
 
 import 'package:observatory/service_io.dart';
@@ -18,16 +19,14 @@ final isolates = [];
 void spawnEntry(int i) {
 }
 
-Future before() async {
+Future during() async {
+  debugger();
   // Spawn spawnCount long lived isolates.
   for (var i = 0; i < spawnCount; i++) {
     var isolate = await I.Isolate.spawn(spawnEntry, i);
     isolates.add(isolate);
   }
   print('spawned all isolates');
-}
-
-Future during() async {
 }
 
 int numPaused(vm) {
@@ -40,29 +39,35 @@ int numPaused(vm) {
   return paused;
 }
 
-int numRunning(vm) {
-  int running = 0;
-  for (var isolate in vm.isolates) {
-    if (!isolate.paused) {
-      running++;
-    }
-  }
-  return running;
-}
-
 var tests = [
   (VM vm) async {
-    // Wait for the testee to start all of the isolates.
-    if (vm.isolates.length != spawnCount + 1) {
-      await processServiceEvents(vm, (event, sub, completer) {
-        if (event.kind == ServiceEvent.kIsolateStart) {
-          if (vm.isolates.length == spawnCount + 1) {
-            sub.cancel();
-            completer.complete(null);
-          }
-        }
-      });
-    }
+    expect(vm.isolates.length, 1);
+    await hasStoppedAtBreakpoint(vm.isolates[0]);
+  },
+
+  (VM vm) async {
+    Completer completer = new Completer();
+    var stream = await vm.getEventStream(VM.kIsolateStream);
+    var subscription;
+    int startCount = 0;
+    int runnableCount = 0;
+    subscription = stream.listen((ServiceEvent event) {
+      if (event.kind == ServiceEvent.kIsolateStart) {
+        startCount++;
+      }
+      if (event.kind == ServiceEvent.kIsolateRunnable) {
+        runnableCount++;
+      }
+      if (runnableCount == spawnCount) {
+        subscription.cancel();
+        completer.complete(null);
+      }
+    });
+    expect(vm.isolates.length, 1);
+    vm.isolates[0].resume();
+    await completer.future;
+    expect(startCount, spawnCount);
+    expect(runnableCount, spawnCount);
     expect(vm.isolates.length, spawnCount + 1);
   },
 
@@ -74,33 +79,40 @@ var tests = [
   },
 
   (VM vm) async {
-    // Wait for all spawned isolates to hit pause-at-exit.
-    if (numPaused(vm) != spawnCount) {
-      await processServiceEvents(vm, (event, sub, completer) {
+    Completer completer = new Completer();
+    var stream = await vm.getEventStream(VM.kDebugStream);
+    if (numPaused(vm) < (spawnCount + 1)) {
+      var subscription;
+      subscription = stream.listen((ServiceEvent event) {
         if (event.kind == ServiceEvent.kPauseExit) {
-          if (numPaused(vm) == spawnCount) {
-            sub.cancel();
+          if (numPaused(vm) == (spawnCount + 1)) {
+            subscription.cancel();
             completer.complete(null);
           }
         }
       });
+      await completer.future;
     }
-    expect(numPaused(vm), spawnCount);
-    expect(numRunning(vm), 1);
+    expect(numPaused(vm), spawnCount + 1);
   },
 
 
   (VM vm) async {
     var resumedReceived = 0;
-    var eventsDone = processServiceEvents(vm, (event, sub, completer) {
+    Completer completer = new Completer();
+    var stream = await vm.getEventStream(VM.kIsolateStream);
+    var subscription;
+    subscription = stream.listen((ServiceEvent event) {
       if (event.kind == ServiceEvent.kIsolateExit) {
         resumedReceived++;
-        if (resumedReceived == resumeCount) {
-          sub.cancel();
+        if (resumedReceived >= resumeCount) {
+          subscription.cancel();
           completer.complete(null);
         }
       }
     });
+
+    // Resume a subset of the isolates.
     var resumesIssued = 0;
     var isolateList = vm.isolates.toList();
     for (var isolate in isolateList) {
@@ -115,16 +127,14 @@ var tests = [
         break;
       }
     }
-    return eventsDone;
+    await completer.future;
   },
 
   (VM vm) async {
-    expect(numPaused(vm), spawnCount - resumeCount);
-    expect(numRunning(vm), 1);
+    expect(numPaused(vm), spawnCount + 1 - resumeCount); 
   },
 ];
 
 main(args) async => runVMTests(args, tests,
-                               testeeBefore: before,
                                testeeConcurrent: during,
                                pause_on_exit: true);

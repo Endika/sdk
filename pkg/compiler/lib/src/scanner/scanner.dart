@@ -2,19 +2,35 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-part of scanner;
+library dart2js.scanner;
+
+import '../io/source_file.dart' show
+    SourceFile,
+    Utf8BytesSourceFile;
+import '../tokens/keyword.dart' show
+    Keyword,
+    KeywordState;
+import '../tokens/precedence.dart';
+import '../tokens/precedence_constants.dart';
+import '../tokens/token.dart';
+import '../tokens/token_constants.dart';
+import '../util/characters.dart';
+
+import 'string_scanner.dart' show
+    StringScanner;
+import 'utf8_bytes_scanner.dart' show
+    Utf8BytesScanner;
+
 
 abstract class Scanner {
   Token tokenize();
 
   factory Scanner(SourceFile file,
-      {bool includeComments: false, bool enableNullAwareOperators: false}) {
+      {bool includeComments: false}) {
     if (file is Utf8BytesSourceFile) {
-      return new Utf8BytesScanner(file, includeComments: includeComments,
-          enableNullAwareOperators: enableNullAwareOperators);
+      return new Utf8BytesScanner(file, includeComments: includeComments);
     } else {
-      return new StringScanner(file, includeComments: includeComments,
-          enableNullAwareOperators: enableNullAwareOperators);
+      return new StringScanner(file, includeComments: includeComments);
     }
   }
 }
@@ -23,7 +39,6 @@ abstract class AbstractScanner implements Scanner {
   // TODO(ahe): Move this class to implementation.
 
   final bool includeComments;
-  final bool enableNullAwareOperators;
 
   /**
    * The string offset for the next token that will be created.
@@ -58,7 +73,7 @@ abstract class AbstractScanner implements Scanner {
   final List<int> lineStarts = <int>[0];
 
   AbstractScanner(
-      this.file, this.includeComments, this.enableNullAwareOperators) {
+      this.file, this.includeComments) {
     this.tail = this.tokens;
   }
 
@@ -458,27 +473,9 @@ abstract class AbstractScanner implements Scanner {
     // ? ?. ?? ??=
     next = advance();
     if (identical(next, $QUESTION)) {
-      if (enableNullAwareOperators) {
-        return select($EQ, QUESTION_QUESTION_EQ_INFO, QUESTION_QUESTION_INFO);
-      } else {
-        next = advance();
-        PrecedenceInfo info;
-        if (identical(next, $EQ)) {
-          info = QUESTION_QUESTION_EQ_INFO;
-          next = advance();
-        } else {
-          info = QUESTION_QUESTION_INFO;
-        }
-        appendErrorToken(new UnsupportedNullAwareToken(info.value, tokenStart));
-        return next;
-      }
+      return select($EQ, QUESTION_QUESTION_EQ_INFO, QUESTION_QUESTION_INFO);
     } else if (identical(next, $PERIOD)) {
-      if (enableNullAwareOperators) {
-        appendPrecedenceToken(QUESTION_PERIOD_INFO);
-      } else {
-        appendErrorToken(new UnsupportedNullAwareToken(
-            QUESTION_PERIOD_INFO.value, tokenStart));
-      }
+      appendPrecedenceToken(QUESTION_PERIOD_INFO);
       return advance();
     } else {
       appendPrecedenceToken(QUESTION_INFO);

@@ -39,7 +39,10 @@ const Map<String, String> DEFAULT_CORE_LIBRARY = const <String, String>{
         static var NAN = 0;
         static parse(s) {}
       }''',
-  'Function': 'class Function {}',
+  'Function': r'''
+      class Function {
+        static apply(Function fn, List positional, [Map named]) => null;
+      }''',
   'identical': 'bool identical(Object a, Object b) { return true; }',
   'int': 'abstract class int extends num { }',
   'Iterable': 'abstract class Iterable {}',
@@ -81,6 +84,7 @@ const Map<String, String> DEFAULT_CORE_LIBRARY = const <String, String>{
         String toString() { return null; }
         noSuchMethod(im) { throw im; }
       }''',
+  'Resource': 'class Resource {}',
   'StackTrace': 'abstract class StackTrace {}',
   'String': 'class String implements Pattern {}',
   'Symbol': 'class Symbol { final name; const Symbol(this.name); }',
@@ -194,8 +198,9 @@ const Map<String, String> DEFAULT_JS_HELPER_LIBRARY = const <String, String>{
   'numTypeCheck': 'numTypeCheck(value) {}',
   '_Patch': 'class _Patch { final tag; const _Patch(this.tag); }',
   'patch': 'const patch = const _Patch(null);',
-  'patch_new': 'const patch_new = const _Patch("new");',
-  'patch_old': 'const patch_old = const _Patch("old");',
+  'patch_full': 'const patch_full = const _Patch("full");',
+  'patch_lazy': 'const patch_lazy = const _Patch("lazy");',
+  'patch_startup': 'const patch_startup = const _Patch("startup");',
   'propertyTypeCast': 'propertyTypeCast(x) {}',
   'propertyTypeCheck': 'propertyTypeCheck(value, property) {}',
   'requiresPreamble': 'requiresPreamble() {}',
@@ -226,7 +231,12 @@ const Map<String, String> DEFAULT_JS_HELPER_LIBRARY = const <String, String>{
   'throwRuntimeError': 'throwRuntimeError(message) {}',
   'throwTypeError': 'throwTypeError(message) {}',
   'TypeImpl': 'class TypeImpl {}',
-  'TypeVariable': 'class TypeVariable {}',
+  'TypeVariable': '''class TypeVariable {
+    final Type owner;
+    final String name;
+    final int bound;
+    TypeVariable(this.owner, this.name, this.bound);
+  }''',
   'unwrapException': 'unwrapException(e) {}',
   'voidTypeCheck': 'voidTypeCheck(value) {}',
   'wrapException': 'wrapException(x) { return x; }',
@@ -385,8 +395,44 @@ const Map<String, String> DEFAULT_ASYNC_LIBRARY = const <String, String>{
   'StreamIterator': 'class StreamIterator<T> {}',
 };
 
-const Map<String, String> DEFAULT_MIRRORS_LIBRARY = const <String, String>{
-  'Comment': 'class Comment {}',
-  'MirrorSystem': 'class MirrorSystem {}',
-  'MirrorsUsed': 'class MirrorsUsed {}',
+/// These members are only needed when async/await is used.
+const Map<String, String> ASYNC_AWAIT_LIBRARY = const <String, String>{
+  '_wrapJsFunctionForAsync': '_wrapJsFunctionForAsync(f) {}',
+  '_asyncHelper': '_asyncHelper(o, f, c) {}',
+};
+
+const String DEFAULT_MIRRORS_SOURCE = r'''
+import 'dart:_js_mirrors' as js;
+class Comment {}
+class MirrorSystem {}
+class MirrorsUsed {
+  final targets;
+  const MirrorsUsed({this.targets});
+}
+void reflectType(Type t) => js.disableTreeShaking();
+''';
+
+const String DEFAULT_JS_MIRRORS_SOURCE = r'''
+disableTreeShaking(){}
+preserveMetadata(){}
+preserveUris(){}
+preserveLibraryNames(){}
+''';
+
+const Map<String, String> DEFAULT_LOOKUP_MAP_LIBRARY = const <String, String>{
+  'LookupMap': r'''
+  class LookupMap<K, V> {
+    final _key;
+    final _value;
+    final _entries;
+    final _nestedMaps;
+
+    const LookupMap(this._entries, [this._nestedMaps = const []])
+        : _key = null, _value = null;
+
+    const LookupMap.pair(this._key, this._value)
+        : _entries = const [], _nestedMaps = const [];
+    V operator[](K k) => null;
+  }''',
+  '_version': 'const _version = "0.0.1";',
 };

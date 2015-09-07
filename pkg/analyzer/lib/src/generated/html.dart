@@ -2,9 +2,6 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-// This code was auto-generated, is not intended to be edited, and is subject to
-// significant change. Please see the README file for more information.
-
 library engine.html;
 
 import 'dart:collection';
@@ -416,7 +413,6 @@ class HtmlParser extends XmlParser {
       LineInfo_Location location = _lineInfo.getLocation(contentOffset);
       sc.Scanner scanner = new sc.Scanner(source,
           new sc.SubSequenceReader(contents, contentOffset), _errorListener);
-      scanner.enableNullAwareOperators = _options.enableNullAwareOperators;
       scanner.setSourceStart(location.lineNumber, location.columnNumber);
       sc.Token firstToken = scanner.tokenize();
       Parser parser = new Parser(source, _errorListener);
@@ -1161,11 +1157,7 @@ class XmlExpression_Reference {
 
   int length = 0;
 
-  XmlExpression_Reference(Element element, int offset, int length) {
-    this.element = element;
-    this.offset = offset;
-    this.length = length;
-  }
+  XmlExpression_Reference(this.element, this.offset, this.length);
 }
 
 /**

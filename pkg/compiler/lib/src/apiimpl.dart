@@ -7,25 +7,38 @@ library leg_apiimpl;
 import 'dart:async';
 import 'dart:convert';
 
-import '../compiler.dart' as api;
-import 'dart2jslib.dart' as leg;
-import 'tree/tree.dart' as tree;
-import 'elements/elements.dart' as elements;
-import 'package:sdk_library_metadata/libraries.dart' hide LIBRARIES;
-import 'package:sdk_library_metadata/libraries.dart' as library_info show LIBRARIES;
-import 'io/source_file.dart';
 import 'package:package_config/packages.dart';
 import 'package:package_config/packages_file.dart' as pkgs;
-import 'package:package_config/src/packages_impl.dart'
-    show NonFilePackagesDirectoryPackages, MapPackages;
-import 'package:package_config/src/util.dart' show checkValidPackageUri;
+import 'package:package_config/src/packages_impl.dart' show
+    MapPackages,
+    NonFilePackagesDirectoryPackages;
+import 'package:package_config/src/util.dart' show
+    checkValidPackageUri;
+import 'package:sdk_library_metadata/libraries.dart' hide LIBRARIES;
+import 'package:sdk_library_metadata/libraries.dart' as library_info show
+    LIBRARIES;
+
+import '../compiler_new.dart' as api;
+import 'common/tasks.dart' show
+    GenericTask;
+import 'compiler.dart' as leg;
+import 'diagnostics/messages.dart';
+import 'diagnostics/source_span.dart' show
+    SourceSpan;
+import 'diagnostics/spannable.dart' show
+    NO_LOCATION_SPANNABLE,
+    Spannable;
+import 'elements/elements.dart' as elements;
+import 'io/source_file.dart';
+import 'script.dart';
+import 'tree/tree.dart' as tree;
 
 const bool forceIncrementalSupport =
     const bool.fromEnvironment('DART2JS_EXPERIMENTAL_INCREMENTAL_SUPPORT');
 
 class Compiler extends leg.Compiler {
-  api.CompilerInputProvider provider;
-  api.DiagnosticHandler handler;
+  api.CompilerInput provider;
+  api.CompilerDiagnostics handler;
   final Uri libraryRoot;
   final Uri packageConfig;
   final Uri packageRoot;
@@ -36,12 +49,12 @@ class Compiler extends leg.Compiler {
   bool mockableLibraryUsed = false;
   final Set<String> allowedLibraryCategories;
 
-  leg.GenericTask userHandlerTask;
-  leg.GenericTask userProviderTask;
-  leg.GenericTask userPackagesDiscoveryTask;
+  GenericTask userHandlerTask;
+  GenericTask userProviderTask;
+  GenericTask userPackagesDiscoveryTask;
 
   Compiler(this.provider,
-           api.CompilerOutputProvider outputProvider,
+           api.CompilerOutput outputProvider,
            this.handler,
            this.libraryRoot,
            this.packageRoot,
@@ -93,6 +106,7 @@ class Compiler extends leg.Compiler {
             showPackageWarnings:
                 hasOption(options, '--show-package-warnings'),
             useContentSecurityPolicy: hasOption(options, '--csp'),
+            useStartupEmitter: hasOption(options, '--fast-startup'),
             hasIncrementalSupport:
                 forceIncrementalSupport ||
                 hasOption(options, '--incremental-support'),
@@ -104,14 +118,12 @@ class Compiler extends leg.Compiler {
                 hasOption(options, '--generate-code-with-compile-time-errors'),
             testMode: hasOption(options, '--test-mode'),
             allowNativeExtensions:
-                hasOption(options, '--allow-native-extensions'),
-            enableNullAwareOperators:
-                hasOption(options, '--enable-null-aware-operators')) {
+                hasOption(options, '--allow-native-extensions')) {
     tasks.addAll([
-        userHandlerTask = new leg.GenericTask('Diagnostic handler', this),
-        userProviderTask = new leg.GenericTask('Input provider', this),
+        userHandlerTask = new GenericTask('Diagnostic handler', this),
+        userProviderTask = new GenericTask('Input provider', this),
         userPackagesDiscoveryTask =
-            new leg.GenericTask('Package discovery', this),
+            new GenericTask('Package discovery', this),
     ]);
     if (libraryRoot == null) {
       throw new ArgumentError("[libraryRoot] is null.");
@@ -198,7 +210,8 @@ class Compiler extends leg.Compiler {
   }
 
   void log(message) {
-    handler(null, null, null, message, api.Diagnostic.VERBOSE_INFO);
+    callUserHandler(
+        null, null, null, null, message, api.Diagnostic.VERBOSE_INFO);
   }
 
   /// See [leg.Compiler.translateResolvedUri].
@@ -213,9 +226,9 @@ class Compiler extends leg.Compiler {
   /**
    * Reads the script designated by [readableUri].
    */
-  Future<leg.Script> readScript(leg.Spannable node, Uri readableUri) {
+  Future<Script> readScript(Spannable node, Uri readableUri) {
     if (!readableUri.isAbsolute) {
-      if (node == null) node = leg.NO_LOCATION_SPANNABLE;
+      if (node == null) node = NO_LOCATION_SPANNABLE;
       internalError(node,
           'Relative uri $readableUri provided to readScript(Uri).');
     }
@@ -227,14 +240,14 @@ class Compiler extends leg.Compiler {
     void reportReadError(exception) {
       if (element == null || node == null) {
         reportError(
-            new leg.SourceSpan(readableUri, 0, 0),
-            leg.MessageKind.READ_SELF_ERROR,
+            new SourceSpan(readableUri, 0, 0),
+            MessageKind.READ_SELF_ERROR,
             {'uri': readableUri, 'exception': exception});
       } else {
         withCurrentElement(element, () {
           reportError(
               node,
-              leg.MessageKind.READ_SCRIPT_ERROR,
+              MessageKind.READ_SCRIPT_ERROR,
               {'uri': readableUri, 'exception': exception});
         });
       }
@@ -245,7 +258,7 @@ class Compiler extends leg.Compiler {
     if (resourceUri.scheme == 'dart-ext') {
       if (!allowNativeExtensions) {
         withCurrentElement(element, () {
-          reportError(node, leg.MessageKind.DART_EXT_NOT_SUPPORTED);
+          reportError(node, MessageKind.DART_EXT_NOT_SUPPORTED);
         });
       }
       return synthesizeScript(node, readableUri);
@@ -269,16 +282,16 @@ class Compiler extends leg.Compiler {
       // the scheme in the script because [Script.uri] is used for resolving
       // relative URIs mentioned in the script. See the comment on
       // [LibraryLoader] for more details.
-      return new leg.Script(readableUri, resourceUri, sourceFile);
+      return new Script(readableUri, resourceUri, sourceFile);
     }).catchError((error) {
       reportReadError(error);
       return synthesizeScript(node, readableUri);
     });
   }
 
-  Future<leg.Script> synthesizeScript(leg.Spannable node, Uri readableUri) {
+  Future<Script> synthesizeScript(Spannable node, Uri readableUri) {
     return new Future.value(
-        new leg.Script(
+        new Script(
             readableUri, readableUri,
             new StringSourceFile.fromUri(
                 readableUri,
@@ -291,7 +304,7 @@ class Compiler extends leg.Compiler {
    *
    * See [LibraryLoader] for terminology on URIs.
    */
-  Uri translateUri(leg.Spannable node, Uri readableUri) {
+  Uri translateUri(Spannable node, Uri readableUri) {
     switch (readableUri.scheme) {
       case 'package': return translatePackageUri(node, readableUri);
       default: return readableUri;
@@ -317,19 +330,19 @@ class Compiler extends leg.Compiler {
         if (importingLibrary != null) {
           reportError(
               node,
-              leg.MessageKind.INTERNAL_LIBRARY_FROM,
+              MessageKind.INTERNAL_LIBRARY_FROM,
               {'resolvedUri': resolvedUri,
                'importingUri': importingLibrary.canonicalUri});
         } else {
           reportError(
               node,
-              leg.MessageKind.INTERNAL_LIBRARY,
+              MessageKind.INTERNAL_LIBRARY,
               {'resolvedUri': resolvedUri});
         }
       }
     }
     if (path == null) {
-      reportError(node, leg.MessageKind.LIBRARY_NOT_FOUND,
+      reportError(node, MessageKind.LIBRARY_NOT_FOUND,
                   {'resolvedUri': resolvedUri});
       return null;
     }
@@ -348,13 +361,13 @@ class Compiler extends leg.Compiler {
     return libraryRoot.resolve(patchPath);
   }
 
-  Uri translatePackageUri(leg.Spannable node, Uri uri) {
+  Uri translatePackageUri(Spannable node, Uri uri) {
     try {
       checkValidPackageUri(uri);
     } on ArgumentError catch (e) {
       reportError(
           node,
-          leg.MessageKind.INVALID_PACKAGE_URI,
+          MessageKind.INVALID_PACKAGE_URI,
           {'uri': uri, 'exception': e.message});
       return null;
     }
@@ -362,59 +375,86 @@ class Compiler extends leg.Compiler {
         notFound: (Uri notFound) {
           reportError(
               node,
-              leg.MessageKind.LIBRARY_NOT_FOUND,
+              MessageKind.LIBRARY_NOT_FOUND,
               {'resolvedUri': uri}
           );
           return null;
         });
   }
 
-  Future setupPackages(Uri uri) async {
+  Future<elements.LibraryElement> analyzeUri(
+      Uri uri,
+      {bool skipLibraryWithPartOfTag: true}) {
+    if (packages == null) {
+      return setupPackages(uri).then((_) => super.analyzeUri(uri));
+    }
+    return super.analyzeUri(
+        uri, skipLibraryWithPartOfTag: skipLibraryWithPartOfTag);
+  }
+
+  Future setupPackages(Uri uri) {
     if (packageRoot != null) {
       // Use "non-file" packages because the file version requires a [Directory]
       // and we can't depend on 'dart:io' classes.
       packages = new NonFilePackagesDirectoryPackages(packageRoot);
     } else if (packageConfig != null) {
-      var packageConfigContents = await provider(packageConfig);
-      if (packageConfigContents is String) {
-        packageConfigContents = UTF8.encode(packageConfigContents);
-      }
-      packages =
-          new MapPackages(pkgs.parse(packageConfigContents, packageConfig));
+      return callUserProvider(packageConfig).then((packageConfigContents) {
+        if (packageConfigContents is String) {
+          packageConfigContents = UTF8.encode(packageConfigContents);
+        }
+        // The input provider may put a trailing 0 byte when it reads a source
+        // file, which confuses the package config parser.
+        if (packageConfigContents.length > 0 &&
+            packageConfigContents.last == 0) {
+          packageConfigContents = packageConfigContents.sublist(
+              0, packageConfigContents.length - 1);
+        }
+        packages =
+            new MapPackages(pkgs.parse(packageConfigContents, packageConfig));
+      }).catchError((error) {
+        reportError(NO_LOCATION_SPANNABLE, MessageKind.INVALID_PACKAGE_CONFIG,
+            {'uri': packageConfig, 'exception': error});
+        packages = Packages.noPackages;
+      });
     } else {
       if (packagesDiscoveryProvider == null) {
         packages = Packages.noPackages;
       } else {
-        packages = await callUserPackagesDiscovery(uri);
+        return callUserPackagesDiscovery(uri).then((p) {
+          packages = p;
+        });
       }
     }
+    return new Future.value();
   }
 
-  Future<bool> run(Uri uri) async {
+  Future<bool> run(Uri uri) {
     log('Allowed library categories: $allowedLibraryCategories');
 
-    await setupPackages(uri);
-    assert(packages != null);
+    return setupPackages(uri).then((_) {
+      assert(packages != null);
 
-    bool success = await super.run(uri);
-    int cumulated = 0;
-    for (final task in tasks) {
-      int elapsed = task.timing;
-      if (elapsed != 0) {
-        cumulated += elapsed;
-        log('${task.name} took ${elapsed}msec');
-      }
-    }
-    int total = totalCompileTime.elapsedMilliseconds;
-    log('Total compile-time ${total}msec;'
-        ' unaccounted ${total - cumulated}msec');
-    return success;
+      return super.run(uri).then((bool success) {
+        int cumulated = 0;
+        for (final task in tasks) {
+          int elapsed = task.timing;
+          if (elapsed != 0) {
+            cumulated += elapsed;
+            log('${task.name} took ${elapsed}msec');
+          }
+        }
+        int total = totalCompileTime.elapsedMilliseconds;
+        log('Total compile-time ${total}msec;'
+            ' unaccounted ${total - cumulated}msec');
+        return success;
+      });
+    });
   }
 
-  void reportDiagnostic(leg.Spannable node,
-                        leg.Message message,
+  void reportDiagnostic(Spannable node,
+                        Message message,
                         api.Diagnostic kind) {
-    leg.SourceSpan span = spanFromSpannable(node);
+    SourceSpan span = spanFromSpannable(node);
     if (identical(kind, api.Diagnostic.ERROR)
         || identical(kind, api.Diagnostic.CRASH)
         || (fatalWarnings && identical(kind, api.Diagnostic.WARNING))) {
@@ -423,9 +463,10 @@ class Compiler extends leg.Compiler {
     // [:span.uri:] might be [:null:] in case of a [Script] with no [uri]. For
     // instance in the [Types] constructor in typechecker.dart.
     if (span == null || span.uri == null) {
-      callUserHandler(null, null, null, '$message', kind);
+      callUserHandler(message, null, null, null, '$message', kind);
     } else {
-      callUserHandler(span.uri, span.begin, span.end, '$message', kind);
+      callUserHandler(
+          message, span.uri, span.begin, span.end, '$message', kind);
     }
   }
 
@@ -434,11 +475,11 @@ class Compiler extends leg.Compiler {
       && (options.indexOf('--allow-mock-compilation') != -1);
   }
 
-  void callUserHandler(Uri uri, int begin, int end,
-                       String message, api.Diagnostic kind) {
+  void callUserHandler(Message message, Uri uri, int begin, int end,
+                       String text, api.Diagnostic kind) {
     try {
       userHandlerTask.measure(() {
-        handler(uri, begin, end, message, kind);
+        handler.report(message, uri, begin, end, text, kind);
       });
     } catch (ex, s) {
       diagnoseCrashInUserCode(
@@ -449,7 +490,7 @@ class Compiler extends leg.Compiler {
 
   Future callUserProvider(Uri uri) {
     try {
-      return userProviderTask.measure(() => provider(uri));
+      return userProviderTask.measure(() => provider.readFromUri(uri));
     } catch (ex, s) {
       diagnoseCrashInUserCode('Uncaught exception in input provider', ex, s);
       rethrow;

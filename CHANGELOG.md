@@ -1,6 +1,49 @@
+## 1.13.0
+
+* `dart:core`
+  * `Uri` added `removeFragment` method.
+  * `String.allMatches` (implementing `Pattern.allMatches`) is now lazy,
+    as all `allMatches` implementations are intended to be.
+
+* `dart:io`
+  * `HttpClient` no longer sends URI fragments in the requeust. This is not
+    allowed by the HTTP protocol.
+    The `HttpServer` still gracefully receives fragments, but discards them
+    before delivering the request.
+
+* `dart:async`
+  * `StreamTransformer`s created with `fromHandlers` with no `handleError`
+    callback now forward stack traces along with errors to the resulting
+    streams.
+
 ## 1.12.0
 
+### Language changes
+
+* Null-aware operators
+    * `??`: if null operator. `expr1 ?? expr2` evaluates to `expr1` if not `null`, otherwise `expr2`.
+    * `??=`: null-aware assignment. `v ??= expr` causes `v` to be assigned `expr` only if `v` is `null`.
+    * `x?.p`: null-aware access. `x?.p` evaluates to `x.p` if `x` is not `null`, otherwise evaluates to `null`.
+    * `x?.m()`: null-aware method invocation. `x?.m()` invokes `m` only if `x` is not `null`.
+
 ### Core library changes
+
+* `dart:async`
+  * `StreamController` added setters for the `onListen`, `onPause`, `onResume`
+    and `onCancel` callbacks.
+
+* `dart:convert`
+  * `LineSplitter` added a `split` static method returning an `Iterable`.
+
+* `dart:core`
+  * `Uri` class now perform path normalization when a URI is created.
+    This removes most `..` and `.` sequences from the URI path.
+    Purely relative paths (no scheme or authority) are allowed to retain
+    some leading "dot" segments.
+    Also added `hasAbsolutePath`, `hasEmptyPath`, and `hasScheme` properties.
+
+* `dart:developer`
+  * New `log` function to transmit logging events to Observatory.
 
 * `dart:html`
   * `NodeTreeSanitizer` added the `const trusted` field. It can be used
@@ -12,22 +55,146 @@
   * Added two new file modes, `WRITE_ONLY` and `WRITE_ONLY_APPEND` for
     opening a file write only.
     [eaeecf2](https://github.com/dart-lang/sdk/commit/eaeecf2ed13ba6c7fbfd653c3c592974a7120960)
+  * Change stdout/stderr to binary mode on Windows.
+    [4205b29](https://github.com/dart-lang/sdk/commit/4205b2997e01f2cea8e2f44c6f46ed6259ab7277)
+
+* `dart:isolate`
+  * Added `onError`, `onExit` and `errorsAreFatal` parameters to
+    `Isolate.spawnUri`.
+
+* `dart:mirrors`
+  * `InstanceMirror.delegate` moved up to `ObjectMirror`.
+  * Fix InstanceMirror.getField optimization when the selector is an operator.
+  * Fix reflective NoSuchMethodErrors to match their non-reflective
+    counterparts when due to argument mismatches. (VM only)
 
 ### Tool changes
 
+* Documentation tools
+
+  * `dartdoc` is now the default tool to generate static HTML for API docs.
+    [Learn more](https://pub.dartlang.org/packages/dartdoc).
+
+  * `docgen` and `dartdocgen` have been deprecated. Currently plan is to remove
+    them in 1.13.
+
+* Formatter (`dartfmt`)
+
+  * Over 50 bugs fixed.
+
+  * Optimized line splitter is much faster and produces better output on
+    complex code.
+
+* Observatory
+  * Allocation profiling.
+
+  * New feature to display output from logging.
+
+  * Heap snapshot analysis works for 64-bit VMs.
+
+  * Improved ability to inspect typed data, regex and compiled code.
+
+  * Ability to break on all or uncaught exceptions from Observatory's debugger.
+
+  * Ability to set closure-specific breakpoints.
+
+  * 'anext' - step past await/yield.
+
+  * Preserve when a variable has been expanded/unexpanded in the debugger.
+
+  * Keep focus on debugger input box whenever possible.
+
+  * Echo stdout/stderr in the Observatory debugger.  Standalone-only so far.
+
+  * Minor fixes to service protocol documentation.
+
 * Pub
 
-  * Pub will now generate a ".packages" file in addition to the "packages"
-    directory when running `pub get` or similar operations, per the
-    [package spec proposal][]. Pub now has a `--no-package-symlinks` flag that
-    will stop "packages" directories from being generated at all.
+  * **Breaking:** various commands that previously ran `pub get` implicitly no
+    longer do so. Instead, they merely check to make sure the ".packages" file
+    is newer than the pubspec and the lock file, and fail if it's not.
 
-  * When `pub publish` finds a violation, it will emit a non-zero exit code.
+  * Added support for `--verbosity=error` and `--verbosity=warning`.
 
-  * `pub run` starts up faster for executables that don't import transformed
-    code.
+  * `pub serve` now collapses multiple GET requests into a single line of
+    output. For full output, use `--verbose`.
+
+  * `pub deps` has improved formatting for circular dependencies on the
+    entrypoint package.
+
+  * `pub run` and `pub global run`
+
+    * **Breaking:** to match the behavior of the Dart VM, executables no longer
+      run in checked mode by default. A `--checked` flag has been added to run
+      them in checked mode manually.
+
+    * Faster start time for executables that don't import transformed code.
+
+    * Binstubs for globally-activated executables are now written in the system
+      encoding, rather than always in `UTF-8`. To update existing executables,
+      run `pub cache repair`.
+
+  * `pub get` and `pub upgrade`
+
+    * Pub will now generate a ".packages" file in addition to the "packages"
+      directory when running `pub get` or similar operations, per the
+      [package spec proposal][]. Pub now has a `--no-package-symlinks` flag that
+      will stop "packages" directories from being generated at all.
+
+    * An issue where HTTP requests were sometimes made even though `--offline`
+      was passed has been fixed.
+
+    * A bug with `--offline` that caused an unhelpful error message has been
+      fixed.
+
+    * Pub will no longer time out when a package takes a long time to download.
+
+  * `pub publish`
+
+    * Pub will emit a non-zero exit code when it finds a violation while
+      publishing.
+
+    * `.gitignore` files will be respected even if the package isn't at the top
+      level of the Git repository.
+
+  * Barback integration
+
+    * A crashing bug involving transformers that only apply to non-public code
+      has been fixed.
+
+    * A deadlock caused by declaring transformer followed by a lazy transformer
+      (such as the built-in `$dart2js` transformer) has been fixed.
+
+    * A stack overflow caused by a transformer being run multiple times on the
+      package that defines it has been fixed.
+
+    * A transformer that tries to read a non-existent asset in another package
+      will now be re-run if that asset is later created.
 
 [package spec proposal]: https://github.com/lrhn/dep-pkgspec
+
+### VM Service Protocol Changes
+
+* **BREAKING** The service protocol now sends JSON-RPC 2.0-compatible
+  server-to-client events. To reflect this, the service protocol version is
+  now 2.0.
+
+* The service protocol now includes a `"jsonrpc"` property in its responses, as
+  opposed to `"json-rpc"`.
+
+* The service protocol now properly handles requests with non-string ids.
+  Numeric ids are no longer converted to strings, and null ids now don't produce
+  a response.
+
+* Some RPCs that didn't include a `"jsonrpc"` property in their responses now
+  include one.
+
+## 1.11.2
+
+### Core library changes
+
+* Fix a bug where `WebSocket.close()` would crash if called after
+  `WebSocket.cancel()`.
 
 ## 1.11.1
 
@@ -43,6 +210,8 @@
 * `dart:core`
   * `Iterable` added an `empty` constructor.
     [dcf0286](https://github.com/dart-lang/sdk/commit/dcf0286f5385187a68ce9e66318d3bf19abf454b)
+  * `Iterable` can now be extended directly. An alternative to extending
+    `IterableBase` from `dart:collection`.
   * `List` added an `unmodifiable` constructor.
     [r45334](https://code.google.com/p/dart/source/detail?r=45334)
   * `Map` added an `unmodifiable` constructor.
@@ -94,7 +263,7 @@
 
 * This is the first release that does not include the Eclipse-based
   **Dart Editor**.
-  See [dartlang.org/tools](https://www.dartlang.org/tools/]) for alternatives.
+  See [dartlang.org/tools](https://www.dartlang.org/tools/) for alternatives.
 * This is the last release that ships the (unsupported)
   dart2dart (aka `dart2js --output-type=dart`) utility as part
   of dart2js

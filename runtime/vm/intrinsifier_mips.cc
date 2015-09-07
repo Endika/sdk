@@ -17,6 +17,8 @@
 
 namespace dart {
 
+DECLARE_FLAG(bool, interpret_irregexp);
+
 // When entering intrinsics code:
 // S5: IC Data
 // S4: Arguments descriptor
@@ -177,6 +179,8 @@ void Intrinsifier::GrowableArray_add(Assembler* assembler) {
 #define TYPED_ARRAY_ALLOCATION(type_name, cid, max_len, scale_shift)           \
   Label fall_through;                                                          \
   const intptr_t kArrayLengthStackOffset = 0 * kWordSize;                      \
+  __ MaybeTraceAllocation(cid, T2, &fall_through,                              \
+                          /* inline_isolate = */ false);                       \
   __ lw(T2, Address(SP, kArrayLengthStackOffset));  /* Array length. */        \
   /* Check that length is a positive Smi. */                                   \
   /* T2: requested array length argument. */                                   \
@@ -192,10 +196,9 @@ void Intrinsifier::GrowableArray_add(Assembler* assembler) {
   __ AddImmediate(T2, fixed_size);                                             \
   __ LoadImmediate(TMP, -kObjectAlignment);                                    \
   __ and_(T2, T2, TMP);                                                        \
-  Heap* heap = Isolate::Current()->heap();                                     \
-  Heap::Space space = heap->SpaceForAllocation(cid);                           \
-  __ LoadImmediate(V0, heap->TopAddress(space));                               \
-  __ lw(V0, Address(V0, 0));                                                   \
+  Heap::Space space = Heap::SpaceForAllocation(cid);                           \
+  __ lw(T3, Address(THR, Thread::heap_offset()));                              \
+  __ lw(V0, Address(T3, Heap::TopOffset(space)));                              \
                                                                                \
   /* T2: allocation size. */                                                   \
   __ addu(T1, V0, T2);                                                         \
@@ -206,16 +209,16 @@ void Intrinsifier::GrowableArray_add(Assembler* assembler) {
   /* V0: potential new object start. */                                        \
   /* T1: potential next object start. */                                       \
   /* T2: allocation size. */                                                   \
-  __ LoadImmediate(T3, heap->EndAddress(space));                               \
-  __ lw(T3, Address(T3, 0));                                                   \
-  __ BranchUnsignedGreaterEqual(T1, T3, &fall_through);                        \
+  /* T3: heap. */                                                              \
+  __ lw(T4, Address(T3, Heap::EndOffset(space)));                              \
+  __ BranchUnsignedGreaterEqual(T1, T4, &fall_through);                        \
                                                                                \
   /* Successfully allocated the object(s), now update top to point to */       \
   /* next object start and initialize the object. */                           \
-  __ LoadImmediate(T3, heap->TopAddress(space));                               \
-  __ sw(T1, Address(T3, 0));                                                   \
+  __ sw(T1, Address(T3, Heap::TopOffset(space)));                              \
   __ AddImmediate(V0, kHeapObjectTag);                                         \
-  __ UpdateAllocationStatsWithSize(cid, T2, T4, space);                        \
+  __ UpdateAllocationStatsWithSize(cid, T2, T4, space,                         \
+                                   /* inline_isolate = */ false);              \
   /* Initialize the tags. */                                                   \
   /* V0: new object start as a tagged pointer. */                              \
   /* T1: new object end address. */                                            \
@@ -1631,14 +1634,16 @@ void Intrinsifier::Random_nextState(Assembler* assembler) {
       random_class.LookupStaticField(Symbols::_A()));
   ASSERT(!random_A_field.IsNull());
   ASSERT(random_A_field.is_const());
-  const Instance& a_value = Instance::Handle(random_A_field.value());
+  const Instance& a_value = Instance::Handle(random_A_field.StaticValue());
   const int64_t a_int_value = Integer::Cast(a_value).AsInt64Value();
   // 'a_int_value' is a mask.
   ASSERT(Utils::IsUint(32, a_int_value));
   int32_t a_int32_value = static_cast<int32_t>(a_int_value);
 
-  __ lw(T0, Address(SP, 0 * kWordSize));  // Receiver.
-  __ lw(T1, FieldAddress(T0, state_field.Offset()));  // Field '_state'.
+  // Receiver.
+  __ lw(T0, Address(SP, 0 * kWordSize));
+  // Field '_state'.
+  __ lw(T1, FieldAddress(T0, state_field.Offset()));
 
   // Addresses of _state[0] and _state[1].
   const intptr_t scale = Instance::ElementSizeFor(kTypedDataUint32ArrayCid);
@@ -1764,8 +1769,7 @@ void Intrinsifier::StringBaseCharAt(Assembler* assembler) {
   __ lbu(T2, FieldAddress(T2, OneByteString::data_offset()));
   __ BranchUnsignedGreaterEqual(
       T2, Immediate(Symbols::kNumberOfOneCharCodeSymbols), &fall_through);
-  __ LoadImmediate(
-      V0, reinterpret_cast<uword>(Symbols::PredefinedAddress()));
+  __ lw(V0, Address(THR, Thread::predefined_symbols_address_offset()));
   __ AddImmediate(V0, Symbols::kNullCharCodeSymbolOffset * kWordSize);
   __ sll(T2, T2, 2);
   __ addu(T2, T2, V0);
@@ -1779,8 +1783,7 @@ void Intrinsifier::StringBaseCharAt(Assembler* assembler) {
   __ lhu(T2, FieldAddress(T2, TwoByteString::data_offset()));
   __ BranchUnsignedGreaterEqual(
       T2, Immediate(Symbols::kNumberOfOneCharCodeSymbols), &fall_through);
-  __ LoadImmediate(V0,
-                   reinterpret_cast<uword>(Symbols::PredefinedAddress()));
+  __ lw(V0, Address(THR, Thread::predefined_symbols_address_offset()));
   __ AddImmediate(V0, Symbols::kNullCharCodeSymbolOffset * kWordSize);
   __ sll(T2, T2, 2);
   __ addu(T2, T2, V0);
@@ -1880,7 +1883,8 @@ static void TryAllocateOnebyteString(Assembler* assembler,
                                      Label* ok,
                                      Label* failure) {
   const Register length_reg = T2;
-
+  __ MaybeTraceAllocation(kOneByteStringCid, V0, failure,
+                          /* inline_isolate = */ false);
   __ mov(T6, length_reg);  // Save the length register.
   // TODO(koda): Protect against negative length and overflow here.
   __ SmiUntag(length_reg);
@@ -1889,12 +1893,10 @@ static void TryAllocateOnebyteString(Assembler* assembler,
   __ LoadImmediate(TMP, ~(kObjectAlignment - 1));
   __ and_(length_reg, length_reg, TMP);
 
-  Isolate* isolate = Isolate::Current();
-  Heap* heap = isolate->heap();
   const intptr_t cid = kOneByteStringCid;
-  Heap::Space space = heap->SpaceForAllocation(cid);
-  __ LoadImmediate(T3, heap->TopAddress(space));
-  __ lw(V0, Address(T3, 0));
+  Heap::Space space = Heap::SpaceForAllocation(cid);
+  __ lw(T3, Address(THR, Thread::heap_offset()));
+  __ lw(V0, Address(T3, Heap::TopOffset(space)));
 
   // length_reg: allocation size.
   __ addu(T1, V0, length_reg);
@@ -1904,17 +1906,17 @@ static void TryAllocateOnebyteString(Assembler* assembler,
   // V0: potential new object start.
   // T1: potential next object start.
   // T2: allocation size.
-  // T3: heap->TopAddress(space).
-  __ LoadImmediate(T4, heap->EndAddress(space));
-  __ lw(T4, Address(T4, 0));
+  // T3: heap.
+  __ lw(T4, Address(T3, Heap::EndOffset(space)));
   __ BranchUnsignedGreaterEqual(T1, T4, failure);
 
   // Successfully allocated the object(s), now update top to point to
   // next object start and initialize the object.
-  __ sw(T1, Address(T3, 0));
+  __ sw(T1, Address(T3, Heap::TopOffset(space)));
   __ AddImmediate(V0, kHeapObjectTag);
 
-  __ UpdateAllocationStatsWithSize(cid, T2, T3, space);
+  __ UpdateAllocationStatsWithSize(cid, T2, T3, space,
+                                   /* inline_isolate = */ false);
 
   // Initialize the tags.
   // V0: new object start as a tagged pointer.
@@ -2097,6 +2099,8 @@ void Intrinsifier::TwoByteString_equality(Assembler* assembler) {
 
 
 void Intrinsifier::JSRegExp_ExecuteMatch(Assembler* assembler) {
+  if (FLAG_interpret_irregexp) return;
+
   static const intptr_t kRegExpParamOffset = 2 * kWordSize;
   static const intptr_t kStringParamOffset = 1 * kWordSize;
   // start_index smi is located at 0.
@@ -2118,13 +2122,10 @@ void Intrinsifier::JSRegExp_ExecuteMatch(Assembler* assembler) {
 
   // Registers are now set up for the lazy compile stub. It expects the function
   // in T0, the argument descriptor in S4, and IC-Data in S5.
-  static const intptr_t arg_count = RegExpMacroAssembler::kParamCount;
-  __ LoadObject(S4, Array::Handle(ArgumentsDescriptor::New(arg_count)));
   __ mov(S5, ZR);
 
   // Tail-call the function.
-  __ lw(T3, FieldAddress(T0, Function::instructions_offset()));
-  __ AddImmediate(T3, Instructions::HeaderSize() - kHeapObjectTag);
+  __ lw(T3, FieldAddress(T0, Function::entry_point_offset()));
   __ jr(T3);
 }
 
@@ -2132,8 +2133,7 @@ void Intrinsifier::JSRegExp_ExecuteMatch(Assembler* assembler) {
 // On stack: user tag (+0).
 void Intrinsifier::UserTag_makeCurrent(Assembler* assembler) {
   // T1: Isolate.
-  Isolate* isolate = Isolate::Current();
-  __ LoadImmediate(T1, reinterpret_cast<uword>(isolate));
+  __ LoadIsolate(T1);
   // V0: Current user tag.
   __ lw(V0, Address(T1, Isolate::current_tag_offset()));
   // T2: UserTag.
@@ -2150,20 +2150,14 @@ void Intrinsifier::UserTag_makeCurrent(Assembler* assembler) {
 
 
 void Intrinsifier::UserTag_defaultTag(Assembler* assembler) {
-  Isolate* isolate = Isolate::Current();
-  // V0: Address of default tag.
-  __ LoadImmediate(V0,
-      reinterpret_cast<uword>(isolate) + Isolate::default_tag_offset());
+  __ LoadIsolate(V0);
   __ Ret();
-  __ delay_slot()->lw(V0, Address(V0, 0));
+  __ delay_slot()->lw(V0, Address(V0, Isolate::default_tag_offset()));
 }
 
 
 void Intrinsifier::Profiler_getCurrentTag(Assembler* assembler) {
-  // V0: Isolate.
-  Isolate* isolate = Isolate::Current();
-  __ LoadImmediate(V0, reinterpret_cast<uword>(isolate));
-  // Set return value.
+  __ LoadIsolate(V0);
   __ Ret();
   __ delay_slot()->lw(V0, Address(V0, Isolate::current_tag_offset()));
 }

@@ -481,17 +481,17 @@ void testStreamEquals() {
   Expect.equals(c.stream, c.stream);
   c = new StreamController(sync: true);
   Expect.equals(c.stream, c.stream);
-  c = new StreamController(sync: false, onListen:(){});
+  c = new StreamController(sync: false, onListen: () {});
   Expect.equals(c.stream, c.stream);
-  c = new StreamController(sync: true, onListen:(){});
+  c = new StreamController(sync: true, onListen: () {});
   Expect.equals(c.stream, c.stream);
   c = new StreamController.broadcast(sync: false);
   Expect.equals(c.stream, c.stream);
   c = new StreamController.broadcast(sync: true);
   Expect.equals(c.stream, c.stream);
-  c = new StreamController.broadcast(sync: false, onListen:(){});
+  c = new StreamController.broadcast(sync: false, onListen: () {});
   Expect.equals(c.stream, c.stream);
-  c = new StreamController.broadcast(sync: true, onListen:(){});
+  c = new StreamController.broadcast(sync: true, onListen: () {});
   Expect.equals(c.stream, c.stream);
 }
 
@@ -719,6 +719,176 @@ void testSyncControllerNotReentrant() {
   asyncEnd();
 }
 
+void testSettingCallbacks() {
+  const int initial = 0;
+  const int running = 1;
+  const int paused  = 2;
+  const int canceled = 3;
+
+  var controller = new StreamController();
+  var stream = controller.stream;
+  var state = initial;
+
+  var onListen = () { state = running; };
+  var onPause  = () { state = paused; };
+  var onResume = () { state = running; };
+  var onCancel = () { state = canceled; };
+
+  Expect.isNull(controller.onListen);
+  Expect.isNull(controller.onPause);
+  Expect.isNull(controller.onResume);
+  Expect.isNull(controller.onCancel);
+
+  controller..onListen = onListen
+            ..onPause  = onPause
+            ..onResume = onResume
+            ..onCancel = onCancel;
+
+  Expect.equals(onListen, controller.onListen);
+  Expect.equals(onPause,  controller.onPause);
+  Expect.equals(onResume, controller.onResume);
+  Expect.equals(onCancel, controller.onCancel);
+
+  Expect.equals(initial, state);
+  var sub = stream.listen(null);
+  Expect.equals(running, state);
+  sub.pause();
+  Expect.equals(paused, state);
+  Expect.isTrue(controller.isPaused);
+  sub.resume();
+  Expect.equals(running, state);
+  Expect.isFalse(controller.isPaused);
+
+  var onListen2 = () { state = -running; };
+  var onPause2  = () { state = -paused; };
+  var onResume2 = () { state = -running; };
+  var onCancel2 = () { state = -canceled; };
+  // Changing them later does make a difference.
+  controller..onListen = onListen2
+            ..onPause  = onPause2
+            ..onResume = onResume2
+            ..onCancel = onCancel2;
+
+  Expect.equals(onListen2, controller.onListen);
+  Expect.equals(onPause2,  controller.onPause);
+  Expect.equals(onResume2, controller.onResume);
+  Expect.equals(onCancel2, controller.onCancel);
+
+  Expect.equals(running, state);
+  sub.pause();
+  Expect.equals(-paused, state);
+  Expect.isTrue(controller.isPaused);
+  sub.resume();
+  Expect.equals(-running, state);
+  Expect.isFalse(controller.isPaused);
+  sub.cancel();
+  Expect.equals(-canceled, state);
+}
+
+void testSettingNullCallbacks() {
+  failCallback() => fail("Callback should not be called");
+  var controller = new StreamController(onListen: failCallback,
+                                        onPause : failCallback,
+                                        onResume: failCallback,
+                                        onCancel: failCallback);
+
+  var stream = controller.stream;
+
+  Expect.isFalse(controller.hasListener);
+  Expect.isTrue(controller.isPaused);
+
+  Expect.isNotNull(controller.onListen);
+  controller.onListen = null;
+  Expect.isNull(controller.onListen);
+
+  var sub = stream.listen(null);
+
+  Expect.isTrue(controller.hasListener);
+  Expect.isFalse(controller.isPaused);
+
+  Expect.isNotNull(controller.onPause);
+  controller.onPause = null;
+  Expect.isNull(controller.onPause);
+
+  sub.pause();
+
+  Expect.isTrue(controller.hasListener);
+  Expect.isTrue(controller.isPaused);
+
+  Expect.isNotNull(controller.onResume);
+  controller.onResume = null;
+  Expect.isNull(controller.onResume);
+
+  sub.resume();
+
+  Expect.isTrue(controller.hasListener);
+  Expect.isFalse(controller.isPaused);
+
+  Expect.isNotNull(controller.onCancel);
+  controller.onCancel = null;
+  Expect.isNull(controller.onCancel);
+
+  sub.cancel();
+
+  Expect.isFalse(controller.hasListener);
+  Expect.isFalse(controller.isPaused);
+}
+
+void testBroadcastSettingCallbacks() {
+  const int initial = 0;
+  const int running = 1;
+  const int canceled = 2;
+
+  var controller = new StreamController.broadcast();
+  var stream = controller.stream;
+  var state = initial;
+
+  Expect.throws(() { controller.onPause = () {}; },
+                (e) => e is UnsupportedError);
+  Expect.throws(() { controller.onResume = () {}; },
+                (e) => e is UnsupportedError);
+
+  controller..onListen = () { state = running; }
+            ..onCancel = () { state = canceled; };
+
+  Expect.equals(initial, state);
+  var sub = stream.listen(null);
+  Expect.equals(running, state);
+  sub.cancel();
+  Expect.equals(canceled, state);
+
+  // Changing them later does make a difference.
+  controller..onListen = () { state = -running; }
+            ..onCancel = () { state = -canceled; };
+
+  var sub2 = stream.listen(null);
+  Expect.equals(-running, state);
+  sub2.cancel();
+  Expect.equals(-canceled, state);
+}
+
+void testBroadcastSettingNullCallbacks() {
+  failCallback() => fail("Callback should not be called");
+  var controller = new StreamController.broadcast(onListen: failCallback,
+                                                  onCancel: failCallback);
+
+  var stream = controller.stream;
+
+  Expect.isFalse(controller.hasListener);
+
+  controller.onListen = null;
+
+  var sub = stream.listen(null);
+
+  Expect.isTrue(controller.hasListener);
+
+  controller.onCancel = null;
+
+  sub.cancel();
+
+  Expect.isFalse(controller.hasListener);
+}
+
 main() {
   asyncStart();
   testMultiController();
@@ -738,5 +908,9 @@ main() {
   testAsBroadcastListenAfterClosePaused();
   testEventInListen();
   testSyncControllerNotReentrant();
+  testSettingCallbacks();
+  testSettingNullCallbacks();
+  testBroadcastSettingCallbacks();
+  testBroadcastSettingNullCallbacks();
   asyncEnd();
 }

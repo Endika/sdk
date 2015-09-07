@@ -306,6 +306,13 @@ typedef simd128_value_t fpu_register_t;
 #define Pu64 PRIu64
 #define Px64 PRIx64
 
+// Zero-padded pointer
+#if defined(ARCH_IS_32_BIT)
+#define Pp "08" PRIxPTR
+#else
+#define Pp "016" PRIxPTR
+#endif
+
 
 // Suffixes for 64-bit integer literals.
 #ifdef _MSC_VER
@@ -591,6 +598,12 @@ static inline T ReadUnaligned(const T* ptr) {
   __attribute__((__format__(__printf__, string_index, first_to_check)))
 #else
 #define PRINTF_ATTRIBUTE(string_index, first_to_check)
+#endif
+
+#if defined(_WIN32)
+#define STDIN_FILENO 0
+#define STDOUT_FILENO 1
+#define STDERR_FILENO 2
 #endif
 
 }  // namespace dart

@@ -16,7 +16,7 @@ import 'package:analysis_server/src/services/completion/common_usage_computer.da
 import 'package:analysis_server/src/services/completion/completion_manager.dart';
 import 'package:analysis_server/src/services/completion/completion_target.dart';
 import 'package:analysis_server/src/services/completion/dart_completion_cache.dart';
-import 'package:analysis_server/src/services/completion/import_uri_contributor.dart';
+import 'package:analysis_server/src/services/completion/uri_contributor.dart';
 import 'package:analysis_server/src/services/completion/imported_reference_contributor.dart';
 import 'package:analysis_server/src/services/completion/keyword_contributor.dart';
 import 'package:analysis_server/src/services/completion/local_reference_contributor.dart';
@@ -42,8 +42,8 @@ const int DART_RELEVANCE_LOCAL_METHOD = 1057;
 const int DART_RELEVANCE_LOCAL_TOP_LEVEL_VARIABLE = 1056;
 const int DART_RELEVANCE_LOCAL_VARIABLE = 1059;
 const int DART_RELEVANCE_LOW = 500;
-const int DART_RELEVANCE_PARAMETER = 1059;
 const int DART_RELEVANCE_NAMED_PARAMETER = 1060;
+const int DART_RELEVANCE_PARAMETER = 1059;
 
 /**
  * The base class for contributing code completion suggestions.
@@ -92,7 +92,7 @@ class DartCompletionManager extends CompletionManager {
         new ArgListContributor(),
         new CombinatorContributor(),
         new PrefixedElementContributor(),
-        new ImportUriContributor(),
+        new UriContributor(),
       ];
     }
     if (commonUsageComputer == null) {
@@ -127,6 +127,9 @@ class DartCompletionManager extends CompletionManager {
    */
   List<DartCompletionContributor> computeFast(
       DartCompletionRequest request, CompletionPerformance performance) {
+    bool isKeywordOrIdentifier(Token token) =>
+        token.type == TokenType.KEYWORD || token.type == TokenType.IDENTIFIER;
+
     return performance.logElapseTime('computeFast', () {
       CompilationUnit unit = context.parseCompilationUnit(source);
       request.unit = unit;
@@ -140,12 +143,22 @@ class DartCompletionManager extends CompletionManager {
 
       var entity = request.target.entity;
       Token token = entity is AstNode ? entity.beginToken : entity;
-      if (token != null &&
-          token.offset <= request.offset &&
-          (token.type == TokenType.KEYWORD ||
-              token.type == TokenType.IDENTIFIER)) {
-        request.replacementOffset = token.offset;
-        request.replacementLength = token.length;
+      if (token != null && request.offset < token.offset) {
+        token = token.previous;
+      }
+      if (token != null) {
+        if (request.offset == token.offset && !isKeywordOrIdentifier(token)) {
+          // If the insertion point is at the beginning of the current token
+          // and the current token is not an identifier
+          // then check the previous token to see if it should be replaced
+          token = token.previous;
+        }
+        if (token != null && isKeywordOrIdentifier(token)) {
+          if (token.offset <= request.offset && request.offset <= token.end) {
+            request.replacementOffset = token.offset;
+            request.replacementLength = token.length;
+          }
+        }
       }
 
       List<DartCompletionContributor> todo = new List.from(contributors);
@@ -222,7 +235,7 @@ class DartCompletionManager extends CompletionManager {
     if (controller == null || controller.isClosed) {
       return;
     }
-    controller.add(new CompletionResult(request.replacementOffset,
+    controller.add(new CompletionResultImpl(request.replacementOffset,
         request.replacementLength, request.suggestions, last));
     if (last) {
       controller.close();

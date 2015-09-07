@@ -4,12 +4,14 @@
 
 #include "vm/service_event.h"
 
+#include "vm/message_handler.h"
+
 namespace dart {
 
 // Translate from the legacy DebugEvent to a ServiceEvent.
-static ServiceEvent::EventType TranslateEventType(
-    DebuggerEvent::EventType type) {
-    switch (type) {
+static ServiceEvent::EventKind TranslateEventKind(
+    DebuggerEvent::EventType kind) {
+    switch (kind) {
       case DebuggerEvent::kIsolateCreated:
         return ServiceEvent::kIsolateStart;
 
@@ -24,24 +26,54 @@ static ServiceEvent::EventType TranslateEventType(
 
       case DebuggerEvent::kExceptionThrown:
         return ServiceEvent::kPauseException;
-
       default:
         UNREACHABLE();
         return ServiceEvent::kIllegal;
     }
 }
 
-ServiceEvent::ServiceEvent(const DebuggerEvent* debugger_event)
-    : isolate_(debugger_event->isolate()),
-      type_(TranslateEventType(debugger_event->type())),
+
+ServiceEvent::ServiceEvent(Isolate* isolate, EventKind event_kind)
+    : isolate_(isolate),
+      kind_(event_kind),
+      embedder_kind_(NULL),
+      embedder_stream_id_(NULL),
       breakpoint_(NULL),
       top_frame_(NULL),
       exception_(NULL),
+      async_continuation_(NULL),
+      at_async_jump_(false),
       inspectee_(NULL),
-      gc_stats_(NULL) {
+      gc_stats_(NULL),
+      bytes_(NULL),
+      bytes_length_(0),
+      timestamp_(OS::GetCurrentTimeMillis()) {
+  if ((event_kind == ServiceEvent::kPauseStart) ||
+      (event_kind == ServiceEvent::kPauseExit)) {
+    timestamp_ = isolate->message_handler()->paused_timestamp();
+  } else if (event_kind == ServiceEvent::kResume) {
+    timestamp_ = isolate->last_resume_timestamp();
+  }
+}
+
+
+ServiceEvent::ServiceEvent(const DebuggerEvent* debugger_event)
+    : isolate_(debugger_event->isolate()),
+      kind_(TranslateEventKind(debugger_event->type())),
+      breakpoint_(NULL),
+      top_frame_(NULL),
+      exception_(NULL),
+      async_continuation_(NULL),
+      inspectee_(NULL),
+      gc_stats_(NULL),
+      bytes_(NULL),
+      bytes_length_(0),
+      timestamp_(OS::GetCurrentTimeMillis()) {
   DebuggerEvent::EventType type = debugger_event->type();
   if (type == DebuggerEvent::kBreakpointReached) {
     set_breakpoint(debugger_event->breakpoint());
+    set_async_continuation(debugger_event->async_continuation());
+    set_at_async_jump(debugger_event->at_async_jump());
   }
   if (type == DebuggerEvent::kExceptionThrown) {
     set_exception(debugger_event->exception());
@@ -51,13 +83,18 @@ ServiceEvent::ServiceEvent(const DebuggerEvent* debugger_event)
       type == DebuggerEvent::kExceptionThrown) {
     set_top_frame(debugger_event->top_frame());
   }
+  if (debugger_event->timestamp() != -1) {
+    timestamp_ = debugger_event->timestamp();
+  }
 }
 
 
-const char* ServiceEvent::EventTypeToCString(EventType type) {
-  switch (type) {
+const char* ServiceEvent::KindAsCString() const {
+  switch (kind()) {
     case kIsolateStart:
       return "IsolateStart";
+    case kIsolateRunnable:
+      return "IsolateRunnable";
     case kIsolateExit:
       return "IsolateExit";
     case kIsolateUpdate:
@@ -84,6 +121,10 @@ const char* ServiceEvent::EventTypeToCString(EventType type) {
       return "GC";  // TODO(koda): Change to GarbageCollected.
     case kInspect:
       return "Inspect";
+    case kEmbedder:
+      return embedder_kind();
+    case kLogging:
+      return "_Logging";
     case kDebuggerSettingsUpdate:
       return "_DebuggerSettingsUpdate";
     case kIllegal:
@@ -96,11 +137,12 @@ const char* ServiceEvent::EventTypeToCString(EventType type) {
 
 
 const char* ServiceEvent::stream_id() const {
-  switch (type()) {
+  switch (kind()) {
     case kIsolateStart:
+    case kIsolateRunnable:
     case kIsolateExit:
     case kIsolateUpdate:
-      return "Isolate";
+      return Service::isolate_stream.id();
 
     case kPauseStart:
     case kPauseExit:
@@ -113,10 +155,16 @@ const char* ServiceEvent::stream_id() const {
     case kBreakpointRemoved:
     case kInspect:
     case kDebuggerSettingsUpdate:
-      return "Debug";
+      return Service::debug_stream.id();
 
     case kGC:
-      return "GC";
+      return Service::gc_stream.id();
+
+    case kEmbedder:
+      return embedder_stream_id_;
+
+    case kLogging:
+      return Service::logging_stream.id();
 
     default:
       UNREACHABLE();
@@ -127,10 +175,8 @@ const char* ServiceEvent::stream_id() const {
 
 void ServiceEvent::PrintJSON(JSONStream* js) const {
   JSONObject jsobj(js);
-  jsobj.AddProperty("type", "Event");
-  jsobj.AddProperty("kind", EventTypeToCString(type()));
-  jsobj.AddProperty("isolate", isolate());
-  if (type() == kPauseBreakpoint) {
+  PrintJSONHeader(&jsobj);
+  if (kind() == kPauseBreakpoint) {
     JSONArray jsarr(&jsobj, "pauseBreakpoints");
     // TODO(rmacnak): If we are paused at more than one breakpoint,
     // provide it here.
@@ -142,7 +188,7 @@ void ServiceEvent::PrintJSON(JSONStream* js) const {
       jsobj.AddProperty("breakpoint", breakpoint());
     }
   }
-  if (type() == kDebuggerSettingsUpdate) {
+  if (kind() == kDebuggerSettingsUpdate) {
     JSONObject jssettings(&jsobj, "_debuggerSettings");
     isolate()->debugger()->PrintSettingsToJSONObject(&jssettings);
   }
@@ -155,6 +201,10 @@ void ServiceEvent::PrintJSON(JSONStream* js) const {
   if (exception() != NULL) {
     jsobj.AddProperty("exception", *(exception()));
   }
+  if (async_continuation() != NULL && !async_continuation()->IsNull()) {
+    jsobj.AddProperty("_asyncContinuation", *(async_continuation()));
+    jsobj.AddProperty("_atAsyncJump", at_async_jump());
+  }
   if (inspectee() != NULL) {
     jsobj.AddProperty("inspectee", *(inspectee()));
   }
@@ -163,6 +213,30 @@ void ServiceEvent::PrintJSON(JSONStream* js) const {
     isolate()->heap()->PrintToJSONObject(Heap::kNew, &jsobj);
     isolate()->heap()->PrintToJSONObject(Heap::kOld, &jsobj);
   }
+  if (bytes() != NULL) {
+    jsobj.AddPropertyBase64("bytes", bytes(), bytes_length());
+  }
+  if (kind() == kLogging) {
+    JSONObject logRecord(&jsobj, "logRecord");
+    logRecord.AddProperty64("sequenceNumber", log_record_.sequence_number);
+    logRecord.AddPropertyTimeMillis("time", log_record_.timestamp);
+    logRecord.AddProperty64("level", log_record_.level);
+    logRecord.AddProperty("loggerName", *(log_record_.name));
+    logRecord.AddProperty("message", *(log_record_.message));
+    logRecord.AddProperty("zone", *(log_record_.zone));
+    logRecord.AddProperty("error", *(log_record_.error));
+    logRecord.AddProperty("stackTrace", *(log_record_.stack_trace));
+  }
+}
+
+
+void ServiceEvent::PrintJSONHeader(JSONObject* jsobj) const {
+  ASSERT(jsobj != NULL);
+  jsobj->AddProperty("type", "Event");
+  jsobj->AddProperty("kind", KindAsCString());
+  jsobj->AddProperty("isolate", isolate());
+  ASSERT(timestamp_ != -1);
+  jsobj->AddPropertyTimeMillis("timestamp", timestamp_);
 }
 
 }  // namespace dart

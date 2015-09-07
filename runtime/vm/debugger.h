@@ -261,6 +261,7 @@ class ActivationFrame : public ZoneAllocated {
   RawObject* GetReceiver();
 
   const Context& GetSavedCurrentContext();
+  RawObject* GetAsyncOperation();
 
   RawObject* Evaluate(const String& expr);
 
@@ -270,8 +271,7 @@ class ActivationFrame : public ZoneAllocated {
   void PrintToJSONObject(JSONObject* jsobj, bool full = false);
 
  private:
-  void PrintContextMismatchError(const String& var_name,
-                                 intptr_t ctx_slot,
+  void PrintContextMismatchError(intptr_t ctx_slot,
                                  intptr_t frame_ctx_level,
                                  intptr_t var_ctx_level);
 
@@ -280,8 +280,8 @@ class ActivationFrame : public ZoneAllocated {
   void GetVarDescriptors();
   void GetDescIndices();
 
-  RawObject* GetLocalVar(intptr_t slot_index);
-  RawInstance* GetLocalInstanceVar(intptr_t slot_index);
+  RawObject* GetStackVar(intptr_t slot_index);
+  RawObject* GetContextVar(intptr_t ctxt_level, intptr_t slot_index);
 
   uword pc_;
   uword fp_;
@@ -353,7 +353,10 @@ class DebuggerEvent {
         type_(event_type),
         top_frame_(NULL),
         breakpoint_(NULL),
-        exception_(NULL) {}
+        exception_(NULL),
+        async_continuation_(NULL),
+        at_async_jump_(false),
+        timestamp_(-1) {}
 
   Isolate* isolate() const { return isolate_; }
 
@@ -392,8 +395,30 @@ class DebuggerEvent {
     exception_ = exception;
   }
 
+  const Object* async_continuation() const {
+    ASSERT(type_ == kBreakpointReached);
+    return async_continuation_;
+  }
+  void set_async_continuation(const Object* closure) {
+    ASSERT(type_ == kBreakpointReached);
+    async_continuation_ = closure;
+  }
+
+  bool at_async_jump() const {
+    return at_async_jump_;
+  }
+  void set_at_async_jump(bool value) {
+    at_async_jump_ = value;
+  }
+
   Dart_Port isolate_id() const {
     return isolate_->main_port();
+  }
+
+  void UpdateTimestamp();
+
+  int64_t timestamp() const {
+    return timestamp_;
   }
 
  private:
@@ -402,6 +427,9 @@ class DebuggerEvent {
   ActivationFrame* top_frame_;
   Breakpoint* breakpoint_;
   const Object* exception_;
+  const Object* async_continuation_;
+  bool at_async_jump_;
+  int64_t timestamp_;
 };
 
 
@@ -447,6 +475,12 @@ class Debugger {
   bool IsStepping() const { return resume_action_ != kContinue; }
 
   bool IsPaused() const { return pause_event_ != NULL; }
+
+  // Put the isolate into single stepping mode when Dart code next runs.
+  //
+  // This is used by the vm service to allow the user to step while
+  // paused at isolate start.
+  void EnterSingleStepMode();
 
   // Indicates why the debugger is currently paused.  If the debugger
   // is not paused, this returns NULL.  Note that the debugger can be

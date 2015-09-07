@@ -25,6 +25,16 @@ const String webSocketGUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 const String CERT_NAME = 'localhost_cert';
 const String HOST_NAME = 'localhost';
 
+String localFile(path) => Platform.script.resolve(path).toFilePath();
+
+SecurityContext serverContext = new SecurityContext()
+  ..useCertificateChain(localFile('certificates/server_chain.pem'))
+  ..usePrivateKey(localFile('certificates/server_key.pem'),
+                  password: 'dartdart');
+
+SecurityContext clientContext = new SecurityContext()
+  ..setTrustedCertificates(file: localFile('certificates/trusted_certs.pem'));
+
 /**
  * A SecurityConfiguration lets us run the tests over HTTP or HTTPS.
  */
@@ -36,13 +46,14 @@ class SecurityConfiguration {
   Future<HttpServer> createServer({int backlog: 0}) =>
       secure ? HttpServer.bindSecure(HOST_NAME,
                                      0,
-                                     backlog: backlog,
-                                     certificateName: CERT_NAME)
+                                     serverContext,
+                                     backlog: backlog)
              : HttpServer.bind(HOST_NAME,
                                0,
                                backlog: backlog);
 
   Future<WebSocket> createClient(int port) =>
+    // TODO(whesse): Add a client context argument to WebSocket.connect.
     WebSocket.connect('${secure ? "wss" : "ws"}://$HOST_NAME:$port/');
 
 
@@ -83,24 +94,116 @@ class SecurityConfiguration {
     });
   }
 
+  void testAddErrorServer() {
+    asyncStart();
+    asyncStart();
+    asyncStart();
+    asyncStart();
+    createServer().then((server) {
+      server.transform(new WebSocketTransformer()).listen((webSocket) {
+        webSocket.listen(
+            (message) {
+              webSocket.addError("ERROR");
+            },
+            onDone: () {
+              Expect.equals(WebSocketStatus.ABNORMAL_CLOSURE,
+                            webSocket.closeCode);
+              server.close();
+            },
+            onError: (e) {
+              Expect.equals("ERROR", e);
+              asyncEnd();
+            });
+
+        webSocket.done.then((_) {
+          Expect.fail("unexpected done completion");
+        }).catchError((e) {
+          Expect.equals("ERROR", e);
+          asyncEnd();
+        });
+        }, onDone: () {
+          asyncEnd();
+        });
+
+      createClient(server.port).then((webSocket) {
+        webSocket.add("message");
+        webSocket.listen(
+            (message) {
+              Expect.fail("unexpected message");
+            },
+            onDone: () {
+              Expect.equals(WebSocketStatus.ABNORMAL_CLOSURE,
+                            webSocket.closeCode);
+              server.close();
+              asyncEnd();
+            },
+            onError: (e) {
+              Expect.fail("unexpected onError");
+            });
+
+      });
+    });
+  }
+
+  void testAddErrorClient() {
+    asyncStart();
+    asyncStart();
+    asyncStart();
+    asyncStart();
+    createServer().then((server) {
+      server.transform(new WebSocketTransformer()).listen((webSocket) {
+        webSocket.listen(
+            (message) {
+              Expect.fail("unexpected message");
+            },
+            onDone: () {
+              Expect.equals(WebSocketStatus.ABNORMAL_CLOSURE,
+                            webSocket.closeCode);
+              asyncEnd();
+            });
+        }, onDone: () {
+          asyncEnd();
+        });
+
+      createClient(server.port).then((webSocket) {
+        webSocket.addError("ERROR");
+        webSocket.listen(
+            (message) {
+              Expect.fail("unexpected message");
+            },
+            onDone: () {
+              Expect.equals(WebSocketStatus.ABNORMAL_CLOSURE,
+                            webSocket.closeCode);
+              server.close();
+            },
+            onError: (e) {
+              Expect.equals("ERROR", e);
+              asyncEnd();
+            });
+
+        webSocket.done.then((_) {
+          Expect.fail("unexpected done completion");
+        }).catchError((e) {
+          Expect.equals("ERROR", e);
+          asyncEnd();
+        });
+      });
+    });
+  }
+
   void runTests() {
     testForceCloseServerEnd(10);
+    testAddErrorServer();
+    testAddErrorClient();
   }
-}
-
-
-void initializeSSL() {
-  var testPkcertDatabase = Platform.script.resolve('pkcert').toFilePath();
-  SecureSocket.initialize(database: testPkcertDatabase,
-                          password: "dartdart");
 }
 
 
 main() {
   asyncStart();
   new SecurityConfiguration(secure: false).runTests();
-  initializeSSL();
-  new SecurityConfiguration(secure: true).runTests();
+  // TODO(whesse): WebSocket.connect needs an optional context: parameter
+  // new SecurityConfiguration(secure: true).runTests();
   asyncEnd();
 }
 

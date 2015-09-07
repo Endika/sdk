@@ -321,7 +321,7 @@ class Namer {
   }
 
   final String asyncPrefix = r"$async$";
-  final String currentIsolate = r'$';
+  final String staticStateHolder = r'$';
   final String getterPrefix = r'get$';
   final String lazyGetterPrefix = r'$get$';
   final String setterPrefix = r'set$';
@@ -387,12 +387,17 @@ class Namer {
   final Map<String, jsAst.Name> userInstanceOperators =
       new HashMap<String, jsAst.Name>();
 
+  /// Used to disambiguate names for constants in [constantName].
+  final Set<String> usedConstantNames = new Set<String>();
+
   Set<String> getUsedNames(NamingScope scope) {
     if (scope == NamingScope.global) {
       return usedGlobalNames;
-    } else {
-      assert(scope == NamingScope.instance);
+    } else if (scope == NamingScope.instance){
       return usedInstanceNames;
+    } else {
+      assert(scope == NamingScope.constant);
+      return usedConstantNames;
     }
   }
 
@@ -425,9 +430,11 @@ class Namer {
   Map<String, String> getSuggestedNames(NamingScope scope) {
     if (scope == NamingScope.global) {
       return suggestedGlobalNames;
-    } else {
-      assert(scope == NamingScope.instance);
+    } else if (scope == NamingScope.instance) {
       return suggestedInstanceNames;
+    } else {
+      assert(scope == NamingScope.constant);
+      return const {};
     }
   }
 
@@ -453,14 +460,14 @@ class Namer {
   String get deferredTypesName => 'deferredTypes';
   String get isolateName => 'Isolate';
   String get isolatePropertiesName => r'$isolateProperties';
-  jsAst.Name get noSuchMethodName => publicInstanceMethodNameByArity(
-      Compiler.NO_SUCH_METHOD, Compiler.NO_SUCH_METHOD_ARG_COUNT);
+  jsAst.Name get noSuchMethodName => invocationName(Selectors.noSuchMethod_);
+
   /**
    * Some closures must contain their name. The name is stored in
    * [STATIC_CLOSURE_NAME_NAME].
    */
   String get STATIC_CLOSURE_NAME_NAME => r'$name';
-  String get closureInvocationSelectorName => Compiler.CALL_OPERATOR_NAME;
+  String get closureInvocationSelectorName => Identifiers.call;
   bool get shouldMinify => false;
 
   /// Returns the string that is to be used as the result of a call to
@@ -513,6 +520,14 @@ class Namer {
     }
   }
 
+  /// Return a reference to the given [name].
+  ///
+  /// This is used to ensure that every use site of a name has a unique node so
+  /// that we can properly attribute source information.
+  jsAst.Name _newReference(jsAst.Name name) {
+    return new _NameReference(name);
+  }
+
   /// Disambiguated name for [constant].
   ///
   /// Unique within the global-member namespace.
@@ -524,10 +539,10 @@ class Namer {
     jsAst.Name result = constantNames[constant];
     if (result == null) {
       String longName = constantLongName(constant);
-      result = getFreshName(NamingScope.global, longName);
+      result = getFreshName(NamingScope.constant, longName);
       constantNames[constant] = result;
     }
-    return result;
+    return _newReference(result);
   }
 
   /// Proposed name for [constant].
@@ -618,13 +633,6 @@ class Namer {
     return invocationName(new Selector.fromElement(method));
   }
 
-  /// Annotated name for a public method with the given [originalName]
-  /// and [arity] and no named parameters.
-  jsAst.Name publicInstanceMethodNameByArity(String originalName,
-                                             int arity) {
-    return invocationName(new Selector.call(originalName, null, arity));
-  }
-
   /// Returns the annotated name for a variant of `call`.
   /// The result has the form:
   ///
@@ -687,7 +695,7 @@ class Namer {
 
       case SelectorKind.CALL:
         List<String> suffix = callSuffixForStructure(selector.callStructure);
-        if (selector.name == Compiler.CALL_OPERATOR_NAME) {
+        if (selector.name == Identifiers.call) {
           // Derive the annotated name for this variant of 'call'.
           return deriveCallMethodName(suffix);
         }
@@ -848,7 +856,7 @@ class Namer {
       newName = getFreshName(NamingScope.global, name);
       internalGlobals[name] = newName;
     }
-    return newName;
+    return _newReference(newName);
   }
 
   /// Returns the property name to use for a compiler-owner global variable,
@@ -895,7 +903,7 @@ class Namer {
       newName = getFreshName(NamingScope.global, proposedName);
       userGlobals[element] = newName;
     }
-    return newName;
+    return _newReference(newName);
   }
 
   /// Returns the disambiguated name for an instance method or field
@@ -936,7 +944,7 @@ class Namer {
                              sanitizeForAnnotations: true);
       userInstanceMembers[key] = newName;
     }
-    return newName;
+    return _newReference(newName);
   }
 
   /// Returns the disambiguated name for the instance member identified by
@@ -959,7 +967,7 @@ class Namer {
                              sanitizeForAnnotations: true);
       userInstanceMembers[key] = newName;
     }
-    return newName;
+    return _newReference(newName);
   }
 
   /// Forces the public instance member with [originalName] to have the given
@@ -999,7 +1007,7 @@ class Namer {
                              sanitizeForNatives: mayClashNative);
       internalInstanceMembers[element] = newName;
     }
-    return newName;
+    return _newReference(newName);
   }
 
   /// Disambiguated name for the given operator.
@@ -1014,7 +1022,7 @@ class Namer {
       newName = getFreshName(NamingScope.instance, operatorIdentifier);
       userInstanceOperators[operatorIdentifier] = newName;
     }
-    return newName;
+    return _newReference(newName);
   }
 
   String _generateFreshStringForName(String proposedName,
@@ -1306,17 +1314,19 @@ class Namer {
         : globalPropertyName(method);
   }
 
-  /// Returns true if [element] is stored on current isolate ('$').  We intend
-  /// to store only mutable static state in [currentIsolate], constants are
-  /// stored in 'C', and functions, accessors, classes, etc. are stored in one
-  /// of the other objects in [reservedGlobalObjectNames].
-  bool isPropertyOfCurrentIsolate(Element element) {
+  /// Returns true if [element] is stored in the static state holder
+  /// ([staticStateHolder]).  We intend to store only mutable static state
+  /// there, whereas constants are stored in 'C'. Functions, accessors,
+  /// classes, etc. are stored in one of the other objects in
+  /// [reservedGlobalObjectNames].
+  bool _isPropertyOfStaticStateHolder(Element element) {
     // TODO(ahe): Make sure this method's documentation is always true and
     // remove the word "intend".
     return
         // TODO(ahe): Re-write these tests to be positive (so it only returns
         // true for static/top-level mutable fields). Right now, a number of
-        // other elements, such as bound closures also live in [currentIsolate].
+        // other elements, such as bound closures also live in
+        // [staticStateHolder].
         !element.isAccessor &&
         !element.isClass &&
         !element.isTypedef &&
@@ -1325,9 +1335,9 @@ class Namer {
         !element.isLibrary;
   }
 
-  /// Returns [currentIsolate] or one of [reservedGlobalObjectNames].
+  /// Returns [staticStateHolder] or one of [reservedGlobalObjectNames].
   String globalObjectFor(Element element) {
-    if (isPropertyOfCurrentIsolate(element)) return currentIsolate;
+    if (_isPropertyOfStaticStateHolder(element)) return staticStateHolder;
     LibraryElement library = element.library;
     if (library == backend.interceptorsLibrary) return 'J';
     if (library.isInternalLibrary) return 'H';
@@ -1976,5 +1986,6 @@ class FunctionTypeNamer extends BaseDartTypeVisitor {
 
 enum NamingScope {
   global,
-  instance
+  instance,
+  constant
 }

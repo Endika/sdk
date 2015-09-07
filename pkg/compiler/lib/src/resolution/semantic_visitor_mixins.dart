@@ -20,7 +20,9 @@ abstract class BulkHandle<R, A> {
 abstract class ErrorBulkMixin<R, A>
     implements SemanticSendVisitor<R, A>, BulkHandle<R, A> {
 
-  R bulkHandleError(Node node, A arg) {
+  // TODO(johnniwinther): Ensure that all error methods have an
+  // [ErroneousElement].
+  R bulkHandleError(Node node, ErroneousElement error, A arg) {
     return bulkHandleNode(node, "Error expression `#` unhandled.", arg);
   }
 
@@ -29,7 +31,7 @@ abstract class ErrorBulkMixin<R, A>
       Send node,
       NodeList arguments,
       A arg) {
-    return bulkHandleError(node, arg);
+    return bulkHandleError(node, null, arg);
   }
 
   @override
@@ -40,7 +42,7 @@ abstract class ErrorBulkMixin<R, A>
       NodeList arguments,
       CallStructure callStructure,
       A arg) {
-    return bulkHandleError(node, arg);
+    return bulkHandleError(node, null, arg);
   }
 
   @override
@@ -49,7 +51,7 @@ abstract class ErrorBulkMixin<R, A>
       Operator operator,
       Node expression,
       A arg) {
-    return bulkHandleError(node, arg);
+    return bulkHandleError(node, null, arg);
   }
 
   @override
@@ -59,7 +61,158 @@ abstract class ErrorBulkMixin<R, A>
       Operator operator,
       Node right,
       A arg) {
-    return bulkHandleError(node, arg);
+    return bulkHandleError(node, null, arg);
+  }
+
+  @override
+  R errorInvalidCompound(
+      Send node,
+      ErroneousElement error,
+      AssignmentOperator operator,
+      Node rhs,
+      A arg) {
+    return bulkHandleError(node, error, arg);
+  }
+
+  @override
+  R errorInvalidGet(
+      Send node,
+      ErroneousElement error,
+      A arg) {
+    return bulkHandleError(node, error, arg);
+  }
+
+  @override
+  R errorInvalidInvoke(
+      Send node,
+      ErroneousElement error,
+      NodeList arguments,
+      Selector selector,
+      A arg) {
+    return bulkHandleError(node, error, arg);
+  }
+
+  @override
+  R errorInvalidPostfix(
+      Send node,
+      ErroneousElement error,
+      IncDecOperator operator,
+      A arg) {
+    return bulkHandleError(node, error, arg);
+  }
+
+  @override
+  R errorInvalidPrefix(
+      Send node,
+      ErroneousElement error,
+      IncDecOperator operator,
+      A arg) {
+    return bulkHandleError(node, error, arg);
+  }
+
+  @override
+  R errorInvalidSet(
+      Send node,
+      ErroneousElement error,
+      Node rhs,
+      A arg) {
+    return bulkHandleError(node, error, arg);
+  }
+
+  @override
+  R errorInvalidUnary(
+      Send node,
+      UnaryOperator operator,
+      ErroneousElement error,
+      A arg) {
+    return bulkHandleError(node, error, arg);
+  }
+
+  @override
+  R errorInvalidEquals(
+      Send node,
+      ErroneousElement error,
+      Node right,
+      A arg) {
+    return bulkHandleError(node, error, arg);
+  }
+
+  @override
+  R errorInvalidNotEquals(
+      Send node,
+      ErroneousElement error,
+      Node right,
+      A arg) {
+    return bulkHandleError(node, error, arg);
+  }
+
+  @override
+  R errorInvalidBinary(
+      Send node,
+      ErroneousElement error,
+      BinaryOperator operator,
+      Node right,
+      A arg) {
+    return bulkHandleError(node, error, arg);
+  }
+
+  @override
+  R errorInvalidIndex(
+      Send node,
+      ErroneousElement error,
+      Node index,
+      A arg) {
+    return bulkHandleError(node, error, arg);
+  }
+
+  @override
+  R errorInvalidIndexSet(
+      Send node,
+      ErroneousElement error,
+      Node index,
+      Node rhs,
+      A arg) {
+    return bulkHandleError(node, error, arg);
+  }
+
+  @override
+  R errorInvalidCompoundIndexSet(
+      Send node,
+      ErroneousElement error,
+      Node index,
+      AssignmentOperator operator,
+      Node rhs,
+      A arg) {
+    return bulkHandleError(node, error, arg);
+  }
+
+  @override
+  R errorInvalidIndexPrefix(
+      Send node,
+      ErroneousElement error,
+      Node index,
+      IncDecOperator operator,
+      A arg) {
+    return bulkHandleError(node, error, arg);
+  }
+
+  @override
+  R errorInvalidIndexPostfix(
+      Send node,
+      ErroneousElement error,
+      Node index,
+      IncDecOperator operator,
+      A arg) {
+    return bulkHandleError(node, error, arg);
+  }
+
+  @override
+  R errorInvalidSetIfNull(
+      Send node,
+      ErroneousElement error,
+      Node rhs,
+      A arg) {
+    return bulkHandleError(node, error, arg);
   }
 }
 
@@ -79,9 +232,8 @@ abstract class PrefixBulkMixin<R, A>
   R visitDynamicPropertyPrefix(
       Send node,
       Node receiver,
+      Name name,
       IncDecOperator operator,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg) {
     return bulkHandlePrefix(node, arg);
   }
@@ -89,9 +241,8 @@ abstract class PrefixBulkMixin<R, A>
   R visitIfNotNullDynamicPropertyPrefix(
       Send node,
       Node receiver,
+      Name name,
       IncDecOperator operator,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg) {
     return bulkHandlePrefix(node, arg);
   }
@@ -258,9 +409,8 @@ abstract class PrefixBulkMixin<R, A>
   @override
   R visitThisPropertyPrefix(
       Send node,
+      Name name,
       IncDecOperator operator,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg) {
     return bulkHandlePrefix(node, arg);
   }
@@ -506,9 +656,8 @@ abstract class PostfixBulkMixin<R, A>
   R visitDynamicPropertyPostfix(
       Send node,
       Node receiver,
+      Name name,
       IncDecOperator operator,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg) {
     return bulkHandlePostfix(node, arg);
   }
@@ -517,9 +666,8 @@ abstract class PostfixBulkMixin<R, A>
   R visitIfNotNullDynamicPropertyPostfix(
       Send node,
       Node receiver,
+      Name name,
       IncDecOperator operator,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg) {
     return bulkHandlePostfix(node, arg);
   }
@@ -685,9 +833,8 @@ abstract class PostfixBulkMixin<R, A>
   @override
   R visitThisPropertyPostfix(
       Send node,
+      Name name,
       IncDecOperator operator,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg) {
     return bulkHandlePostfix(node, arg);
   }
@@ -941,10 +1088,9 @@ abstract class CompoundBulkMixin<R, A>
   R visitDynamicPropertyCompound(
       Send node,
       Node receiver,
+      Name name,
       AssignmentOperator operator,
       Node rhs,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg) {
     return bulkHandleCompound(node, arg);
   }
@@ -953,10 +1099,9 @@ abstract class CompoundBulkMixin<R, A>
   R visitIfNotNullDynamicPropertyCompound(
       Send node,
       Node receiver,
+      Name name,
       AssignmentOperator operator,
       Node rhs,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg) {
     return bulkHandleCompound(node, arg);
   }
@@ -1070,10 +1215,9 @@ abstract class CompoundBulkMixin<R, A>
   @override
   R visitThisPropertyCompound(
       Send node,
+      Name name,
       AssignmentOperator operator,
       Node rhs,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg) {
     return bulkHandleCompound(node, arg);
   }
@@ -1336,6 +1480,378 @@ abstract class CompoundBulkMixin<R, A>
   }
 }
 
+/// Mixin that implements all `visitXSetIfNull` methods of [SemanticSendVisitor]
+/// by delegating to a bulk handler.
+///
+/// Use this mixin to provide a trivial implementation for all `xSetIfNull`
+/// methods.
+abstract class SetIfNullBulkMixin<R, A>
+    implements SemanticSendVisitor<R, A>, BulkHandle<R, A> {
+
+  R bulkHandleSetIfNull(Send node, A arg) {
+    return bulkHandleNode(node, "If null assignment `#` unhandled.", arg);
+  }
+
+  @override
+  R visitClassTypeLiteralSetIfNull(
+      Send node,
+      ConstantExpression constant,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+
+  @override
+  R visitDynamicPropertySetIfNull(
+      Send node,
+      Node receiver,
+      Name name,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+
+  @override
+  R visitDynamicTypeLiteralSetIfNull(
+      Send node,
+      ConstantExpression constant,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+
+  @override
+  R visitFinalLocalVariableSetIfNull(
+      Send node,
+      LocalVariableElement variable,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+
+  @override
+  R visitFinalParameterSetIfNull(
+      Send node,
+      ParameterElement parameter,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+
+  @override
+  R visitFinalStaticFieldSetIfNull(
+      Send node,
+      FieldElement field,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+
+  @override
+  R visitFinalSuperFieldSetIfNull(
+      Send node,
+      FieldElement field,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+
+  @override
+  R visitFinalTopLevelFieldSetIfNull(
+      Send node,
+      FieldElement field,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+
+  @override
+  R visitIfNotNullDynamicPropertySetIfNull(
+      Send node,
+      Node receiver,
+      Name name,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+
+  @override
+  R visitLocalFunctionSetIfNull(
+      Send node,
+      LocalFunctionElement function,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+
+  @override
+  R visitLocalVariableSetIfNull(
+      Send node,
+      LocalVariableElement variable,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+
+  @override
+  R visitParameterSetIfNull(
+      Send node,
+      ParameterElement parameter,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+
+  @override
+  R visitStaticFieldSetIfNull(
+      Send node,
+      FieldElement field,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+
+  @override
+  R visitStaticGetterSetterSetIfNull(
+      Send node,
+      FunctionElement getter,
+      FunctionElement setter,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+
+  @override
+  R visitStaticMethodSetIfNull(
+      Send node,
+      FunctionElement method,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+
+  @override
+  R visitStaticMethodSetterSetIfNull(
+      Send node,
+      MethodElement method,
+      MethodElement setter,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+
+  @override
+  R visitSuperFieldFieldSetIfNull(
+      Send node,
+      FieldElement readField,
+      FieldElement writtenField,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+
+  @override
+  R visitSuperFieldSetIfNull(
+      Send node,
+      FieldElement field,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+
+  @override
+  R visitSuperFieldSetterSetIfNull(
+      Send node,
+      FieldElement field,
+      FunctionElement setter,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+
+  @override
+  R visitSuperGetterFieldSetIfNull(
+      Send node,
+      FunctionElement getter,
+      FieldElement field,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+
+  @override
+  R visitSuperGetterSetterSetIfNull(
+      Send node,
+      FunctionElement getter,
+      FunctionElement setter,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+
+  @override
+  R visitSuperMethodSetIfNull(
+      Send node,
+      FunctionElement method,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+
+  @override
+  R visitSuperMethodSetterSetIfNull(
+      Send node,
+      FunctionElement method,
+      FunctionElement setter,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+
+  @override
+  R visitThisPropertySetIfNull(
+      Send node,
+      Name name,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+
+  @override
+  R visitTopLevelFieldSetIfNull(
+      Send node,
+      FieldElement field,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+
+  @override
+  R visitTopLevelGetterSetterSetIfNull(
+      Send node,
+      FunctionElement getter,
+      FunctionElement setter,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+
+  @override
+  R visitTopLevelMethodSetIfNull(
+      Send node,
+      FunctionElement method,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+
+  @override
+  R visitTopLevelMethodSetterSetIfNull(
+      Send node,
+      FunctionElement method,
+      FunctionElement setter,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+
+  @override
+  R visitTypeVariableTypeLiteralSetIfNull(
+      Send node,
+      TypeVariableElement element,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+
+  @override
+  R visitTypedefTypeLiteralSetIfNull(
+      Send node,
+      ConstantExpression constant,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+
+  @override
+  R visitUnresolvedSetIfNull(
+      Send node,
+      Element element,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+
+  @override
+  R visitUnresolvedStaticGetterSetIfNull(
+      Send node,
+      Element element,
+      MethodElement setter,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+
+  @override
+  R visitUnresolvedStaticSetterSetIfNull(
+      Send node,
+      MethodElement getter,
+      Element element,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+
+  @override
+  R visitUnresolvedSuperGetterSetIfNull(
+      Send node,
+      Element element,
+      MethodElement setter,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+
+  @override
+  R visitUnresolvedSuperSetIfNull(
+      Send node,
+      Element element,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+
+  @override
+  R visitUnresolvedSuperSetterSetIfNull(
+      Send node,
+      MethodElement getter,
+      Element element,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+
+  @override
+  R visitUnresolvedTopLevelGetterSetIfNull(
+      Send node,
+      Element element,
+      MethodElement setter,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+
+  @override
+  R visitUnresolvedTopLevelSetterSetIfNull(
+      Send node,
+      MethodElement getter,
+      Element element,
+      Node rhs,
+      A arg) {
+    return bulkHandleSetIfNull(node, arg);
+  }
+}
+
 /// Mixin that implements all `visitXInvoke` methods of [SemanticSendVisitor] by
 /// delegating to a bulk handler.
 ///
@@ -1393,7 +1909,7 @@ abstract class InvokeBulkMixin<R, A>
       Send node,
       Node expression,
       NodeList arguments,
-      Selector selector,
+      CallStructure callStructure,
       A arg) {
     return bulkHandleInvoke(node, arg);
   }
@@ -1681,7 +2197,7 @@ abstract class GetBulkMixin<R, A>
   R visitDynamicPropertyGet(
       Send node,
       Node receiver,
-      Selector selector,
+      Name name,
       A arg) {
     return bulkHandleGet(node, arg);
   }
@@ -1690,7 +2206,7 @@ abstract class GetBulkMixin<R, A>
   R visitIfNotNullDynamicPropertyGet(
       Send node,
       Node receiver,
-      Selector selector,
+      Name name,
       A arg) {
     return bulkHandleGet(node, arg);
   }
@@ -1783,7 +2299,7 @@ abstract class GetBulkMixin<R, A>
   @override
   R visitThisPropertyGet(
       Send node,
-      Selector selector,
+      Name name,
       A arg) {
     return bulkHandleGet(node, arg);
   }
@@ -1893,7 +2409,7 @@ abstract class SetBulkMixin<R, A>
   R visitDynamicPropertySet(
       SendSet node,
       Node receiver,
-      Selector selector,
+      Name name,
       Node rhs,
       A arg) {
     return bulkHandleSet(node, arg);
@@ -1903,7 +2419,7 @@ abstract class SetBulkMixin<R, A>
   R visitIfNotNullDynamicPropertySet(
       SendSet node,
       Node receiver,
-      Selector selector,
+      Name name,
       Node rhs,
       A arg) {
     return bulkHandleSet(node, arg);
@@ -1966,7 +2482,7 @@ abstract class SetBulkMixin<R, A>
   @override
   R visitThisPropertySet(
       SendSet node,
-      Selector selector,
+      Name name,
       Node rhs,
       A arg) {
     return bulkHandleSet(node, arg);
@@ -2477,6 +2993,14 @@ abstract class BaseBulkMixin<R, A>
       Node right,
       A arg) {
     return bulkHandleNode(node, 'Lazy or `#` unhandled.', arg);
+  }
+
+  @override
+  void previsitDeferredAccess(
+      Send node,
+      PrefixElement prefix,
+      A arg) {
+    bulkHandleNode(node, 'Deferred access `#` unhandled.', arg);
   }
 }
 
@@ -3006,6 +3530,7 @@ class BulkSendVisitor<R, A> extends SemanticSendVisitor<R, A>
          InvokeBulkMixin<R, A>,
          IndexSetBulkMixin<R, A>,
          CompoundBulkMixin<R, A>,
+         SetIfNullBulkMixin<R, A>,
          UnaryBulkMixin<R, A>,
          BaseBulkMixin<R, A>,
          BinaryBulkMixin<R, A>,
@@ -3510,11 +4035,173 @@ class TraversalSendMixin<R, A> implements SemanticSendVisitor<R, A> {
   }
 
   @override
+  void previsitDeferredAccess(
+      Send node,
+      PrefixElement prefix,
+      A arg) {
+  }
+
+  @override
   R errorInvalidAssert(
       Send node,
       NodeList arguments,
       A arg) {
     apply(arguments, arg);
+    return null;
+  }
+
+  @override
+  R errorInvalidCompound(
+      Send node,
+      ErroneousElement error,
+      AssignmentOperator operator,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R errorInvalidGet(
+      Send node,
+      ErroneousElement error,
+      A arg) {
+    return null;
+  }
+
+  @override
+  R errorInvalidInvoke(
+      Send node,
+      ErroneousElement error,
+      NodeList arguments,
+      Selector selector,
+      A arg) {
+    apply(arguments, arg);
+    return null;
+  }
+
+  @override
+  R errorInvalidPostfix(
+      Send node,
+      ErroneousElement error,
+      IncDecOperator operator,
+      A arg) {
+    return null;
+  }
+
+  @override
+  R errorInvalidPrefix(
+      Send node,
+      ErroneousElement error,
+      IncDecOperator operator,
+      A arg) {
+    return null;
+  }
+
+  @override
+  R errorInvalidSet(
+      Send node,
+      ErroneousElement error,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R errorInvalidUnary(
+      Send node,
+      UnaryOperator operator,
+      ErroneousElement error,
+      A arg) {
+    return null;
+  }
+
+  @override
+  R errorInvalidEquals(
+      Send node,
+      ErroneousElement error,
+      Node right,
+      A arg) {
+    apply(right, arg);
+    return null;
+  }
+
+  @override
+  R errorInvalidNotEquals(
+      Send node,
+      ErroneousElement error,
+      Node right,
+      A arg) {
+    apply(right, arg);
+    return null;
+  }
+
+  @override
+  R errorInvalidBinary(
+      Send node,
+      ErroneousElement error,
+      BinaryOperator operator,
+      Node right,
+      A arg) {
+    apply(right, arg);
+    return null;
+  }
+
+  @override
+  R errorInvalidIndex(
+      Send node,
+      ErroneousElement error,
+      Node index,
+      A arg) {
+    apply(index, arg);
+    return null;
+  }
+
+  @override
+  R errorInvalidIndexSet(
+      Send node,
+      ErroneousElement error,
+      Node index,
+      Node rhs,
+      A arg) {
+    apply(index, arg);
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R errorInvalidCompoundIndexSet(
+      Send node,
+      ErroneousElement error,
+      Node index,
+      AssignmentOperator operator,
+      Node rhs,
+      A arg) {
+    apply(index, arg);
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R errorInvalidIndexPrefix(
+      Send node,
+      ErroneousElement error,
+      Node index,
+      IncDecOperator operator,
+      A arg) {
+    apply(index, arg);
+    return null;
+  }
+
+  @override
+  R errorInvalidIndexPostfix(
+      Send node,
+      ErroneousElement error,
+      Node index,
+      IncDecOperator operator,
+      A arg) {
+    apply(index, arg);
     return null;
   }
 
@@ -3953,10 +4640,9 @@ class TraversalSendMixin<R, A> implements SemanticSendVisitor<R, A> {
   R visitDynamicPropertyCompound(
       Send node,
       Node receiver,
+      Name name,
       AssignmentOperator operator,
       Node rhs,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg) {
     apply(receiver, arg);
     apply(rhs, arg);
@@ -3967,10 +4653,9 @@ class TraversalSendMixin<R, A> implements SemanticSendVisitor<R, A> {
   R visitIfNotNullDynamicPropertyCompound(
       Send node,
       Node receiver,
+      Name name,
       AssignmentOperator operator,
       Node rhs,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg) {
     apply(receiver, arg);
     apply(rhs, arg);
@@ -3981,7 +4666,7 @@ class TraversalSendMixin<R, A> implements SemanticSendVisitor<R, A> {
   R visitDynamicPropertyGet(
       Send node,
       Node receiver,
-      Selector selector,
+      Name name,
       A arg) {
     apply(receiver, arg);
     return null;
@@ -3991,7 +4676,7 @@ class TraversalSendMixin<R, A> implements SemanticSendVisitor<R, A> {
   R visitIfNotNullDynamicPropertyGet(
       Send node,
       Node receiver,
-      Selector selector,
+      Name name,
       A arg) {
     apply(receiver, arg);
     return null;
@@ -4025,9 +4710,8 @@ class TraversalSendMixin<R, A> implements SemanticSendVisitor<R, A> {
   R visitDynamicPropertyPostfix(
       Send node,
       Node receiver,
+      Name name,
       IncDecOperator operator,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg) {
     apply(receiver, arg);
     return null;
@@ -4037,9 +4721,8 @@ class TraversalSendMixin<R, A> implements SemanticSendVisitor<R, A> {
   R visitIfNotNullDynamicPropertyPostfix(
       Send node,
       Node receiver,
+      Name name,
       IncDecOperator operator,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg) {
     apply(receiver, arg);
     return null;
@@ -4049,9 +4732,8 @@ class TraversalSendMixin<R, A> implements SemanticSendVisitor<R, A> {
   R visitDynamicPropertyPrefix(
       Send node,
       Node receiver,
+      Name name,
       IncDecOperator operator,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg) {
     apply(receiver, arg);
     return null;
@@ -4061,9 +4743,8 @@ class TraversalSendMixin<R, A> implements SemanticSendVisitor<R, A> {
   R visitIfNotNullDynamicPropertyPrefix(
       Send node,
       Node receiver,
+      Name name,
       IncDecOperator operator,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg) {
     apply(receiver, arg);
     return null;
@@ -4073,7 +4754,7 @@ class TraversalSendMixin<R, A> implements SemanticSendVisitor<R, A> {
   R visitDynamicPropertySet(
       SendSet node,
       Node receiver,
-      Selector selector,
+      Name name,
       Node rhs,
       A arg) {
     apply(receiver, arg);
@@ -4085,7 +4766,7 @@ class TraversalSendMixin<R, A> implements SemanticSendVisitor<R, A> {
   R visitIfNotNullDynamicPropertySet(
       SendSet node,
       Node receiver,
-      Selector selector,
+      Name name,
       Node rhs,
       A arg) {
     apply(receiver, arg);
@@ -4157,7 +4838,7 @@ class TraversalSendMixin<R, A> implements SemanticSendVisitor<R, A> {
       Send node,
       Node expression,
       NodeList arguments,
-      Selector selector,
+      CallStructure callStructure,
       A arg) {
     apply(expression, arg);
     apply(arguments, arg);
@@ -4946,10 +5627,9 @@ class TraversalSendMixin<R, A> implements SemanticSendVisitor<R, A> {
   @override
   R visitThisPropertyCompound(
       Send node,
+      Name name,
       AssignmentOperator operator,
       Node rhs,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg) {
     apply(rhs, arg);
     return null;
@@ -4958,7 +5638,7 @@ class TraversalSendMixin<R, A> implements SemanticSendVisitor<R, A> {
   @override
   R visitThisPropertyGet(
       Send node,
-      Selector selector,
+      Name name,
       A arg) {
     return null;
   }
@@ -4976,9 +5656,8 @@ class TraversalSendMixin<R, A> implements SemanticSendVisitor<R, A> {
   @override
   R visitThisPropertyPostfix(
       Send node,
+      Name name,
       IncDecOperator operator,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg) {
     return null;
   }
@@ -4986,9 +5665,8 @@ class TraversalSendMixin<R, A> implements SemanticSendVisitor<R, A> {
   @override
   R visitThisPropertyPrefix(
       Send node,
+      Name name,
       IncDecOperator operator,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg) {
     return null;
   }
@@ -4996,7 +5674,7 @@ class TraversalSendMixin<R, A> implements SemanticSendVisitor<R, A> {
   @override
   R visitThisPropertySet(
       SendSet node,
-      Selector selector,
+      Name name,
       Node rhs,
       A arg) {
     apply(rhs, arg);
@@ -5558,6 +6236,415 @@ class TraversalSendMixin<R, A> implements SemanticSendVisitor<R, A> {
       IncDecOperator operator,
       A arg) {
     apply(index, arg);
+    return null;
+  }
+
+  @override
+  R errorInvalidSetIfNull(
+      Send node,
+      ErroneousElement error,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitClassTypeLiteralSetIfNull(
+      Send node,
+      ConstantExpression constant,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitDynamicPropertySetIfNull(
+      Send node,
+      Node receiver,
+      Name name,
+      Node rhs,
+      A arg) {
+    apply(receiver, arg);
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitDynamicTypeLiteralSetIfNull(
+      Send node,
+      ConstantExpression constant,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitFinalLocalVariableSetIfNull(
+      Send node,
+      LocalVariableElement variable,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitFinalParameterSetIfNull(
+      Send node,
+      ParameterElement parameter,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitFinalStaticFieldSetIfNull(
+      Send node,
+      FieldElement field,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitFinalSuperFieldSetIfNull(
+      Send node,
+      FieldElement field,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitFinalTopLevelFieldSetIfNull(
+      Send node,
+      FieldElement field,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitIfNotNullDynamicPropertySetIfNull(
+      Send node,
+      Node receiver,
+      Name name,
+      Node rhs,
+      A arg) {
+    apply(receiver, arg);
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitLocalFunctionSetIfNull(
+      Send node,
+      LocalFunctionElement function,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitLocalVariableSetIfNull(
+      Send node,
+      LocalVariableElement variable,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitParameterSetIfNull(
+      Send node,
+      ParameterElement parameter,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitStaticFieldSetIfNull(
+      Send node,
+      FieldElement field,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitStaticGetterSetterSetIfNull(
+      Send node,
+      FunctionElement getter,
+      FunctionElement setter,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitStaticMethodSetIfNull(
+      Send node,
+      FunctionElement method,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitStaticMethodSetterSetIfNull(
+      Send node,
+      MethodElement method,
+      MethodElement setter,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitSuperFieldFieldSetIfNull(
+      Send node,
+      FieldElement readField,
+      FieldElement writtenField,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitSuperFieldSetIfNull(
+      Send node,
+      FieldElement field,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitSuperFieldSetterSetIfNull(
+      Send node,
+      FieldElement field,
+      FunctionElement setter,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitSuperGetterFieldSetIfNull(
+      Send node,
+      FunctionElement getter,
+      FieldElement field,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitSuperGetterSetterSetIfNull(
+      Send node,
+      FunctionElement getter,
+      FunctionElement setter,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitSuperMethodSetIfNull(
+      Send node,
+      FunctionElement method,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitSuperMethodSetterSetIfNull(
+      Send node,
+      FunctionElement method,
+      FunctionElement setter,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitThisPropertySetIfNull(
+      Send node,
+      Name name,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitTopLevelFieldSetIfNull(
+      Send node,
+      FieldElement field,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitTopLevelGetterSetterSetIfNull(
+      Send node,
+      FunctionElement getter,
+      FunctionElement setter,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitTopLevelMethodSetIfNull(
+      Send node,
+      FunctionElement method,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitTopLevelMethodSetterSetIfNull(
+      Send node,
+      FunctionElement method,
+      FunctionElement setter,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitTypeVariableTypeLiteralSetIfNull(
+      Send node,
+      TypeVariableElement element,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitTypedefTypeLiteralSetIfNull(
+      Send node,
+      ConstantExpression constant,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitUnresolvedSetIfNull(
+      Send node,
+      Element element,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitUnresolvedStaticGetterSetIfNull(
+      Send node,
+      Element element,
+      MethodElement setter,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitUnresolvedStaticSetterSetIfNull(
+      Send node,
+      MethodElement getter,
+      Element element,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitUnresolvedSuperGetterSetIfNull(
+      Send node,
+      Element element,
+      MethodElement setter,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitUnresolvedSuperSetIfNull(
+      Send node,
+      Element element,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitUnresolvedSuperSetterSetIfNull(
+      Send node,
+      MethodElement getter,
+      Element element,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitUnresolvedTopLevelGetterSetIfNull(
+      Send node,
+      Element element,
+      MethodElement setter,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
+    return null;
+  }
+
+  @override
+  R visitUnresolvedTopLevelSetterSetIfNull(
+      Send node,
+      MethodElement getter,
+      Element element,
+      Node rhs,
+      A arg) {
+    apply(rhs, arg);
     return null;
   }
 
@@ -6611,6 +7698,12 @@ class TraversalVisitor<R, A> extends SemanticVisitor<R, A>
   @override
   R visitNode(Node node) {
     node.visitChildren(this);
+    return null;
+  }
+
+  @override
+  R visitTypeAnnotation(TypeAnnotation node) {
+    // Skip [Send] contained in type annotations, like `prefix.Type`.
     return null;
   }
 }
@@ -7768,7 +8861,7 @@ abstract class BaseImplementationOfDynamicsMixin<R, A>
   R handleDynamicGet(
       Send node,
       Node receiver,
-      Selector selector,
+      Name name,
       A arg);
 
   R handleDynamicInvoke(
@@ -7781,7 +8874,7 @@ abstract class BaseImplementationOfDynamicsMixin<R, A>
   R handleDynamicSet(
       SendSet node,
       Node receiver,
-      Selector selector,
+      Name name,
       Node rhs,
       A arg);
 
@@ -7789,19 +8882,19 @@ abstract class BaseImplementationOfDynamicsMixin<R, A>
   R visitDynamicPropertyGet(
       Send node,
       Node receiver,
-      Selector selector,
+      Name name,
       A arg) {
-    return handleDynamicGet(node, receiver, selector, arg);
+    return handleDynamicGet(node, receiver, name, arg);
   }
 
   @override
   R visitIfNotNullDynamicPropertyGet(
       Send node,
       Node receiver,
-      Selector selector,
+      Name name,
       A arg) {
     // TODO(johnniwinther): should these redirect to handleDynamicX?
-    return handleDynamicGet(node, receiver, selector, arg);
+    return handleDynamicGet(node, receiver, name, arg);
   }
 
   @override
@@ -7828,28 +8921,28 @@ abstract class BaseImplementationOfDynamicsMixin<R, A>
   R visitDynamicPropertySet(
       SendSet node,
       Node receiver,
-      Selector selector,
+      Name name,
       Node rhs,
       A arg) {
-    return handleDynamicSet(node, receiver, selector, rhs, arg);
+    return handleDynamicSet(node, receiver, name, rhs, arg);
   }
 
   @override
   R visitIfNotNullDynamicPropertySet(
       SendSet node,
       Node receiver,
-      Selector selector,
+      Name name,
       Node rhs,
       A arg) {
-    return handleDynamicSet(node, receiver, selector, rhs, arg);
+    return handleDynamicSet(node, receiver, name, rhs, arg);
   }
 
   @override
   R visitThisPropertyGet(
       Send node,
-      Selector selector,
+      Name name,
       A arg) {
-    return handleDynamicGet(node, null, selector, arg);
+    return handleDynamicGet(node, null, name, arg);
   }
 
   @override
@@ -7864,10 +8957,10 @@ abstract class BaseImplementationOfDynamicsMixin<R, A>
   @override
   R visitThisPropertySet(
       SendSet node,
-      Selector selector,
+      Name name,
       Node rhs,
       A arg) {
-    return handleDynamicSet(node, null, selector, rhs, arg);
+    return handleDynamicSet(node, null, name, rhs, arg);
   }
 }
 
@@ -7882,18 +8975,16 @@ abstract class BaseImplementationOfDynamicCompoundsMixin<R, A>
   R handleDynamicCompound(
       Send node,
       Node receiver,
+      Name name,
       AssignmentOperator operator,
       Node rhs,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg);
 
   R handleDynamicPostfixPrefix(
       Send node,
       Node receiver,
+      Name name,
       IncDecOperator operator,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg,
       {bool isPrefix});
 
@@ -7909,114 +9000,98 @@ abstract class BaseImplementationOfDynamicCompoundsMixin<R, A>
   R visitDynamicPropertyCompound(
       Send node,
       Node receiver,
+      Name name,
       AssignmentOperator operator,
       Node rhs,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg) {
     return handleDynamicCompound(
-        node, receiver, operator, rhs, getterSelector, setterSelector, arg);
+        node, receiver, name, operator, rhs, arg);
   }
 
   @override
   R visitIfNotNullDynamicPropertyCompound(
       Send node,
       Node receiver,
+      Name name,
       AssignmentOperator operator,
       Node rhs,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg) {
     return handleDynamicCompound(
-        node, receiver, operator, rhs, getterSelector, setterSelector, arg);
+        node, receiver, name, operator, rhs, arg);
   }
 
   @override
   R visitDynamicPropertyPostfix(
       Send node,
       Node receiver,
+      Name name,
       IncDecOperator operator,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg) {
     return handleDynamicPostfixPrefix(
-        node, receiver, operator,
-        getterSelector, setterSelector, arg, isPrefix: false);
+        node, receiver, name, operator, arg, isPrefix: false);
   }
 
   @override
   R visitIfNotNullDynamicPropertyPostfix(
       Send node,
       Node receiver,
+      Name name,
       IncDecOperator operator,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg) {
     return handleDynamicPostfixPrefix(
-        node, receiver, operator,
-        getterSelector, setterSelector, arg, isPrefix: false);
+        node, receiver, name, operator, arg, isPrefix: false);
   }
 
   @override
   R visitDynamicPropertyPrefix(
       Send node,
       Node receiver,
+      Name name,
       IncDecOperator operator,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg) {
     return handleDynamicPostfixPrefix(
-        node, receiver, operator,
-        getterSelector, setterSelector, arg, isPrefix: true);
+        node, receiver, name, operator, arg, isPrefix: true);
   }
 
   @override
   R visitIfNotNullDynamicPropertyPrefix(
       Send node,
       Node receiver,
+      Name name,
       IncDecOperator operator,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg) {
     return handleDynamicPostfixPrefix(
-        node, receiver, operator,
-        getterSelector, setterSelector, arg, isPrefix: true);
+        node, receiver, name, operator, arg, isPrefix: true);
   }
 
   @override
   R visitThisPropertyCompound(
       Send node,
+      Name name,
       AssignmentOperator operator,
       Node rhs,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg) {
-    return handleDynamicCompound(
-        node, null, operator, rhs, getterSelector, setterSelector, arg);
+    return handleDynamicCompound(node, null, name, operator, rhs, arg);
   }
 
   @override
   R visitThisPropertyPostfix(
       Send node,
+      Name name,
       IncDecOperator operator,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg) {
     return handleDynamicPostfixPrefix(
-        node, null, operator,
-        getterSelector, setterSelector, arg, isPrefix: false);
+        node, null, name, operator, arg, isPrefix: false);
   }
 
   @override
   R visitThisPropertyPrefix(
       Send node,
+      Name name,
       IncDecOperator operator,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg) {
     return handleDynamicPostfixPrefix(
-        node, null, operator,
-        getterSelector, setterSelector, arg, isPrefix: true);
+        node, null, name, operator, arg, isPrefix: true);
   }
 
   @override
@@ -8173,59 +9248,52 @@ abstract class BaseImplementationOfCompoundsMixin<R, A>
   R handleDynamicCompounds(
       Send node,
       Node receiver,
+      Name name,
       CompoundRhs rhs,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg);
 
   R visitDynamicPropertyCompound(
       Send node,
       Node receiver,
+      Name name,
       AssignmentOperator operator,
       Node rhs,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg) {
     return handleDynamicCompounds(
         node,
         receiver,
+        name,
         new AssignmentCompound(operator, rhs),
-        getterSelector,
-        setterSelector,
         arg);
   }
 
   R visitIfNotNullDynamicPropertyCompound(
       Send node,
       Node receiver,
+      Name name,
       AssignmentOperator operator,
       Node rhs,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg) {
     return handleDynamicCompounds(
         node,
         receiver,
+        name,
         new AssignmentCompound(operator, rhs),
-        getterSelector,
-        setterSelector,
         arg);
   }
 
   @override
   R visitThisPropertyCompound(
       Send node,
+      Name name,
       AssignmentOperator operator,
       Node rhs,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg) {
     return handleDynamicCompounds(
         node,
         null,
+        name,
         new AssignmentCompound(operator, rhs),
-        getterSelector,
-        setterSelector,
         arg);
   }
 
@@ -8582,32 +9650,28 @@ abstract class BaseImplementationOfCompoundsMixin<R, A>
   R visitDynamicPropertyPrefix(
       Send node,
       Node receiver,
+      Name name,
       IncDecOperator operator,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg) {
     return handleDynamicCompounds(
         node,
         receiver,
+        name,
         new IncDecCompound(CompoundKind.PREFIX, operator),
-        getterSelector,
-        setterSelector,
         arg);
   }
 
   R visitIfNotNullDynamicPropertyPrefix(
       Send node,
       Node receiver,
+      Name name,
       IncDecOperator operator,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg) {
     return handleDynamicCompounds(
         node,
         receiver,
+        name,
         new IncDecCompound(CompoundKind.PREFIX, operator),
-        getterSelector,
-        setterSelector,
         arg);
   }
 
@@ -8656,16 +9720,14 @@ abstract class BaseImplementationOfCompoundsMixin<R, A>
 
   R visitThisPropertyPrefix(
       Send node,
+      Name name,
       IncDecOperator operator,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg) {
     return handleDynamicCompounds(
         node,
         null,
+        name,
         new IncDecCompound(CompoundKind.PREFIX, operator),
-        getterSelector,
-        setterSelector,
         arg);
   }
 
@@ -8902,16 +9964,14 @@ abstract class BaseImplementationOfCompoundsMixin<R, A>
   R visitDynamicPropertyPostfix(
       Send node,
       Node receiver,
+      Name name,
       IncDecOperator operator,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg) {
     return handleDynamicCompounds(
         node,
         receiver,
+        name,
         new IncDecCompound(CompoundKind.POSTFIX, operator),
-        getterSelector,
-        setterSelector,
         arg);
   }
 
@@ -8919,16 +9979,14 @@ abstract class BaseImplementationOfCompoundsMixin<R, A>
   R visitIfNotNullDynamicPropertyPostfix(
       Send node,
       Node receiver,
+      Name name,
       IncDecOperator operator,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg) {
     return handleDynamicCompounds(
         node,
         receiver,
+        name,
         new IncDecCompound(CompoundKind.POSTFIX, operator),
-        getterSelector,
-        setterSelector,
         arg);
   }
 
@@ -8977,16 +10035,14 @@ abstract class BaseImplementationOfCompoundsMixin<R, A>
 
   R visitThisPropertyPostfix(
       Send node,
+      Name name,
       IncDecOperator operator,
-      Selector getterSelector,
-      Selector setterSelector,
       A arg) {
     return handleDynamicCompounds(
         node,
         null,
+        name,
         new IncDecCompound(CompoundKind.POSTFIX, operator),
-        getterSelector,
-        setterSelector,
         arg);
   }
 
@@ -9942,6 +10998,594 @@ abstract class BaseImplementationOfCompoundsMixin<R, A>
         element,
         CompoundSetter.INVALID,
         new IncDecCompound(CompoundKind.PREFIX, operator),
+        arg);
+  }
+}
+
+/// Simplified handling of if-null assignments.
+abstract class BaseImplementationOfSetIfNullsMixin<R, A>
+    implements SemanticSendVisitor<R, A> {
+
+  /// Handle a super if-null assignments, like `super.foo ??= 42`.
+  R handleSuperSetIfNulls(
+      SendSet node,
+      Element getter,
+      CompoundGetter getterKind,
+      Element setter,
+      CompoundSetter setterKind,
+      Node rhs,
+      A arg);
+
+  /// Handle a static or top level if-null assignments, like `foo ??= 42`.
+  R handleStaticSetIfNulls(
+      SendSet node,
+      Element getter,
+      CompoundGetter getterKind,
+      Element setter,
+      CompoundSetter setterKind,
+      Node rhs,
+      A arg);
+
+  /// Handle a local if-null assignments, like `foo ??= 42`. If [isSetterValid]
+  /// is false [local] is unassignable.
+  R handleLocalSetIfNulls(
+      SendSet node,
+      LocalElement local,
+      Node rhs,
+      A arg,
+      {bool isSetterValid});
+
+  /// Handle a if-null assignments on a type literal constant, like
+  /// `Object ??= 42`.
+  R handleTypeLiteralConstantSetIfNulls(
+      SendSet node,
+      ConstantExpression constant,
+      Node rhs,
+      A arg);
+
+  /// Handle a dynamic if-null assignments, like `o.foo ??= 42`. [receiver] is
+  /// `null` for properties on `this`, like `this.foo ??= 42` or `foo ??= 42`.
+  R handleDynamicSetIfNulls(
+      Send node,
+      Node receiver,
+      Name name,
+      Node rhs,
+      A arg);
+
+  @override
+  R visitClassTypeLiteralSetIfNull(
+      Send node,
+      ConstantExpression constant,
+      Node rhs,
+      A arg) {
+    return handleTypeLiteralConstantSetIfNulls(node, constant, rhs, arg);
+  }
+
+  @override
+  R visitDynamicPropertySetIfNull(
+      Send node,
+      Node receiver,
+      Name name,
+      Node rhs,
+      A arg) {
+    return handleDynamicSetIfNulls(node, receiver, name, rhs, arg);
+  }
+
+  @override
+  R visitDynamicTypeLiteralSetIfNull(
+      Send node,
+      ConstantExpression constant,
+      Node rhs,
+      A arg) {
+    return handleTypeLiteralConstantSetIfNulls(node, constant, rhs, arg);
+  }
+
+  @override
+  R visitFinalLocalVariableSetIfNull(
+      Send node,
+      LocalVariableElement variable,
+      Node rhs,
+      A arg) {
+    return handleLocalSetIfNulls(
+        node, variable, rhs, arg, isSetterValid: false);
+  }
+
+  @override
+  R visitFinalParameterSetIfNull(
+      Send node,
+      ParameterElement parameter,
+      Node rhs,
+      A arg) {
+    return handleLocalSetIfNulls(
+        node, parameter, rhs, arg, isSetterValid: false);
+  }
+
+  @override
+  R visitFinalStaticFieldSetIfNull(
+      Send node,
+      FieldElement field,
+      Node rhs,
+      A arg) {
+    return handleStaticSetIfNulls(
+        node,
+        field,
+        CompoundGetter.FIELD,
+        field,
+        CompoundSetter.INVALID,
+        rhs,
+        arg);
+  }
+
+  @override
+  R visitFinalSuperFieldSetIfNull(
+      Send node,
+      FieldElement field,
+      Node rhs,
+      A arg) {
+    return handleSuperSetIfNulls(
+        node,
+        field,
+        CompoundGetter.FIELD,
+        field,
+        CompoundSetter.INVALID,
+        rhs,
+        arg);
+  }
+
+  @override
+  R visitFinalTopLevelFieldSetIfNull(
+      Send node,
+      FieldElement field,
+      Node rhs,
+      A arg) {
+    return handleStaticSetIfNulls(
+        node,
+        field,
+        CompoundGetter.FIELD,
+        field,
+        CompoundSetter.INVALID,
+        rhs,
+        arg);
+  }
+
+  @override
+  R visitIfNotNullDynamicPropertySetIfNull(
+      Send node,
+      Node receiver,
+      Name name,
+      Node rhs,
+      A arg) {
+    return handleDynamicSetIfNulls(node, receiver, name, rhs, arg);
+  }
+
+  @override
+  R visitLocalFunctionSetIfNull(
+      Send node,
+      LocalFunctionElement function,
+      Node rhs,
+      A arg) {
+    return handleLocalSetIfNulls(
+        node, function, rhs, arg, isSetterValid: false);
+  }
+
+  @override
+  R visitLocalVariableSetIfNull(
+      Send node,
+      LocalVariableElement variable,
+      Node rhs,
+      A arg) {
+    return handleLocalSetIfNulls(
+        node, variable, rhs, arg, isSetterValid: true);
+  }
+
+  @override
+  R visitParameterSetIfNull(
+      Send node,
+      ParameterElement parameter,
+      Node rhs,
+      A arg) {
+    return handleLocalSetIfNulls(
+        node, parameter, rhs, arg, isSetterValid: true);
+  }
+
+  @override
+  R visitStaticFieldSetIfNull(
+      Send node,
+      FieldElement field,
+      Node rhs,
+      A arg) {
+    return handleStaticSetIfNulls(
+        node,
+        field,
+        CompoundGetter.FIELD,
+        field,
+        CompoundSetter.FIELD,
+        rhs,
+        arg);
+  }
+
+  @override
+  R visitStaticGetterSetterSetIfNull(
+      Send node,
+      FunctionElement getter,
+      FunctionElement setter,
+      Node rhs,
+      A arg) {
+    return handleStaticSetIfNulls(
+        node,
+        getter,
+        CompoundGetter.GETTER,
+        setter,
+        CompoundSetter.SETTER,
+        rhs,
+        arg);
+  }
+
+  @override
+  R visitStaticMethodSetIfNull(
+      Send node,
+      FunctionElement method,
+      Node rhs,
+      A arg) {
+    return handleStaticSetIfNulls(
+        node,
+        method,
+        CompoundGetter.METHOD,
+        method,
+        CompoundSetter.INVALID,
+        rhs,
+        arg);
+  }
+
+  @override
+  R visitStaticMethodSetterSetIfNull(
+      Send node,
+      MethodElement method,
+      MethodElement setter,
+      Node rhs,
+      A arg) {
+    return handleStaticSetIfNulls(
+        node,
+        method,
+        CompoundGetter.METHOD,
+        setter,
+        CompoundSetter.SETTER,
+        rhs,
+        arg);
+  }
+
+  @override
+  R visitSuperFieldFieldSetIfNull(
+      Send node,
+      FieldElement readField,
+      FieldElement writtenField,
+      Node rhs,
+      A arg) {
+    return handleSuperSetIfNulls(
+        node,
+        readField,
+        CompoundGetter.FIELD,
+        writtenField,
+        CompoundSetter.FIELD,
+        rhs,
+        arg);
+  }
+
+  @override
+  R visitSuperFieldSetIfNull(
+      Send node,
+      FieldElement field,
+      Node rhs,
+      A arg) {
+    return handleSuperSetIfNulls(
+        node,
+        field,
+        CompoundGetter.FIELD,
+        field,
+        CompoundSetter.FIELD,
+        rhs,
+        arg);
+  }
+
+  @override
+  R visitSuperFieldSetterSetIfNull(
+      Send node,
+      FieldElement field,
+      FunctionElement setter,
+      Node rhs,
+      A arg) {
+    return handleSuperSetIfNulls(
+        node,
+        field,
+        CompoundGetter.FIELD,
+        setter,
+        CompoundSetter.SETTER,
+        rhs,
+        arg);
+  }
+
+  @override
+  R visitSuperGetterFieldSetIfNull(
+      Send node,
+      FunctionElement getter,
+      FieldElement field,
+      Node rhs,
+      A arg) {
+    return handleSuperSetIfNulls(
+        node,
+        getter,
+        CompoundGetter.GETTER,
+        field,
+        CompoundSetter.FIELD,
+        rhs,
+        arg);
+  }
+
+  @override
+  R visitSuperGetterSetterSetIfNull(
+      Send node,
+      FunctionElement getter,
+      FunctionElement setter,
+      Node rhs,
+      A arg) {
+    return handleSuperSetIfNulls(
+        node,
+        getter,
+        CompoundGetter.GETTER,
+        setter,
+        CompoundSetter.SETTER,
+        rhs,
+        arg);
+  }
+
+  @override
+  R visitSuperMethodSetIfNull(
+      Send node,
+      FunctionElement method,
+      Node rhs,
+      A arg) {
+    return handleSuperSetIfNulls(
+        node,
+        method,
+        CompoundGetter.METHOD,
+        method,
+        CompoundSetter.INVALID,
+        rhs,
+        arg);
+  }
+
+  @override
+  R visitSuperMethodSetterSetIfNull(
+      Send node,
+      FunctionElement method,
+      FunctionElement setter,
+      Node rhs,
+      A arg) {
+    return handleSuperSetIfNulls(
+        node,
+        method,
+        CompoundGetter.METHOD,
+        setter,
+        CompoundSetter.SETTER,
+        rhs,
+        arg);
+  }
+
+  @override
+  R visitThisPropertySetIfNull(
+      Send node,
+      Name name,
+      Node rhs,
+      A arg) {
+    return handleDynamicSetIfNulls(node, null, name, rhs, arg);
+  }
+
+  @override
+  R visitTopLevelFieldSetIfNull(
+      Send node,
+      FieldElement field,
+      Node rhs,
+      A arg) {
+    return handleStaticSetIfNulls(
+        node,
+        field,
+        CompoundGetter.FIELD,
+        field,
+        CompoundSetter.FIELD,
+        rhs,
+        arg);
+  }
+
+  @override
+  R visitTopLevelGetterSetterSetIfNull(
+      Send node,
+      FunctionElement getter,
+      FunctionElement setter,
+      Node rhs,
+      A arg) {
+    return handleStaticSetIfNulls(
+        node,
+        getter,
+        CompoundGetter.GETTER,
+        setter,
+        CompoundSetter.SETTER,
+        rhs,
+        arg);
+  }
+
+  @override
+  R visitTopLevelMethodSetIfNull(
+      Send node,
+      FunctionElement method,
+      Node rhs,
+      A arg) {
+    return handleStaticSetIfNulls(
+        node,
+        method,
+        CompoundGetter.METHOD,
+        method,
+        CompoundSetter.INVALID,
+        rhs,
+        arg);
+  }
+
+  @override
+  R visitTopLevelMethodSetterSetIfNull(
+      Send node,
+      FunctionElement method,
+      FunctionElement setter,
+      Node rhs,
+      A arg) {
+    return handleStaticSetIfNulls(
+        node,
+        method,
+        CompoundGetter.METHOD,
+        setter,
+        CompoundSetter.SETTER,
+        rhs,
+        arg);
+  }
+
+  @override
+  R visitTypedefTypeLiteralSetIfNull(
+      Send node,
+      ConstantExpression constant,
+      Node rhs,
+      A arg) {
+    return handleTypeLiteralConstantSetIfNulls(node, constant, rhs, arg);
+  }
+
+  @override
+  R visitUnresolvedSetIfNull(
+      Send node,
+      Element element,
+      Node rhs,
+      A arg) {
+    return handleStaticSetIfNulls(
+        node,
+        element,
+        CompoundGetter.UNRESOLVED,
+        element,
+        CompoundSetter.INVALID,
+        rhs,
+        arg);
+  }
+
+  @override
+  R visitUnresolvedStaticGetterSetIfNull(
+      Send node,
+      Element element,
+      MethodElement setter,
+      Node rhs,
+      A arg) {
+    return handleStaticSetIfNulls(
+        node,
+        element,
+        CompoundGetter.UNRESOLVED,
+        setter,
+        CompoundSetter.SETTER,
+        rhs,
+        arg);
+  }
+
+  @override
+  R visitUnresolvedStaticSetterSetIfNull(
+      Send node,
+      MethodElement getter,
+      Element element,
+      Node rhs,
+      A arg) {
+    return handleStaticSetIfNulls(
+        node,
+        getter,
+        CompoundGetter.GETTER,
+        element,
+        CompoundSetter.INVALID,
+        rhs,
+        arg);
+  }
+
+  @override
+  R visitUnresolvedSuperGetterSetIfNull(
+      Send node,
+      Element element,
+      MethodElement setter,
+      Node rhs,
+      A arg) {
+    return handleSuperSetIfNulls(
+        node,
+        element,
+        CompoundGetter.UNRESOLVED,
+        setter,
+        CompoundSetter.SETTER,
+        rhs,
+        arg);
+  }
+
+  @override
+  R visitUnresolvedSuperSetIfNull(
+      Send node,
+      Element element,
+      Node rhs,
+      A arg) {
+    return handleSuperSetIfNulls(
+        node,
+        element,
+        CompoundGetter.UNRESOLVED,
+        element,
+        CompoundSetter.INVALID,
+        rhs,
+        arg);
+  }
+
+  @override
+  R visitUnresolvedSuperSetterSetIfNull(
+      Send node,
+      MethodElement getter,
+      Element element,
+      Node rhs,
+      A arg) {
+    return handleSuperSetIfNulls(
+        node,
+        getter,
+        CompoundGetter.GETTER,
+        element,
+        CompoundSetter.INVALID,
+        rhs,
+        arg);
+  }
+
+  @override
+  R visitUnresolvedTopLevelGetterSetIfNull(
+      Send node,
+      Element element,
+      MethodElement setter,
+      Node rhs,
+      A arg) {
+    return handleStaticSetIfNulls(
+        node,
+        element,
+        CompoundGetter.UNRESOLVED,
+        setter,
+        CompoundSetter.SETTER,
+        rhs,
+        arg);
+  }
+
+  @override
+  R visitUnresolvedTopLevelSetterSetIfNull(
+      Send node,
+      MethodElement getter,
+      Element element,
+      Node rhs,
+      A arg) {
+    return handleStaticSetIfNulls(
+        node,
+        getter,
+        CompoundGetter.GETTER,
+        element,
+        CompoundSetter.INVALID,
+        rhs,
         arg);
   }
 }

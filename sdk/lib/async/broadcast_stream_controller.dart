@@ -67,7 +67,6 @@ class _BroadcastSubscription<T> extends _ControllerSubscription<T>
   // _onCancel is inherited.
 }
 
-
 abstract class _BroadcastStreamController<T>
     implements StreamController<T>,
                _StreamControllerLifecycle<T>,
@@ -80,8 +79,8 @@ abstract class _BroadcastStreamController<T>
   static const int _STATE_CLOSED = 4;
   static const int _STATE_ADDSTREAM = 8;
 
-  final _NotificationHandler _onListen;
-  final _NotificationHandler _onCancel;
+  ControllerCallback onListen;
+  ControllerCancelCallback onCancel;
 
   // State of the controller.
   int _state;
@@ -108,9 +107,29 @@ abstract class _BroadcastStreamController<T>
    */
   _Future _doneFuture;
 
-  _BroadcastStreamController(this._onListen, this._onCancel)
+  _BroadcastStreamController(this.onListen, this.onCancel)
       : _state = _STATE_INITIAL {
     _next = _previous = this;
+  }
+
+  ControllerCallback get onPause {
+    throw new UnsupportedError(
+        "Broadcast stream controllers do not support pause callbacks");
+  }
+
+  void set onPause(void onPauseHandler()) {
+    throw new UnsupportedError(
+        "Broadcast stream controllers do not support pause callbacks");
+  }
+
+  ControllerCallback get onResume {
+    throw new UnsupportedError(
+        "Broadcast stream controllers do not support pause callbacks");
+  }
+
+  void set onResume(void onResumeHandler())  {
+    throw new UnsupportedError(
+        "Broadcast stream controllers do not support pause callbacks");
   }
 
   // StreamController interface.
@@ -196,7 +215,7 @@ abstract class _BroadcastStreamController<T>
     _addListener(subscription);
     if (identical(_next, _previous)) {
       // Only one listener, so it must be the first listener.
-      _runGuarded(_onListen);
+      _runGuarded(onListen);
     }
     return subscription;
   }
@@ -297,7 +316,7 @@ abstract class _BroadcastStreamController<T>
 
     // Get event id of this event.
     int id = (_state & _STATE_EVENT_ID);
-    // Start firing (set the _STATE_FIRING bit). We don't do [_onCancel]
+    // Start firing (set the _STATE_FIRING bit). We don't do [onCancel]
     // callbacks while firing, and we prevent reentrancy of this function.
     //
     // Set [_state]'s event id to the next event's id.
@@ -333,7 +352,7 @@ abstract class _BroadcastStreamController<T>
       // When closed, _doneFuture is not null.
       _doneFuture._asyncComplete(null);
     }
-    _runGuarded(_onCancel);
+    _runGuarded(onCancel);
   }
 }
 

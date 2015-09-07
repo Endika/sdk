@@ -2,9 +2,6 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-// This code was auto-generated, is not intended to be edited, and is subject to
-// significant change. Please see the README file for more information.
-
 library engine.element;
 
 import 'dart:collection';
@@ -85,7 +82,8 @@ class BottomTypeImpl extends TypeImpl {
 
   @override
   bool isMoreSpecificThan(DartType type,
-      [bool withDynamic = false, Set<Element> visitedElements]) => true;
+          [bool withDynamic = false, Set<Element> visitedElements]) =>
+      true;
 
   @override
   bool isSubtypeOf(DartType type) => true;
@@ -98,8 +96,9 @@ class BottomTypeImpl extends TypeImpl {
 
   @override
   BottomTypeImpl substitute2(
-      List<DartType> argumentTypes, List<DartType> parameterTypes,
-      [List<FunctionTypeAliasElement> prune]) => this;
+          List<DartType> argumentTypes, List<DartType> parameterTypes,
+          [List<FunctionTypeAliasElement> prune]) =>
+      this;
 }
 
 /**
@@ -552,6 +551,12 @@ class ClassElementImpl extends ElementImpl implements ClassElement {
    * The [SourceRange] of the `with` clause, `null` if there is no one.
    */
   SourceRange withClauseRange;
+
+  /**
+   * A flag indicating whether the types associated with the instance members of
+   * this class have been inferred.
+   */
+  bool hasBeenInferred = false;
 
   /**
    * Initialize a newly created class element to have the given [name] at the
@@ -1154,8 +1159,8 @@ class ClassElementImpl extends ElementImpl implements ClassElement {
       if (definingClass is! ClassElementImpl) {
         return null;
       }
-      getter = (definingClass as ClassElementImpl)._internalLookUpGetter(
-          getterName, library, false);
+      getter = (definingClass as ClassElementImpl)
+          ._internalLookUpGetter(getterName, library, false);
     }
     return getter;
   }
@@ -1183,8 +1188,8 @@ class ClassElementImpl extends ElementImpl implements ClassElement {
       if (definingClass is! ClassElementImpl) {
         return null;
       }
-      setter = (definingClass as ClassElementImpl)._internalLookUpSetter(
-          setterName, library, false);
+      setter = (definingClass as ClassElementImpl)
+          ._internalLookUpSetter(setterName, library, false);
     }
     return setter;
   }
@@ -2538,6 +2543,8 @@ abstract class Element implements AnalysisTarget {
   int get nameOffset;
 
   /**
+   * **DEPRECATED** Use `computeNode()` instead.
+   *
    * Return the resolved [AstNode] node that declares this element, or `null` if
    * this element is synthetic or isn't contained in a compilation unit, such as
    * a [LibraryElement].
@@ -3522,6 +3529,14 @@ abstract class ExecutableElement implements Element {
   List<FunctionElement> get functions;
 
   /**
+   * Return `true` if this executable element did not have an explicit return
+   * type specified for it in the original source. Note that if there was no
+   * explicit return type, and if the element model is fully populated, then
+   * the [returnType] will not be `null`.
+   */
+  bool get hasImplicitReturnType;
+
+  /**
    * Return `true` if this executable element is abstract. Executable elements
    * are abstract if they are not external and have no body.
    */
@@ -3585,7 +3600,9 @@ abstract class ExecutableElement implements Element {
   List<ParameterElement> get parameters;
 
   /**
-   * Return the return type defined by this executable element.
+   * Return the return type defined by this executable element. If the element
+   * model is fully populated, then the [returnType] will not be `null`, even
+   * if no return type was explicitly specified.
    */
   DartType get returnType;
 
@@ -3593,6 +3610,12 @@ abstract class ExecutableElement implements Element {
    * Return the type of function defined by this executable element.
    */
   FunctionType get type;
+
+  /**
+   * Return a list containing all of the type parameters defined for this
+   * executable element.
+   */
+  List<TypeParameterElement> get typeParameters;
 }
 
 /**
@@ -3628,6 +3651,12 @@ abstract class ExecutableElementImpl extends ElementImpl
    * A list containing all of the parameters defined by this executable element.
    */
   List<ParameterElement> _parameters = ParameterElement.EMPTY_LIST;
+
+  /**
+   * A list containing all of the type parameters defined for this executable
+   * element.
+   */
+  List<TypeParameterElement> _typeParameters = TypeParameterElement.EMPTY_LIST;
 
   /**
    * The return type defined by this executable element.
@@ -3683,6 +3712,16 @@ abstract class ExecutableElementImpl extends ElementImpl
    */
   void set generator(bool isGenerator) {
     setModifier(Modifier.GENERATOR, isGenerator);
+  }
+
+  @override
+  bool get hasImplicitReturnType => hasModifier(Modifier.IMPLICIT_TYPE);
+
+  /**
+   * Set whether this executable element has an implicit return type.
+   */
+  void set hasImplicitReturnType(bool hasImplicitReturnType) {
+    setModifier(Modifier.IMPLICIT_TYPE, hasImplicitReturnType);
   }
 
   @override
@@ -3746,8 +3785,33 @@ abstract class ExecutableElementImpl extends ElementImpl
   }
 
   @override
+  List<TypeParameterElement> get typeParameters => _typeParameters;
+
+  /**
+   * Set the type parameters defined by this executable element to the given
+   * [typeParameters].
+   */
+  void set typeParameters(List<TypeParameterElement> typeParameters) {
+    for (TypeParameterElement parameter in typeParameters) {
+      (parameter as TypeParameterElementImpl).enclosingElement = this;
+    }
+    this._typeParameters = typeParameters;
+  }
+
+  @override
   void appendTo(StringBuffer buffer) {
     if (this.kind != ElementKind.GETTER) {
+      int typeParameterCount = _typeParameters.length;
+      if (typeParameterCount > 0) {
+        buffer.write('<');
+        for (int i = 0; i < typeParameterCount; i++) {
+          if (i > 0) {
+            buffer.write(", ");
+          }
+          (_typeParameters[i] as TypeParameterElementImpl).appendTo(buffer);
+        }
+        buffer.write('>');
+      }
       buffer.write("(");
       String closing = null;
       ParameterKind kind = ParameterKind.REQUIRED;
@@ -3847,6 +3911,9 @@ abstract class ExecutableMember extends Member implements ExecutableElement {
   }
 
   @override
+  bool get hasImplicitReturnType => baseElement.hasImplicitReturnType;
+
+  @override
   bool get isAbstract => baseElement.isAbstract;
 
   @override
@@ -3901,6 +3968,9 @@ abstract class ExecutableMember extends Member implements ExecutableElement {
 
   @override
   FunctionType get type => substituteFor(baseElement.type);
+
+  @override
+  List<TypeParameterElement> get typeParameters => baseElement.typeParameters;
 
   @override
   void visitChildren(ElementVisitor visitor) {
@@ -4047,7 +4117,8 @@ abstract class FieldElement
  * A concrete implementation of a [FieldElement].
  */
 class FieldElementImpl extends PropertyInducingElementImpl
-    with PotentiallyConstVariableElement implements FieldElement {
+    with PotentiallyConstVariableElement
+    implements FieldElement {
   /**
    * An empty list of field elements.
    */
@@ -4071,9 +4142,6 @@ class FieldElementImpl extends PropertyInducingElementImpl
   @override
   bool get isEnumConstant =>
       enclosingElement != null ? enclosingElement.isEnum : false;
-
-  @override
-  bool get isStatic => hasModifier(Modifier.STATIC);
 
   @override
   ElementKind get kind => ElementKind.FIELD;
@@ -4188,9 +4256,6 @@ class FieldMember extends VariableMember implements FieldElement {
 
   @override
   bool get isEnumConstant => baseElement.isEnumConstant;
-
-  @override
-  bool get isStatic => baseElement.isStatic;
 
   @override
   DartType get propagatedType => substituteFor(baseElement.propagatedType);
@@ -4921,8 +4986,8 @@ class FunctionTypeImpl extends TypeImpl implements FunctionType {
         DartType type = parameter.type;
         if (typeArguments.length != 0 &&
             typeArguments.length == typeParameters.length) {
-          type = (type as TypeImpl).substitute2(
-              typeArguments, typeParameters, newPrune);
+          type = (type as TypeImpl)
+              .substitute2(typeArguments, typeParameters, newPrune);
         } else {
           type = (type as TypeImpl).pruned(newPrune);
         }
@@ -4967,8 +5032,8 @@ class FunctionTypeImpl extends TypeImpl implements FunctionType {
         DartType type = parameter.type;
         if (typeArguments.length != 0 &&
             typeArguments.length == typeParameters.length) {
-          type = (type as TypeImpl).substitute2(
-              typeArguments, typeParameters, newPrune);
+          type = (type as TypeImpl)
+              .substitute2(typeArguments, typeParameters, newPrune);
         } else {
           type = (type as TypeImpl).pruned(newPrune);
         }
@@ -4992,8 +5057,8 @@ class FunctionTypeImpl extends TypeImpl implements FunctionType {
         DartType type = parameter.type;
         if (typeArguments.length != 0 &&
             typeArguments.length == typeParameters.length) {
-          type = (type as TypeImpl).substitute2(
-              typeArguments, typeParameters, newPrune);
+          type = (type as TypeImpl)
+              .substitute2(typeArguments, typeParameters, newPrune);
         } else {
           type = (type as TypeImpl).pruned(newPrune);
         }
@@ -5175,8 +5240,8 @@ class FunctionTypeImpl extends TypeImpl implements FunctionType {
         return false;
       } else if (t.normalParameterTypes.length > 0) {
         for (int i = 0; i < tTypes.length; i++) {
-          if (!(tTypes[i] as TypeImpl).isMoreSpecificThan(
-              sTypes[i], withDynamic)) {
+          if (!(tTypes[i] as TypeImpl)
+              .isMoreSpecificThan(sTypes[i], withDynamic)) {
             return false;
           }
         }
@@ -5196,8 +5261,8 @@ class FunctionTypeImpl extends TypeImpl implements FunctionType {
         if (typeT == null) {
           return false;
         }
-        if (!(typeT as TypeImpl).isMoreSpecificThan(
-            namedTypesS[keyS], withDynamic)) {
+        if (!(typeT as TypeImpl)
+            .isMoreSpecificThan(namedTypesS[keyS], withDynamic)) {
           return false;
         }
       }
@@ -5217,8 +5282,8 @@ class FunctionTypeImpl extends TypeImpl implements FunctionType {
       if (tOpTypes.length == 0 && sOpTypes.length == 0) {
         // No positional arguments, don't copy contents to new array
         for (int i = 0; i < sTypes.length; i++) {
-          if (!(tTypes[i] as TypeImpl).isMoreSpecificThan(
-              sTypes[i], withDynamic)) {
+          if (!(tTypes[i] as TypeImpl)
+              .isMoreSpecificThan(sTypes[i], withDynamic)) {
             return false;
           }
         }
@@ -5240,8 +5305,8 @@ class FunctionTypeImpl extends TypeImpl implements FunctionType {
           sAllTypes[i] = sOpTypes[j];
         }
         for (int i = 0; i < sAllTypes.length; i++) {
-          if (!(tAllTypes[i] as TypeImpl).isMoreSpecificThan(
-              sAllTypes[i], withDynamic)) {
+          if (!(tAllTypes[i] as TypeImpl)
+              .isMoreSpecificThan(sAllTypes[i], withDynamic)) {
             return false;
           }
         }
@@ -6593,8 +6658,8 @@ class InterfaceTypeImpl extends TypeImpl implements InterfaceType {
           return false;
         }
         for (int i = 0; i < tArguments.length; i++) {
-          if (!(tArguments[i] as TypeImpl).isMoreSpecificThan(
-              sArguments[i], withDynamic)) {
+          if (!(tArguments[i] as TypeImpl)
+              .isMoreSpecificThan(sArguments[i], withDynamic)) {
             return false;
           }
         }
@@ -6624,14 +6689,14 @@ class InterfaceTypeImpl extends TypeImpl implements InterfaceType {
         return true;
       }
       for (InterfaceType interfaceType in interfaces) {
-        if ((interfaceType as InterfaceTypeImpl).isMoreSpecificThan(
-            type, withDynamic, visitedElements)) {
+        if ((interfaceType as InterfaceTypeImpl)
+            .isMoreSpecificThan(type, withDynamic, visitedElements)) {
           return true;
         }
       }
       for (InterfaceType mixinType in mixins) {
-        if ((mixinType as InterfaceTypeImpl).isMoreSpecificThan(
-            type, withDynamic, visitedElements)) {
+        if ((mixinType as InterfaceTypeImpl)
+            .isMoreSpecificThan(type, withDynamic, visitedElements)) {
           return true;
         }
       }
@@ -7605,8 +7670,8 @@ class LibraryElementImpl extends ElementImpl implements LibraryElement {
     for (ImportElement importElement in _imports) {
       LibraryElement importedLibrary = importElement.importedLibrary;
       if (importedLibrary != null) {
-        (importedLibrary as LibraryElementImpl)._addVisibleLibraries(
-            visibleLibraries, true);
+        (importedLibrary as LibraryElementImpl)
+            ._addVisibleLibraries(visibleLibraries, true);
       }
     }
     // add exported libraries
@@ -7614,8 +7679,8 @@ class LibraryElementImpl extends ElementImpl implements LibraryElement {
       for (ExportElement exportElement in _exports) {
         LibraryElement exportedLibrary = exportElement.exportedLibrary;
         if (exportedLibrary != null) {
-          (exportedLibrary as LibraryElementImpl)._addVisibleLibraries(
-              visibleLibraries, true);
+          (exportedLibrary as LibraryElementImpl)
+              ._addVisibleLibraries(visibleLibraries, true);
         }
       }
     }
@@ -7709,7 +7774,8 @@ abstract class LocalVariableElement implements LocalElement, VariableElement {
  * A concrete implementation of a [LocalVariableElement].
  */
 class LocalVariableElementImpl extends VariableElementImpl
-    with PotentiallyConstVariableElement implements LocalVariableElement {
+    with PotentiallyConstVariableElement
+    implements LocalVariableElement {
   /**
    * An empty list of field elements.
    */
@@ -8211,45 +8277,52 @@ class Modifier extends Enum<Modifier> {
   static const Modifier HAS_EXT_URI = const Modifier('HAS_EXT_URI', 10);
 
   /**
+   * Indicates that the associated element did not have an explicit type
+   * associated with it. If the element is an [ExecutableElement], then the
+   * type being referred to is the return type.
+   */
+  static const Modifier IMPLICIT_TYPE = const Modifier('IMPLICIT_TYPE', 11);
+
+  /**
    * Indicates that a class can validly be used as a mixin.
    */
-  static const Modifier MIXIN = const Modifier('MIXIN', 11);
+  static const Modifier MIXIN = const Modifier('MIXIN', 12);
 
   /**
    * Indicates that a class is a mixin application.
    */
   static const Modifier MIXIN_APPLICATION =
-      const Modifier('MIXIN_APPLICATION', 12);
+      const Modifier('MIXIN_APPLICATION', 13);
 
   /**
    * Indicates that the value of a parameter or local variable might be mutated
    * within the context.
    */
   static const Modifier POTENTIALLY_MUTATED_IN_CONTEXT =
-      const Modifier('POTENTIALLY_MUTATED_IN_CONTEXT', 13);
+      const Modifier('POTENTIALLY_MUTATED_IN_CONTEXT', 14);
 
   /**
    * Indicates that the value of a parameter or local variable might be mutated
    * within the scope.
    */
   static const Modifier POTENTIALLY_MUTATED_IN_SCOPE =
-      const Modifier('POTENTIALLY_MUTATED_IN_SCOPE', 14);
+      const Modifier('POTENTIALLY_MUTATED_IN_SCOPE', 15);
 
   /**
    * Indicates that a class contains an explicit reference to 'super'.
    */
   static const Modifier REFERENCES_SUPER =
-      const Modifier('REFERENCES_SUPER', 15);
+      const Modifier('REFERENCES_SUPER', 16);
 
   /**
    * Indicates that the pseudo-modifier 'set' was applied to the element.
    */
-  static const Modifier SETTER = const Modifier('SETTER', 16);
+  static const Modifier SETTER = const Modifier('SETTER', 17);
 
   /**
    * Indicates that the modifier 'static' was applied to the element.
    */
-  static const Modifier STATIC = const Modifier('STATIC', 17);
+  static const Modifier STATIC = const Modifier('STATIC', 18);
 
   /**
    * Indicates that the element does not appear in the source code but was
@@ -8257,7 +8330,7 @@ class Modifier extends Enum<Modifier> {
    * constructors, an implicit zero-argument constructor will be created and it
    * will be marked as being synthetic.
    */
-  static const Modifier SYNTHETIC = const Modifier('SYNTHETIC', 18);
+  static const Modifier SYNTHETIC = const Modifier('SYNTHETIC', 19);
 
   static const List<Modifier> values = const [
     ABSTRACT,
@@ -8271,6 +8344,7 @@ class Modifier extends Enum<Modifier> {
     GENERATOR,
     GETTER,
     HAS_EXT_URI,
+    IMPLICIT_TYPE,
     MIXIN,
     MIXIN_APPLICATION,
     POTENTIALLY_MUTATED_IN_CONTEXT,
@@ -8604,6 +8678,19 @@ abstract class ParameterElement
    */
   List<ParameterElement> get parameters;
 
+  /**
+   * Return a list containing all of the type parameters defined by this
+   * parameter. A parameter will only define other parameters if it is a
+   * function typed parameter.
+   */
+  List<TypeParameterElement> get typeParameters;
+
+  /**
+   * Append the type, name and possibly the default value of this parameter to
+   * the given [buffer].
+   */
+  void appendToWithoutDelimiters(StringBuffer buffer);
+
   @override
   FormalParameter computeNode();
 }
@@ -8612,7 +8699,8 @@ abstract class ParameterElement
  * A concrete implementation of a [ParameterElement].
  */
 class ParameterElementImpl extends VariableElementImpl
-    with PotentiallyConstVariableElement implements ParameterElement {
+    with ParameterElementMixin, PotentiallyConstVariableElement
+    implements ParameterElement {
   /**
    * An empty list of parameter elements.
    */
@@ -8625,6 +8713,13 @@ class ParameterElementImpl extends VariableElementImpl
    * parameter.
    */
   List<ParameterElement> _parameters = ParameterElement.EMPTY_LIST;
+
+  /**
+   * A list containing all of the type parameters defined for this parameter
+   * element. There will only be parameters if this parameter is a function
+   * typed parameter.
+   */
+  List<TypeParameterElement> _typeParameters = TypeParameterElement.EMPTY_LIST;
 
   /**
    * The kind of this parameter.
@@ -8697,6 +8792,20 @@ class ParameterElementImpl extends VariableElementImpl
   }
 
   @override
+  List<TypeParameterElement> get typeParameters => _typeParameters;
+
+  /**
+   * Set the type parameters defined by this parameter element to the given
+   * [typeParameters].
+   */
+  void set typeParameters(List<TypeParameterElement> typeParameters) {
+    for (TypeParameterElement parameter in typeParameters) {
+      (parameter as TypeParameterElementImpl).enclosingElement = this;
+    }
+    this._typeParameters = typeParameters;
+  }
+
+  @override
   SourceRange get visibleRange {
     if (_visibleRangeLength < 0) {
       return null;
@@ -8724,24 +8833,6 @@ class ParameterElementImpl extends VariableElementImpl
     buffer.write(left);
     appendToWithoutDelimiters(buffer);
     buffer.write(right);
-  }
-
-  /**
-   * Append the type and name of this parameter to the given [buffer].
-   */
-  void appendToWithoutDelimiters(StringBuffer buffer) {
-    buffer.write(type);
-    buffer.write(" ");
-    buffer.write(displayName);
-    if (_defaultValueCode != null) {
-      if (parameterKind == ParameterKind.NAMED) {
-        buffer.write(": ");
-      }
-      if (parameterKind == ParameterKind.POSITIONAL) {
-        buffer.write(" = ");
-      }
-      buffer.write(_defaultValueCode);
-    }
   }
 
   @override
@@ -8789,6 +8880,28 @@ class ParameterElementImpl extends VariableElementImpl
 }
 
 /**
+ * A mixin that provides a common implementation for methods defined in
+ * [ParameterElement].
+ */
+abstract class ParameterElementMixin implements ParameterElement {
+  @override
+  void appendToWithoutDelimiters(StringBuffer buffer) {
+    buffer.write(type);
+    buffer.write(" ");
+    buffer.write(displayName);
+    if (defaultValueCode != null) {
+      if (parameterKind == ParameterKind.NAMED) {
+        buffer.write(": ");
+      }
+      if (parameterKind == ParameterKind.POSITIONAL) {
+        buffer.write(" = ");
+      }
+      buffer.write(defaultValueCode);
+    }
+  }
+}
+
+/**
  * A type with type parameters, such as a class or function type alias.
  */
 abstract class ParameterizedType implements DartType {
@@ -8812,7 +8925,9 @@ abstract class ParameterizedType implements DartType {
  * A parameter element defined in a parameterized type where the values of the
  * type parameters are known.
  */
-class ParameterMember extends VariableMember implements ParameterElement {
+class ParameterMember extends VariableMember
+    with ParameterElementMixin
+    implements ParameterElement {
   /**
    * Initialize a newly created element to represent a constructor, based on the
    * [baseElement], defined by the [definingType].
@@ -8850,6 +8965,9 @@ class ParameterMember extends VariableMember implements ParameterElement {
     }
     return parameterizedParameters;
   }
+
+  @override
+  List<TypeParameterElement> get typeParameters => baseElement.typeParameters;
 
   @override
   SourceRange get visibleRange => baseElement.visibleRange;
@@ -9408,13 +9526,6 @@ abstract class PropertyInducingElement implements VariableElement {
   PropertyAccessorElement get getter;
 
   /**
-   * Return `true` if this element is a static element. A static element is an
-   * element that is not associated with a particular instance, but rather with
-   * an entire library or class.
-   */
-  bool get isStatic;
-
-  /**
    * Return the propagated type of this variable, or `null` if type propagation
    * has not been performed, for example because the variable is not final.
    */
@@ -9777,7 +9888,8 @@ abstract class TopLevelVariableElement implements PropertyInducingElement {
  * A concrete implementation of a [TopLevelVariableElement].
  */
 class TopLevelVariableElementImpl extends PropertyInducingElementImpl
-    with PotentiallyConstVariableElement implements TopLevelVariableElement {
+    with PotentiallyConstVariableElement
+    implements TopLevelVariableElement {
   /**
    * An empty list of top-level variable elements.
    */
@@ -10020,8 +10132,8 @@ abstract class TypeImpl implements DartType {
     }
     List<DartType> newTypes = new List<DartType>(length);
     for (int i = 0; i < length; i++) {
-      newTypes[i] = (types[i] as TypeImpl).substitute2(
-          argumentTypes, parameterTypes, prune);
+      newTypes[i] = (types[i] as TypeImpl)
+          .substitute2(argumentTypes, parameterTypes, prune);
     }
     return newTypes;
   }
@@ -10030,7 +10142,7 @@ abstract class TypeImpl implements DartType {
 /**
  * A type parameter.
  */
-abstract class TypeParameterElement implements Element {
+abstract class TypeParameterElement implements TypeDefiningElement {
   /**
    * An empty list of type parameter elements.
    */
@@ -10370,6 +10482,12 @@ abstract class VariableElement implements Element, ConstantEvaluationTarget {
   static const List<VariableElement> EMPTY_LIST = const <VariableElement>[];
 
   /**
+   * Return `true` if this variable element did not have an explicit type
+   * specified for it.
+   */
+  bool get hasImplicitType;
+
+  /**
    * Return a synthetic function representing this variable's initializer, or
    * `null` if this variable does not have an initializer. The function will
    * have no parameters. The return type of the function will be the
@@ -10404,6 +10522,19 @@ abstract class VariableElement implements Element, ConstantEvaluationTarget {
    * been resolved.
    */
   bool get isPotentiallyMutatedInScope;
+
+  /**
+   * Return `true` if this element is a static variable, as per section 8 of the
+   * Dart Language Specification:
+   *
+   * > A static variable is a variable that is not associated with a particular
+   * > instance, but rather with an entire library or class. Static variables
+   * > include library variables and class variables. Class variables are
+   * > variables whose declaration is immediately nested inside a class
+   * > declaration and includes the modifier static. A library variable is
+   * > implicitly static.
+   */
+  bool get isStatic;
 
   /**
    * Return the declared type of this variable, or `null` if the variable did
@@ -10478,6 +10609,16 @@ abstract class VariableElementImpl extends ElementImpl
   }
 
   @override
+  bool get hasImplicitType => hasModifier(Modifier.IMPLICIT_TYPE);
+
+  /**
+   * Set whether this variable element has an implicit type.
+   */
+  void set hasImplicitType(bool hasImplicitType) {
+    setModifier(Modifier.IMPLICIT_TYPE, hasImplicitType);
+  }
+
+  @override
   FunctionElement get initializer => _initializer;
 
   /**
@@ -10502,6 +10643,9 @@ abstract class VariableElementImpl extends ElementImpl
 
   @override
   bool get isPotentiallyMutatedInScope => false;
+
+  @override
+  bool get isStatic => hasModifier(Modifier.STATIC);
 
   @override
   void appendTo(StringBuffer buffer) {
@@ -10533,6 +10677,9 @@ abstract class VariableMember extends Member implements VariableElement {
   VariableElement get baseElement => super.baseElement as VariableElement;
 
   @override
+  bool get hasImplicitType => baseElement.hasImplicitType;
+
+  @override
   FunctionElement get initializer {
     //
     // Elements within this element should have type parameters substituted,
@@ -10555,6 +10702,9 @@ abstract class VariableMember extends Member implements VariableElement {
   @override
   bool get isPotentiallyMutatedInScope =>
       baseElement.isPotentiallyMutatedInScope;
+
+  @override
+  bool get isStatic => baseElement.isStatic;
 
   @override
   DartType get type => substituteFor(baseElement.type);
@@ -10624,8 +10774,9 @@ class VoidTypeImpl extends TypeImpl implements VoidType {
 
   @override
   VoidTypeImpl substitute2(
-      List<DartType> argumentTypes, List<DartType> parameterTypes,
-      [List<FunctionTypeAliasElement> prune]) => this;
+          List<DartType> argumentTypes, List<DartType> parameterTypes,
+          [List<FunctionTypeAliasElement> prune]) =>
+      this;
 }
 
 /**

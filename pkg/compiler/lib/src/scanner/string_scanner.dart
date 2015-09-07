@@ -2,7 +2,20 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-part of scanner;
+library dart2js.scanner.string;
+
+import '../io/source_file.dart' show
+    SourceFile;
+import '../tokens/precedence.dart' show
+    PrecedenceInfo;
+import '../tokens/token.dart' show
+    PrecedenceInfo,
+    StringToken,
+    Token;
+
+import 'array_based_scanner.dart' show
+    ArrayBasedScanner;
+
 
 /**
  * Scanner that reads from a String and creates tokens that points to
@@ -15,16 +28,14 @@ class StringScanner extends ArrayBasedScanner {
   /** The current offset in [string]. */
   int scanOffset = -1;
 
-  StringScanner(SourceFile file, {bool includeComments: false,
-                                  bool enableNullAwareOperators: false})
+  StringScanner(SourceFile file, {bool includeComments: false})
       : string = file.slowText(),
-        super(file, includeComments, enableNullAwareOperators) {
+        super(file, includeComments) {
     ensureZeroTermination();
   }
 
-  StringScanner.fromString(this.string, {bool includeComments: false,
-                                         bool enableNullAwareOperators: false})
-      : super(null, includeComments, enableNullAwareOperators) {
+  StringScanner.fromString(this.string, {bool includeComments: false})
+      : super(null, includeComments) {
     ensureZeroTermination();
   }
 

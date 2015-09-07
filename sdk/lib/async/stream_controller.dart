@@ -9,6 +9,18 @@ part of dart.async;
 // -------------------------------------------------------------------
 
 /**
+ * Type of a stream controller's `onListen`, `onPause` and `onResume` callbacks.
+ */
+typedef void ControllerCallback();
+
+/**
+ * Type of stream controller `onCancel` callbacks.
+ *
+ * The callback may return either `void` or a future.
+ */
+typedef ControllerCancelCallback();
+
+/**
  * A controller with the stream it controls.
  *
  * This controller allows sending data, error and done events on
@@ -77,12 +89,6 @@ abstract class StreamController<T> implements StreamSink<T> {
                             void onResume(),
                             onCancel(),
                             bool sync: false}) {
-    if (onListen == null && onPause == null &&
-        onResume == null && onCancel == null) {
-      return sync
-          ? new _NoCallbackSyncStreamController<T>()
-          : new _NoCallbackAsyncStreamController<T>();
-    }
     return sync
          ? new _SyncStreamController<T>(onListen, onPause, onResume, onCancel)
          : new _AsyncStreamController<T>(onListen, onPause, onResume, onCancel);
@@ -137,6 +143,46 @@ abstract class StreamController<T> implements StreamSink<T> {
         ? new _SyncBroadcastStreamController<T>(onListen, onCancel)
         : new _AsyncBroadcastStreamController<T>(onListen, onCancel);
   }
+
+  /**
+   * The callback which is called when the stream is listened to.
+   *
+   * May be set to `null`, in which case no callback will happen.
+   */
+  ControllerCallback get onListen;
+
+  void set onListen(void onListenHandler());
+
+  /**
+   * The callback which is called when the stream is paused.
+   *
+   * May be set to `null`, in which case no callback will happen.
+   *
+   * Pause related callbacks are not supported on broadcast stream controllers.
+   */
+  ControllerCallback get onPause;
+
+  void set onPause(void onPauseHandler());
+
+  /**
+   * The callback which is called when the stream is resumed.
+   *
+   * May be set to `null`, in which case no callback will happen.
+   *
+   * Pause related callbacks are not supported on broadcast stream controllers.
+   */
+  ControllerCallback get onResume;
+
+  void set onResume(void onResumeHandler());
+
+  /**
+   * The callback which is called when the stream is canceled.
+   *
+   * May be set to `null`, in which case no callback will happen.
+   */
+  ControllerCancelCallback get onCancel;
+
+  void set onCancel(onCancelHandler());
 
   /**
    * Returns a view of this object that only exposes the [StreamSink] interface.
@@ -383,12 +429,15 @@ abstract class _StreamController<T> implements StreamController<T>,
   // accessed earlier, or if close is called before subscribing.
   _Future _doneFuture;
 
-  _StreamController();
+  ControllerCallback onListen;
+  ControllerCallback onPause;
+  ControllerCallback onResume;
+  ControllerCancelCallback onCancel;
 
-  _NotificationHandler get _onListen;
-  _NotificationHandler get _onPause;
-  _NotificationHandler get _onResume;
-  _NotificationHandler get _onCancel;
+  _StreamController(this.onListen,
+                    this.onPause,
+                    this.onResume,
+                    this.onCancel);
 
   // Return a new stream every time. The streams are equal, but not identical.
   Stream<T> get stream => new _ControllerStream<T>(this);
@@ -598,8 +647,8 @@ abstract class _StreamController<T> implements StreamController<T>,
       throw new StateError("Stream has already been listened to.");
     }
     _ControllerSubscription subscription =
-        new _ControllerSubscription(this, onData, onError, onDone,
-                                    cancelOnError);
+        new _ControllerSubscription<T>(this, onData, onError, onDone,
+                                       cancelOnError);
 
     _PendingEvents pendingEvents = _pendingEvents;
     _state |= _STATE_SUBSCRIBED;
@@ -612,7 +661,7 @@ abstract class _StreamController<T> implements StreamController<T>,
     }
     subscription._setPendingEvents(pendingEvents);
     subscription._guardCallback(() {
-      _runGuarded(_onListen);
+      _runGuarded(onListen);
     });
 
     return subscription;
@@ -620,8 +669,8 @@ abstract class _StreamController<T> implements StreamController<T>,
 
   Future _recordCancel(StreamSubscription<T> subscription) {
     // When we cancel, we first cancel any stream being added,
-    // Then we call _onCancel, and finally the _doneFuture is completed.
-    // If either of addStream's cancel or _onCancel returns a future,
+    // Then we call `onCancel`, and finally the _doneFuture is completed.
+    // If either of addStream's cancel or `onCancel` returns a future,
     // we wait for it before continuing.
     // Any error during this process ends up in the returned future.
     // If more errors happen, we act as if it happens inside nested try/finallys
@@ -636,12 +685,12 @@ abstract class _StreamController<T> implements StreamController<T>,
     _state =
         (_state & ~(_STATE_SUBSCRIBED | _STATE_ADDSTREAM)) | _STATE_CANCELED;
 
-    if (_onCancel != null) {
+    if (onCancel != null) {
       if (result == null) {
         // Only introduce a future if one is needed.
         // If _onCancel returns null, no future is needed.
         try {
-          result = _onCancel();
+          result = onCancel();
         } catch (e, s) {
           // Return the error in the returned future.
           // Complete it asynchronously, so there is time for a listener
@@ -650,7 +699,7 @@ abstract class _StreamController<T> implements StreamController<T>,
         }
       } else {
         // Simpler case when we already know that we will return a future.
-        result = result.whenComplete(_onCancel);
+        result = result.whenComplete(onCancel);
       }
     }
 
@@ -674,7 +723,7 @@ abstract class _StreamController<T> implements StreamController<T>,
       _StreamControllerAddStreamState addState = _varData;
       addState.pause();
     }
-    _runGuarded(_onPause);
+    _runGuarded(onPause);
   }
 
   void _recordResume(StreamSubscription<T> subscription) {
@@ -682,7 +731,7 @@ abstract class _StreamController<T> implements StreamController<T>,
       _StreamControllerAddStreamState addState = _varData;
       addState.resume();
     }
-    _runGuarded(_onResume);
+    _runGuarded(onResume);
   }
 }
 
@@ -722,44 +771,11 @@ abstract class _AsyncStreamControllerDispatch<T>
 // TODO(lrn): Use common superclass for callback-controllers when VM supports
 // constructors in mixin superclasses.
 
-class _AsyncStreamController<T> extends _StreamController<T>
-                                   with _AsyncStreamControllerDispatch<T> {
-  final _NotificationHandler _onListen;
-  final _NotificationHandler _onPause;
-  final _NotificationHandler _onResume;
-  final _NotificationHandler _onCancel;
+class _AsyncStreamController<T> = _StreamController<T>
+                                  with _AsyncStreamControllerDispatch<T>;
 
-  _AsyncStreamController(void this._onListen(),
-                         void this._onPause(),
-                         void this._onResume(),
-                         this._onCancel());
-}
-
-class _SyncStreamController<T> extends _StreamController<T>
-                                  with _SyncStreamControllerDispatch<T> {
-  final _NotificationHandler _onListen;
-  final _NotificationHandler _onPause;
-  final _NotificationHandler _onResume;
-  final _NotificationHandler _onCancel;
-
-  _SyncStreamController(void this._onListen(),
-                        void this._onPause(),
-                        void this._onResume(),
-                        this._onCancel());
-}
-
-abstract class _NoCallbacks {
-  _NotificationHandler get _onListen => null;
-  _NotificationHandler get _onPause => null;
-  _NotificationHandler get _onResume => null;
-  _NotificationHandler get _onCancel => null;
-}
-
-class _NoCallbackAsyncStreamController<T> = _StreamController<T>
-       with _AsyncStreamControllerDispatch<T>, _NoCallbacks;
-
-class _NoCallbackSyncStreamController<T> = _StreamController<T>
-       with _SyncStreamControllerDispatch<T>, _NoCallbacks;
+class _SyncStreamController<T> = _StreamController<T>
+                                 with _SyncStreamControllerDispatch<T>;
 
 typedef _NotificationHandler();
 

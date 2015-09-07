@@ -15,6 +15,11 @@ namespace dart {
 #define __ assembler->
 
 
+uword RuntimeEntry::GetEntryPoint() const {
+  return reinterpret_cast<uword>(function());
+}
+
+
 // Generate code to call into the stub which will call the runtime
 // function. Input for the stub is as follows:
 // For regular runtime calls -
@@ -33,7 +38,7 @@ void RuntimeEntry::Call(Assembler* assembler, intptr_t argument_count) const {
     // informative error message.
     __ movl(ECX, Immediate(GetEntryPoint()));
     __ movl(EDX, Immediate(argument_count));
-    __ call(&Isolate::Current()->stub_code()->CallToRuntimeLabel());
+    __ Call(*StubCode::CallToRuntime_entry());
   }
 }
 

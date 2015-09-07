@@ -4,28 +4,51 @@
 
 library simple_types_inferrer;
 
-import '../closure.dart' show ClosureClassMap, ClosureScope;
-import '../constants/values.dart' show ConstantValue, IntConstantValue;
-import '../cps_ir/cps_ir_nodes.dart' as cps_ir show Node;
-import '../dart_types.dart'
-    show DartType, InterfaceType, FunctionType, TypeKind;
+import '../closure.dart' show
+    ClosureClassMap,
+    ClosureScope;
+import '../common/names.dart' show
+    Selectors;
+import '../compiler.dart' show
+    Compiler;
+import '../constants/values.dart' show
+    ConstantValue,
+    IntConstantValue;
+import '../cps_ir/cps_ir_nodes.dart' as cps_ir show
+    Node;
+import '../dart_types.dart' show
+    DartType,
+    FunctionType,
+    InterfaceType,
+    TypeKind;
+import '../diagnostics/spannable.dart' show
+    Spannable;
 import '../elements/elements.dart';
 import '../js_backend/js_backend.dart' as js;
 import '../native/native.dart' as native;
+import '../resolution/tree_elements.dart' show
+    TreeElements;
 import '../resolution/operators.dart' as op;
 import '../tree/tree.dart' as ast;
-import '../types/types.dart'
-    show TypesInferrer, FlatTypeMask, TypeMask, ContainerTypeMask,
-         ElementTypeMask, ValueTypeMask, TypeSystem, MinimalInferrerEngine;
-import '../util/util.dart' show Link, Spannable, Setlet;
-import 'inferrer_visitor.dart';
+import '../types/types.dart' show
+    TypesInferrer,
+    FlatTypeMask,
+    TypeMask,
+    ContainerTypeMask,
+    ElementTypeMask,
+    ValueTypeMask,
+    TypeSystem,
+    MinimalInferrerEngine;
+import '../util/util.dart' show
+    Link,
+    Setlet;
+import '../universe/universe.dart' show
+    CallStructure,
+    Selector,
+    SideEffects;
+import '../world.dart' show ClassWorld;
 
-// BUG(8802): There's a bug in the analyzer that makes the re-export
-// of Selector from dart2jslib.dart fail. For now, we work around that
-// by importing universe.dart explicitly and disabling the re-export.
-import '../dart2jslib.dart' hide Selector, TypedSelector;
-import '../universe/universe.dart'
-    show Selector, SideEffects, TypedSelector, CallStructure;
+import 'inferrer_visitor.dart';
 
 /**
  * An implementation of [TypeSystem] for [TypeMask].
@@ -371,9 +394,11 @@ abstract class InferrerEngine<T, V extends TypeSystem>
         mappedType = types.stringType;
       } else if (type.element == compiler.intClass) {
         mappedType = types.intType;
-      } else if (type.element == compiler.doubleClass) {
-        mappedType = types.doubleType;
-      } else if (type.element == compiler.numClass) {
+      } else if (type.element == compiler.numClass ||
+                 type.element == compiler.doubleClass) {
+        // Note: the backend double class is specifically for non-integer
+        // doubles, and a native behavior returning 'double' does not guarantee
+        // a non-integer return type, so we return the number type for those.
         mappedType = types.numType;
       } else if (type.element == compiler.boolClass) {
         mappedType = types.boolType;
@@ -415,12 +440,12 @@ abstract class InferrerEngine<T, V extends TypeSystem>
       elements.setTypeMask(node, mask);
     } else {
       assert(astNode.asForIn() != null);
-      if (selector == compiler.iteratorSelector) {
+      if (selector == Selectors.iterator) {
         elements.setIteratorTypeMask(node, mask);
-      } else if (selector == compiler.currentSelector) {
+      } else if (selector == Selectors.current) {
         elements.setCurrentTypeMask(node, mask);
       } else {
-        assert(selector == compiler.moveNextSelector);
+        assert(selector == Selectors.moveNext);
         elements.setMoveNextTypeMask(node, mask);
       }
     }
@@ -567,7 +592,17 @@ class SimpleTypeInferrerVisitor<T>
         synthesizeForwardingCall(spannable, constructor.definingConstructor);
       } else {
         visitingInitializers = true;
-        visit(node.initializers);
+        if (node.initializers != null) {
+          for (ast.Node initializer in node.initializers) {
+            ast.SendSet fieldInitializer = initializer.asSendSet();
+            if (fieldInitializer != null) {
+              handleSendSet(fieldInitializer);
+            } else {
+              Element element = elements[initializer];
+              handleConstructorSend(initializer, element);
+            }
+          }
+        }
         visitingInitializers = false;
         // For a generative constructor like: `Foo();`, we synthesize
         // a call to the default super constructor (the one that takes
@@ -799,8 +834,6 @@ class SimpleTypeInferrerVisitor<T>
         elements.getGetterSelectorInComplexSendSet(node);
     TypeMask getterMask =
         elements.getGetterTypeMaskInComplexSendSet(node);
-    Selector operatorSelector =
-        elements.getOperatorSelectorInComplexSendSet(node);
     TypeMask operatorMask =
         elements.getOperatorTypeMaskInComplexSendSet(node);
     Selector setterSelector = elements.getSelector(node);
@@ -817,7 +850,13 @@ class SimpleTypeInferrerVisitor<T>
         isCallOnThis = true;
       }
     } else {
-      receiverType = visit(node.receiver);
+      if (node.receiver != null) {
+        Element receiver = elements[node.receiver];
+        if (receiver is! PrefixElement && receiver is! ClassElement) {
+          // TODO(johnniwinther): Avoid blindly recursing on the receiver.
+          receiverType = visit(node.receiver);
+        }
+      }
       isCallOnThis = isThisOrSuper(node.receiver);
     }
 
@@ -859,53 +898,53 @@ class SimpleTypeInferrerVisitor<T>
           node, element, setterSelector, setterMask, receiverType, rhsType,
           node.arguments.head);
     } else {
-      // [: foo++ :] or [: foo += 1 :].
-      ArgumentsTypes operatorArguments = new ArgumentsTypes<T>([rhsType], null);
+      // [foo ??= bar], [: foo++ :] or [: foo += 1 :].
       T getterType;
       T newType;
-      if (Elements.isErroneous(element)) {
-        getterType = types.dynamicType;
-        newType = types.dynamicType;
-      } else if (Elements.isStaticOrTopLevelField(element)) {
+
+      if (Elements.isErroneous(element)) return types.dynamicType;
+
+      if (Elements.isStaticOrTopLevelField(element)) {
         Element getterElement = elements[node.selector];
         getterType = handleStaticSend(
             node, getterSelector, getterMask, getterElement, null);
+      } else if (Elements.isUnresolved(element)
+                 || element.isSetter
+                 || element.isField) {
+        getterType = handleDynamicSend(
+            node, getterSelector, getterMask, receiverType, null);
+      } else if (element.isLocal) {
+        LocalElement local = element;
+        getterType = locals.use(local);
+      } else {
+        // Bogus SendSet, for example [: myMethod += 42 :].
+        getterType = types.dynamicType;
+      }
+
+      if (op == '??=') {
+        newType = types.allocateDiamondPhi(getterType, rhsType);
+      } else {
+        Selector operatorSelector =
+          elements.getOperatorSelectorInComplexSendSet(node);
         newType = handleDynamicSend(
             node, operatorSelector, operatorMask,
-            getterType, operatorArguments);
+            getterType, new ArgumentsTypes<T>([rhsType], null));
+      }
+
+      if (Elements.isStaticOrTopLevelField(element)) {
         handleStaticSend(
             node, setterSelector, setterMask, element,
             new ArgumentsTypes<T>([newType], null));
       } else if (Elements.isUnresolved(element)
                  || element.isSetter
                  || element.isField) {
-        getterType = handleDynamicSend(
-            node, getterSelector, getterMask, receiverType, null);
-        newType = handleDynamicSend(
-            node, operatorSelector, operatorMask,
-            getterType, operatorArguments);
         handleDynamicSend(node, setterSelector, setterMask, receiverType,
                           new ArgumentsTypes<T>([newType], null));
       } else if (element.isLocal) {
-        LocalElement local = element;
-        getterType = locals.use(local);
-        newType = handleDynamicSend(
-            node, operatorSelector, operatorMask,
-            getterType, operatorArguments);
         locals.update(element, newType, node);
-      } else {
-        // Bogus SendSet, for example [: myMethod += 42 :].
-        getterType = types.dynamicType;
-        newType = handleDynamicSend(
-            node, operatorSelector, operatorMask,
-            getterType, operatorArguments);
       }
 
-      if (node.isPostfix) {
-        return getterType;
-      } else {
-        return newType;
-      }
+      return node.isPostfix ? getterType : newType;
     }
   }
 
@@ -932,12 +971,18 @@ class SimpleTypeInferrerVisitor<T>
         getterMask,
         receiverType,
         new ArgumentsTypes<T>([indexType], null));
-    T returnType = handleDynamicSend(
-        node,
-        operatorSelector,
-        operatorMask,
-        getterType,
-        new ArgumentsTypes<T>([rhsType], null));
+
+    T returnType;
+    if (node.isIfNullAssignment) {
+      returnType = types.allocateDiamondPhi(getterType, rhsType);
+    } else {
+      returnType = handleDynamicSend(
+          node,
+          operatorSelector,
+          operatorMask,
+          getterType,
+          new ArgumentsTypes<T>([rhsType], null));
+    }
     handleDynamicSend(
         node,
         setterSelector,
@@ -1318,20 +1363,6 @@ class SimpleTypeInferrerVisitor<T>
         node, selector, mask, element, null);
   }
 
-  /// Handle super constructor invocation.
-  @override
-  T handleSuperConstructorInvoke(ast.Send node) {
-    Element element = elements[node];
-    ArgumentsTypes arguments = analyzeArguments(node.arguments);
-    assert(visitingInitializers);
-    seenSuperConstructorCall = true;
-    analyzeSuperConstructorCall(element, arguments);
-    Selector selector = elements.getSelector(node);
-    TypeMask mask = elements.getTypeMask(node);
-    return handleStaticSend(
-        node, selector, mask, element, arguments);
-  }
-
   @override
   T visitUnresolvedSuperIndex(
       ast.Send node,
@@ -1439,6 +1470,16 @@ class SimpleTypeInferrerVisitor<T>
       _) {
     return handleSuperMethodInvoke(
         node, method, analyzeArguments(arguments.nodes));
+  }
+
+  @override
+  T visitSuperSetterInvoke(
+      ast.Send node,
+      FunctionElement setter,
+      ast.NodeList arguments,
+      CallStructure callStructure,
+      _) {
+    return handleErroneousSuperSend(node);
   }
 
   @override
@@ -1554,12 +1595,6 @@ class SimpleTypeInferrerVisitor<T>
     return super.handleTypeLiteralInvoke(arguments);
   }
 
-  T visitStaticSend(ast.Send node) {
-    assert(!elements.isAssert(node));
-    Element element = elements[node];
-    return handleConstructorSend(node, element);
-  }
-
   /// Handle constructor invocation of [element].
   T handleConstructorSend(ast.Send node, ConstructorElement element) {
     ArgumentsTypes arguments = analyzeArguments(node.arguments);
@@ -1630,8 +1665,21 @@ class SimpleTypeInferrerVisitor<T>
     }
   }
 
-  T handleNewExpression(ast.NewExpression node) {
-    return visitStaticSend(node.send);
+  @override
+  T bulkHandleNew(ast.NewExpression node, _) {
+    Element element = elements[node.send];
+    return handleConstructorSend(node.send, element);
+  }
+
+  @override
+  T errorNonConstantConstructorInvoke(
+      ast.NewExpression node,
+      Element element,
+      DartType type,
+      ast.NodeList arguments,
+      CallStructure callStructure,
+      _) {
+    return bulkHandleNew(node, _);
   }
 
   /// Handle invocation of a top level or static field or getter [element].
@@ -1811,15 +1859,6 @@ class SimpleTypeInferrerVisitor<T>
     return new ArgumentsTypes<T>(positional, named);
   }
 
-  T visitGetterSend(ast.Send node) {
-    if (elements[node] is! PrefixElement) {
-      // TODO(johnniwinther): Remove this when no longer called from
-      // [handleSendSet].
-      internalError(node, "Unexpected visitGetterSend");
-    }
-    return null;
-  }
-
   /// Read a local variable, function or parameter.
   T handleLocalGet(ast.Send node, LocalElement local) {
     assert(locals.use(local) != null);
@@ -1851,7 +1890,7 @@ class SimpleTypeInferrerVisitor<T>
   T visitDynamicPropertyGet(
       ast.Send node,
       ast.Node receiver,
-      Selector selector,
+      Name name,
       _) {
     return handleDynamicGet(node);
   }
@@ -1860,7 +1899,7 @@ class SimpleTypeInferrerVisitor<T>
   T visitIfNotNullDynamicPropertyGet(
       ast.Send node,
       ast.Node receiver,
-      Selector selector,
+      Name name,
       _) {
     return handleDynamicGet(node);
   }
@@ -1916,7 +1955,7 @@ class SimpleTypeInferrerVisitor<T>
   @override
   T visitThisPropertyGet(
       ast.Send node,
-      Selector selector,
+      Name name,
       _) {
     return handleDynamicGet(node);
   }
@@ -1984,7 +2023,7 @@ class SimpleTypeInferrerVisitor<T>
       ast.Send node,
       ast.Node expression,
       ast.NodeList arguments,
-      Selector selector,
+      CallStructure callStructure,
       _) {
     return handleCallInvoke(node, expression.accept(this));
    }

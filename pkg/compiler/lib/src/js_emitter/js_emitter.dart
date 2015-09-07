@@ -4,10 +4,10 @@
 
 library dart2js.js_emitter;
 
-import 'dart:convert';
-import 'dart:collection' show HashMap;
-
 import '../common.dart';
+
+import '../common/names.dart' show
+    Identifiers;
 
 import '../constants/values.dart';
 
@@ -20,7 +20,8 @@ import '../closure.dart' show
 import '../dart_types.dart' show
     TypedefType;
 
-import '../io/code_output.dart';
+import '../diagnostics/spannable.dart' show
+    NO_LOCATION_SPANNABLE;
 
 import '../elements/elements.dart' show
     ConstructorBodyElement,
@@ -30,8 +31,6 @@ import '../elements/elements.dart' show
     TypeVariableElement,
     MethodElement,
     MemberElement;
-
-import '../hash/sha1.dart' show Hasher;
 
 import '../js/js.dart' as jsAst;
 import '../js/js.dart' show js;
@@ -55,39 +54,18 @@ import '../js_backend/js_backend.dart' show
     TypeVariableHandler;
 
 import 'model.dart';
-import 'program_builder.dart';
+import 'program_builder/program_builder.dart';
 
-import 'new_emitter/emitter.dart' as new_js_emitter;
-
-import '../io/line_column_provider.dart' show
-    LineColumnCollector,
-    LineColumnProvider;
-
-import '../io/source_map_builder.dart' show
-    SourceMapBuilder;
+import 'full_emitter/emitter.dart' as full_js_emitter;
+import 'lazy_emitter/emitter.dart' as lazy_js_emitter;
+import 'startup_emitter/emitter.dart' as startup_js_emitter;
 
 import '../universe/universe.dart' show
-    TypeMaskSet,
+    ReceiverMaskSet,
     TypedSelector;
 
-import '../util/characters.dart' show
-    $$,
-    $A,
-    $HASH,
-    $PERIOD,
-    $Z,
-    $a,
-    $z;
-
 import '../util/util.dart' show
-    NO_LOCATION_SPANNABLE,
     Setlet;
-
-import '../util/uri_extras.dart' show
-    relativize;
-
-import '../util/util.dart' show
-    equalElements;
 
 import '../deferred_load.dart' show
     OutputUnit;
@@ -96,6 +74,7 @@ import 'package:js_runtime/shared/embedded_names.dart' as embeddedNames;
 import 'package:js_runtime/shared/embedded_names.dart' show JsBuiltin;
 
 import '../native/native.dart' as native;
+
 part 'class_stub_generator.dart';
 part 'code_emitter_task.dart';
 part 'helpers.dart';
@@ -107,13 +86,3 @@ part 'native_generator.dart';
 part 'parameter_stub_generator.dart';
 part 'runtime_type_generator.dart';
 part 'type_test_registry.dart';
-
-part 'old_emitter/class_builder.dart';
-part 'old_emitter/class_emitter.dart';
-part 'old_emitter/code_emitter_helper.dart';
-part 'old_emitter/container_builder.dart';
-part 'old_emitter/declarations.dart';
-part 'old_emitter/emitter.dart';
-part 'old_emitter/interceptor_emitter.dart';
-part 'old_emitter/nsm_emitter.dart';
-part 'old_emitter/setup_program_builder.dart';

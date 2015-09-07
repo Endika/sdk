@@ -191,7 +191,6 @@ class DebuggerPage extends SimplePage {
       if (element != null) {
         /// Update the page.
         DebuggerPageElement page = element;
-        page.app = app;
         page.isolate = isolate;
       }
     });
@@ -289,6 +288,22 @@ class HeapSnapshotPage extends SimplePage {
       if (element != null) {
         /// Update the page.
         HeapSnapshotElement page = element;
+        page.isolate = isolate;
+      }
+    });
+  }
+}
+
+
+class LoggingPage extends SimplePage {
+  LoggingPage(app) : super('logging', 'logging-page', app);
+
+  void _visit(Uri uri) {
+    super._visit(uri);
+    getIsolate(uri).then((isolate) {
+      if (element != null) {
+        /// Update the page.
+        LoggingPageElement page = element;
         page.isolate = isolate;
       }
     });

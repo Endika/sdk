@@ -66,6 +66,8 @@ DECLARE_FLAG(bool, use_field_guards);
 DECLARE_FLAG(bool, use_cha_deopt);
 DECLARE_FLAG(bool, use_osr);
 DECLARE_FLAG(bool, warn_on_javascript_compatibility);
+DECLARE_FLAG(bool, precompile_collect_closures);
+DECLARE_FLAG(bool, print_stop_message);
 
 
 static void NooptModeHandler(bool value) {
@@ -81,13 +83,19 @@ static void NooptModeHandler(bool value) {
     FLAG_collect_code = false;
     FLAG_load_deferred_eagerly = true;
     FLAG_deoptimize_alot = false;  // Used in some tests.
-    FLAG_deoptimize_every = 0;  // Used in some tests.
-    FLAG_collect_code = false;
+    FLAG_deoptimize_every = 0;     // Used in some tests.
     FLAG_guess_other_cid = true;
     Compiler::set_always_optimize(true);
+    // Triggers assert if we try to recompile (e.g., because of deferred
+    // loading, deoptimization, ...). Noopt mode simulates behavior
+    // of precompiled code, therefore do not allow recompilation.
+    Compiler::set_allow_recompilation(false);
     // TODO(srdjan): Enable CHA deoptimization when eager class finalization is
     // implemented, either with precompilation or as a special pass.
     FLAG_use_cha_deopt = false;
+    // Calling the PrintStopMessage stub is not supported in precompiled code
+    // since it is done at places where no pool pointer is loaded.
+    FLAG_print_stop_message = false;
   }
 }
 
@@ -97,6 +105,28 @@ static void NooptModeHandler(bool value) {
 DEFINE_FLAG_HANDLER(NooptModeHandler,
                     noopt,
                     "Run fast unoptimized code only.");
+
+
+DECLARE_FLAG(bool, lazy_dispatchers);
+DECLARE_FLAG(bool, interpret_irregexp);
+DECLARE_FLAG(bool, enable_mirrors);
+DECLARE_FLAG(bool, link_natives_lazily);
+
+static void PrecompileModeHandler(bool value) {
+  if (value) {
+    NooptModeHandler(true);
+    FLAG_lazy_dispatchers = false;
+    FLAG_interpret_irregexp = true;
+    FLAG_enable_mirrors = false;
+    FLAG_precompile_collect_closures = true;
+    FLAG_link_natives_lazily = true;
+  }
+}
+
+
+DEFINE_FLAG_HANDLER(PrecompileModeHandler,
+                    precompile,
+                    "Precompilation mode");
 
 
 // Assign locations to incoming arguments, i.e., values pushed above spill slots
@@ -148,8 +178,7 @@ FlowGraphCompiler::FlowGraphCompiler(
         stackmap_table_builder_(NULL),
         block_info_(block_order_.length()),
         deopt_infos_(),
-        static_calls_target_table_(GrowableObjectArray::ZoneHandle(
-            GrowableObjectArray::New())),
+        static_calls_target_table_(),
         is_optimizing_(is_optimizing),
         may_reoptimize_(false),
         intrinsic_mode_(false),
@@ -200,8 +229,8 @@ FlowGraphCompiler::FlowGraphCompiler(
 
 
 void FlowGraphCompiler::InitCompiler() {
-  pc_descriptors_list_ = new DescriptorList(64);
-  exception_handlers_list_ = new ExceptionHandlerList();
+  pc_descriptors_list_ = new(zone()) DescriptorList(64);
+  exception_handlers_list_ = new(zone())ExceptionHandlerList();
   block_info_.Clear();
   // Conservative detection of leaf routines used to remove the stack check
   // on function entry.
@@ -212,7 +241,7 @@ void FlowGraphCompiler::InitCompiler() {
   // indicating a non-leaf routine and calls without IC data indicating
   // possible reoptimization.
   for (int i = 0; i < block_order_.length(); ++i) {
-    block_info_.Add(new BlockInfo());
+    block_info_.Add(new(zone()) BlockInfo());
     if (is_optimizing() && !flow_graph().IsCompiledForOsr()) {
       BlockEntryInstr* entry = block_order_[i];
       for (ForwardInstructionIterator it(entry); !it.Done(); it.Advance()) {
@@ -364,15 +393,16 @@ void FlowGraphCompiler::EmitSourceLine(Instruction* instr) {
   if ((instr->token_pos() == Scanner::kNoSourcePos) || (instr->env() == NULL)) {
     return;
   }
-  const Function& function =
-      Function::Handle(instr->env()->code().function());
-  const Script& s = Script::Handle(function.script());
+  const Script& script =
+      Script::Handle(zone(), instr->env()->function().script());
   intptr_t line_nr;
   intptr_t column_nr;
-  s.GetTokenLocation(instr->token_pos(), &line_nr, &column_nr);
-  const String& line = String::Handle(s.GetLine(line_nr));
+  script.GetTokenLocation(instr->token_pos(), &line_nr, &column_nr);
+  const String& line = String::Handle(zone(), script.GetLine(line_nr));
   assembler()->Comment("Line %" Pd " in '%s':\n           %s",
-      line_nr, function.ToFullyQualifiedCString(), line.ToCString());
+      line_nr,
+      instr->env()->function().ToFullyQualifiedCString(),
+      line.ToCString());
 }
 
 
@@ -401,7 +431,7 @@ struct IntervalStruct {
   intptr_t inlining_id;
   IntervalStruct(intptr_t s, intptr_t id) : start(s), inlining_id(id) {}
   void Dump() {
-    OS::Print("start: %" Px " id: %" Pd "",  start, inlining_id);
+    ISL_Print("start: 0x%" Px " iid: %" Pd " ",  start, inlining_id);
   }
 };
 
@@ -446,8 +476,7 @@ void FlowGraphCompiler::VisitBlocks() {
       // Compose intervals.
       if (instr->has_inlining_id() && is_optimizing()) {
         if (prev_inlining_id != instr->inlining_id()) {
-          intervals.Add(IntervalStruct(prev_offset,
-                                       prev_inlining_id));
+          intervals.Add(IntervalStruct(prev_offset, prev_inlining_id));
           prev_offset = assembler()->CodeSize();
           prev_inlining_id = instr->inlining_id();
           if (prev_inlining_id > max_inlining_id) {
@@ -456,8 +485,7 @@ void FlowGraphCompiler::VisitBlocks() {
         }
       }
       if (FLAG_code_comments ||
-          FLAG_disassemble ||
-          FLAG_disassemble_optimized) {
+          FLAG_disassemble || FLAG_disassemble_optimized) {
         if (FLAG_source_lines) {
           EmitSourceLine(instr);
         }
@@ -492,6 +520,7 @@ void FlowGraphCompiler::VisitBlocks() {
   }
 
   if (is_optimizing()) {
+    LogBlock lb(Thread::Current());
     intervals.Add(IntervalStruct(prev_offset, prev_inlining_id));
     inlined_code_intervals_ =
         Array::New(intervals.length() * Code::kInlIntNumEntries, Heap::kOld);
@@ -500,13 +529,14 @@ void FlowGraphCompiler::VisitBlocks() {
     Smi& inline_id = Smi::Handle();
     for (intptr_t i = 0; i < intervals.length(); i++) {
       if (FLAG_trace_inlining_intervals && is_optimizing()) {
-        const Function* function =
-            inline_id_to_function_.At(intervals[i].inlining_id);
+        const Function& function =
+            *inline_id_to_function_.At(intervals[i].inlining_id);
         intervals[i].Dump();
-        OS::Print(" %s parent %" Pd "\n",
-            function->ToQualifiedCString(),
-            caller_inline_id_[intervals[i].inlining_id]);
+        ISL_Print(" parent iid %" Pd " %s\n",
+            caller_inline_id_[intervals[i].inlining_id],
+            function.ToQualifiedCString());
       }
+
       const intptr_t id = intervals[i].inlining_id;
       start_h = Smi::New(intervals[i].start);
       inline_id = Smi::New(id);
@@ -515,23 +545,24 @@ void FlowGraphCompiler::VisitBlocks() {
       const intptr_t p = i * Code::kInlIntNumEntries;
       inlined_code_intervals_.SetAt(p + Code::kInlIntStart, start_h);
       inlined_code_intervals_.SetAt(p + Code::kInlIntInliningId, inline_id);
-      inlined_code_intervals_.SetAt(
-          p + Code::kInlIntCallerId, caller_inline_id);
     }
   }
   set_current_block(NULL);
   if (FLAG_trace_inlining_intervals && is_optimizing()) {
-    OS::Print("Intervals:\n");
+    LogBlock lb(Isolate::Current());
+    ISL_Print("Intervals:\n");
+    for (intptr_t cc = 0; cc < caller_inline_id_.length(); cc++) {
+      ISL_Print("  iid: %" Pd " caller iid: %" Pd "\n",
+          cc, caller_inline_id_[cc]);
+    }
     Smi& temp = Smi::Handle();
     for (intptr_t i = 0; i < inlined_code_intervals_.Length();
          i += Code::kInlIntNumEntries) {
       temp ^= inlined_code_intervals_.At(i + Code::kInlIntStart);
       ASSERT(!temp.IsNull());
-      OS::Print("% " Pd " start: %" Px " ", i, temp.Value());
+      ISL_Print("% " Pd " start: 0x%" Px " ", i, temp.Value());
       temp ^= inlined_code_intervals_.At(i + Code::kInlIntInliningId);
-      OS::Print("inl-id: %" Pd " ", temp.Value());
-      temp ^= inlined_code_intervals_.At(i + Code::kInlIntCallerId);
-      OS::Print("caller-id: %" Pd " \n", temp.Value());
+      ISL_Print("iid: %" Pd " ", temp.Value());
     }
   }
 }
@@ -564,7 +595,7 @@ void FlowGraphCompiler::EmitTrySync(Instruction* instr, intptr_t try_index) {
   // Parameters first.
   intptr_t i = 0;
   const intptr_t num_non_copied_params = flow_graph().num_non_copied_params();
-  ParallelMoveInstr* move_instr = new ParallelMoveInstr();
+  ParallelMoveInstr* move_instr = new(zone()) ParallelMoveInstr();
   for (; i < num_non_copied_params; ++i) {
     // Don't sync captured parameters. They are not in the environment.
     if (flow_graph().captured_parameters()->Contains(i)) continue;
@@ -690,26 +721,16 @@ void FlowGraphCompiler::AddCurrentDescriptor(RawPcDescriptors::Kind kind,
 
 
 void FlowGraphCompiler::AddStaticCallTarget(const Function& func) {
-  ASSERT(Code::kSCallTableEntryLength == 3);
-  ASSERT(Code::kSCallTableOffsetEntry == 0);
+  ASSERT(func.IsZoneHandle());
   static_calls_target_table_.Add(
-      Smi::Handle(Smi::New(assembler()->CodeSize())));
-  ASSERT(Code::kSCallTableFunctionEntry == 1);
-  static_calls_target_table_.Add(func);
-  ASSERT(Code::kSCallTableCodeEntry == 2);
-  static_calls_target_table_.Add(Code::Handle());
+      new(zone()) StaticCallsStruct(assembler()->CodeSize(), &func, NULL));
 }
 
 
 void FlowGraphCompiler::AddStubCallTarget(const Code& code) {
-  ASSERT(Code::kSCallTableEntryLength == 3);
-  ASSERT(Code::kSCallTableOffsetEntry == 0);
+  ASSERT(code.IsZoneHandle());
   static_calls_target_table_.Add(
-      Smi::Handle(Smi::New(assembler()->CodeSize())));
-  ASSERT(Code::kSCallTableFunctionEntry == 1);
-  static_calls_target_table_.Add(Function::Handle());
-  ASSERT(Code::kSCallTableCodeEntry == 2);
-  static_calls_target_table_.Add(code);
+      new(zone()) StaticCallsStruct(assembler()->CodeSize(), NULL, &code));
 }
 
 
@@ -718,10 +739,10 @@ void FlowGraphCompiler::AddDeoptIndexAtCall(intptr_t deopt_id,
   ASSERT(is_optimizing());
   ASSERT(!intrinsic_mode());
   CompilerDeoptInfo* info =
-      new CompilerDeoptInfo(deopt_id,
-                            ICData::kDeoptAtCall,
-                            0,  // No flags.
-                            pending_deoptimization_env_);
+      new(zone()) CompilerDeoptInfo(deopt_id,
+                                    ICData::kDeoptAtCall,
+                                    0,  // No flags.
+                                    pending_deoptimization_env_);
   info->set_pc_offset(assembler()->CodeSize());
   deopt_infos_.Add(info);
 }
@@ -867,10 +888,10 @@ Label* FlowGraphCompiler::AddDeoptStub(intptr_t deopt_id,
   ASSERT(!Compiler::always_optimize());
   ASSERT(is_optimizing_);
   CompilerDeoptInfoWithStub* stub =
-      new CompilerDeoptInfoWithStub(deopt_id,
-                                    reason,
-                                    flags,
-                                    pending_deoptimization_env_);
+      new(zone()) CompilerDeoptInfoWithStub(deopt_id,
+                                            reason,
+                                            flags,
+                                            pending_deoptimization_env_);
   deopt_infos_.Add(stub);
   return stub->entry_label();
 }
@@ -881,9 +902,12 @@ void FlowGraphCompiler::FinalizeExceptionHandlers(const Code& code) {
   const ExceptionHandlers& handlers = ExceptionHandlers::Handle(
       exception_handlers_list_->FinalizeExceptionHandlers(code.EntryPoint()));
   code.set_exception_handlers(handlers);
-  INC_STAT(isolate(), total_code_size,
-      ExceptionHandlers::InstanceSize(handlers.num_entries()));
-  INC_STAT(isolate(), total_code_size, handlers.num_entries() * sizeof(uword));
+  if (FLAG_compiler_stats) {
+    Thread* thread = Thread::Current();
+    INC_STAT(thread, total_code_size,
+        ExceptionHandlers::InstanceSize(handlers.num_entries()));
+    INC_STAT(thread, total_code_size, handlers.num_entries() * sizeof(uword));
+  }
 }
 
 
@@ -973,10 +997,27 @@ void FlowGraphCompiler::FinalizeVarDescriptors(const Code& code) {
 
 void FlowGraphCompiler::FinalizeStaticCallTargetsTable(const Code& code) {
   ASSERT(code.static_calls_target_table() == Array::null());
-  const Array& targets =
-      Array::Handle(Array::MakeArray(static_calls_target_table_));
+  const Array& targets = Array::Handle(zone(), Array::New(
+      (static_calls_target_table_.length() * Code::kSCallTableEntryLength),
+      Heap::kOld));
+  Smi& smi_offset = Smi::Handle(zone());
+  for (intptr_t i = 0; i < static_calls_target_table_.length(); i++) {
+    const intptr_t target_ix = Code::kSCallTableEntryLength * i;
+    smi_offset = Smi::New(static_calls_target_table_[i]->offset);
+    targets.SetAt(target_ix + Code::kSCallTableOffsetEntry, smi_offset);
+    if (static_calls_target_table_[i]->function != NULL) {
+      targets.SetAt(target_ix + Code::kSCallTableFunctionEntry,
+          *static_calls_target_table_[i]->function);
+    }
+    if (static_calls_target_table_[i]->code != NULL) {
+      targets.SetAt(target_ix + Code::kSCallTableCodeEntry,
+          *static_calls_target_table_[i]->code);
+    }
+  }
   code.set_static_calls_target_table(targets);
-  INC_STAT(isolate(), total_code_size, targets.Length() * sizeof(uword));
+  INC_STAT(Thread::Current(),
+           total_code_size,
+           targets.Length() * sizeof(uword));
 }
 
 
@@ -1045,8 +1086,6 @@ void FlowGraphCompiler::GenerateInstanceCall(
     return;
   }
   ASSERT(!ic_data.IsNull());
-  uword label_address = 0;
-  StubCode* stub_code = isolate()->stub_code();
   if (is_optimizing() && (ic_data.NumberOfUsedChecks() == 0)) {
     // Emit IC call that will count and thus may need reoptimization at
     // function entry.
@@ -1055,17 +1094,18 @@ void FlowGraphCompiler::GenerateInstanceCall(
            || flow_graph().IsCompiledForOsr());
     switch (ic_data.NumArgsTested()) {
       case 1:
-        label_address = stub_code->OneArgOptimizedCheckInlineCacheEntryPoint();
-        break;
+        EmitOptimizedInstanceCall(
+            *StubCode::OneArgOptimizedCheckInlineCache_entry(), ic_data,
+            argument_count, deopt_id, token_pos, locs);
+        return;
       case 2:
-        label_address = stub_code->TwoArgsOptimizedCheckInlineCacheEntryPoint();
-        break;
+        EmitOptimizedInstanceCall(
+            *StubCode::TwoArgsOptimizedCheckInlineCache_entry(), ic_data,
+            argument_count, deopt_id, token_pos, locs);
+        return;
       default:
         UNIMPLEMENTED();
     }
-    ExternalLabel target_label(label_address);
-    EmitOptimizedInstanceCall(&target_label, ic_data,
-                              argument_count, deopt_id, token_pos, locs);
     return;
   }
 
@@ -1082,17 +1122,18 @@ void FlowGraphCompiler::GenerateInstanceCall(
 
   switch (ic_data.NumArgsTested()) {
     case 1:
-      label_address = stub_code->OneArgCheckInlineCacheEntryPoint();
+      EmitInstanceCall(
+          *StubCode::OneArgCheckInlineCache_entry(), ic_data, argument_count,
+          deopt_id, token_pos, locs);
       break;
     case 2:
-      label_address = stub_code->TwoArgsCheckInlineCacheEntryPoint();
+      EmitInstanceCall(
+          *StubCode::TwoArgsCheckInlineCache_entry(), ic_data, argument_count,
+          deopt_id, token_pos, locs);
       break;
     default:
       UNIMPLEMENTED();
   }
-  ExternalLabel target_label(label_address);
-  EmitInstanceCall(&target_label, ic_data, argument_count,
-                   deopt_id, token_pos, locs);
 }
 
 
@@ -1669,6 +1710,21 @@ RawArray* FlowGraphCompiler::InliningIdToFunction() const {
       Array::New(inline_id_to_function_.length(), Heap::kOld));
   for (intptr_t i = 0; i < inline_id_to_function_.length(); i++) {
     res.SetAt(i, *inline_id_to_function_[i]);
+  }
+  return res.raw();
+}
+
+
+RawArray* FlowGraphCompiler::CallerInliningIdMap() const {
+  if (caller_inline_id_.length() == 0) {
+    return Object::empty_array().raw();
+  }
+  const Array& res = Array::Handle(
+      Array::New(caller_inline_id_.length(), Heap::kOld));
+  Smi& smi = Smi::Handle();
+  for (intptr_t i = 0; i < caller_inline_id_.length(); i++) {
+    smi = Smi::New(caller_inline_id_[i]);
+    res.SetAt(i, smi);
   }
   return res.raw();
 }

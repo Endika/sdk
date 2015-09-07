@@ -99,6 +99,17 @@ class BaseGrowableArray : public B {
     }
   }
 
+  // Swap entries |i| and |j|.
+  void Swap(intptr_t i, intptr_t j) {
+    ASSERT(i >= 0);
+    ASSERT(j >= 0);
+    ASSERT(i < length_);
+    ASSERT(j < length_);
+    T temp = data_[i];
+    data_[i] = data_[j];
+    data_[j] = temp;
+  }
+
   // The content is uninitialized after calling it.
   void SetLength(intptr_t new_length);
 
@@ -161,10 +172,10 @@ class GrowableArray : public BaseGrowableArray<T, ValueObject> {
   explicit GrowableArray(intptr_t initial_capacity)
       : BaseGrowableArray<T, ValueObject>(
           initial_capacity,
-          ASSERT_NOTNULL(Isolate::Current()->current_zone())) {}
+          ASSERT_NOTNULL(Thread::Current()->zone())) {}
   GrowableArray()
       : BaseGrowableArray<T, ValueObject>(
-          ASSERT_NOTNULL(Isolate::Current()->current_zone())) {}
+          ASSERT_NOTNULL(Thread::Current()->zone())) {}
 };
 
 
@@ -177,11 +188,66 @@ class ZoneGrowableArray : public BaseGrowableArray<T, ZoneAllocated> {
   explicit ZoneGrowableArray(intptr_t initial_capacity)
       : BaseGrowableArray<T, ZoneAllocated>(
           initial_capacity,
-          ASSERT_NOTNULL(Isolate::Current()->current_zone())) {}
+          ASSERT_NOTNULL(Thread::Current()->zone())) {}
   ZoneGrowableArray()
       : BaseGrowableArray<T, ZoneAllocated>(
-          ASSERT_NOTNULL(Isolate::Current()->current_zone())) {}
+          ASSERT_NOTNULL(Thread::Current()->zone())) {}
 };
+
+
+// T must be a Handle type.
+template<typename T, typename B>
+class BaseGrowableHandlePtrArray : public B {
+ public:
+  BaseGrowableHandlePtrArray(Zone* zone, intptr_t initial_capacity)
+      : zone_(zone), array_(zone, initial_capacity) {}
+
+  // Use unique zone handles to store objects.
+  void Add(const T& t) {
+    array_.Add(&T::ZoneHandle(zone_, t.raw()));
+  }
+
+  T& operator[](intptr_t index) const {
+    return *array_[index];
+  }
+
+  const T& At(intptr_t index) const {
+    return operator[](index);
+  }
+
+  void SetAt(intptr_t index, const T& t) {
+    array_[index] = &T::ZoneHandle(zone_, t.raw());
+  }
+
+  intptr_t length() const { return array_.length(); }
+
+  const GrowableArray<T*>& growable_array() const { return array_; }
+
+ private:
+  Zone* zone_;
+  GrowableArray<T*> array_;
+
+  DISALLOW_COPY_AND_ASSIGN(BaseGrowableHandlePtrArray);
+};
+
+
+template<typename T>
+class GrowableHandlePtrArray :
+    public BaseGrowableHandlePtrArray<T, ValueObject> {
+ public:
+  GrowableHandlePtrArray(Zone* zone, intptr_t initial_capacity)
+      : BaseGrowableHandlePtrArray<T, ValueObject>(zone, initial_capacity) {}
+};
+
+
+template<typename T>
+class ZoneGrowableHandlePtrArray :
+    public BaseGrowableHandlePtrArray<T, ZoneAllocated> {
+ public:
+  ZoneGrowableHandlePtrArray(Zone* zone, intptr_t initial_capacity)
+      : BaseGrowableHandlePtrArray<T, ZoneAllocated>(zone, initial_capacity) {}
+};
+
 
 
 class Malloc : public AllStatic {

@@ -144,15 +144,27 @@ class Isolate {
    * If the [paused] parameter is set to `true`,
    * the isolate will start up in a paused state,
    * as if by an initial call of `isolate.pause(isolate.pauseCapability)`.
-   * This allows setting up error or exit listeners on the isolate
-   * before it starts running.
    * To resume the isolate, call `isolate.resume(isolate.pauseCapability)`.
+   *
+   * If the [errorAreFatal], [onExit] and/or [onError] parameters are provided,
+   * the isolate will act as if, respectively, [setErrorsFatal],
+   * [addOnExitListener] and [addErrorListener] were called with the
+   * corresponding parameter and was processed before the isolate starts
+   * running.
+   *
+   * You can also call the [setErrorsFatal], [addOnExitListener] and
+   * [addErrorListener] methods on the returned isolate, but unless the
+   * isolate was started as [paused], it may already have terminated
+   * before those methods can complete.
    *
    * Returns a future that will complete with an [Isolate] instance if the
    * spawning succeeded. It will complete with an error otherwise.
    */
   external static Future<Isolate> spawn(void entryPoint(message), var message,
-                                        { bool paused: false });
+                                        { bool paused: false,
+                                          bool errorsAreFatal,
+                                          SendPort onExit,
+                                          SendPort onError });
 
   /**
    * Creates and spawns an isolate that runs the code from the library with
@@ -161,7 +173,8 @@ class Isolate {
    * The isolate starts executing the top-level `main` function of the library
    * with the given URI.
    *
-   * The target `main` must be a subtype of one of these three signatures:
+   * The target `main` must be callable with zero, one or two arguments.
+   * Examples:
    *
    * * `main()`
    * * `main(args)`
@@ -173,9 +186,18 @@ class Isolate {
    * If the [paused] parameter is set to `true`,
    * the isolate will start up in a paused state,
    * as if by an initial call of `isolate.pause(isolate.pauseCapability)`.
-   * This allows setting up error or exit listeners on the isolate
-   * before it starts running.
    * To resume the isolate, call `isolate.resume(isolate.pauseCapability)`.
+   *
+   * If the [errorAreFatal], [onExit] and/or [onError] parameters are provided,
+   * the isolate will act as if, respectively, [setErrorsFatal],
+   * [addOnExitListener] and [addErrorListener] were called with the
+   * corresponding parameter and was processed before the isolate starts
+   * running.
+   *
+   * You can also call the [setErrorsFatal], [addOnExitListener] and
+   * [addErrorListener] methods on the returned isolate, but unless the
+   * isolate was started as [paused], it may already have terminated
+   * before those methods can complete.
    *
    * If the [checked] parameter is set to `true` or `false`,
    * the new isolate will run code in checked mode,
@@ -214,7 +236,10 @@ class Isolate {
       var message,
       {bool paused: false,
        bool checked,
-       Uri packageRoot});
+       Uri packageRoot,
+       bool errorsAreFatal,
+       SendPort onExit,
+       SendPort onError});
 
   /**
    * Requests the isolate to pause.
@@ -276,10 +301,13 @@ class Isolate {
    * If `response` cannot be sent to the isolate, then the request is ignored.
    * It is recommended to only use simple values that can be sent to all
    * isolates, like `null`, booleans, numbers or strings.
-   * 
+   *
    * Since isolates run concurrently, it's possible for it to exit before the
-   * exit listener is established. To avoid this, start the isolate paused,
-   * add the listener, then resume it.
+   * exit listener is established, and in that case no response will be
+   * sent on [responsePort].
+   * To avoid this, either use the corresponding parameter to the spawn
+   * function, or start the isolate paused, add the listener and
+   * then resume the isolate.
    */
   /* TODO(lrn): Can we do better? Can the system recognize this message and
    * send a reply if the receiving isolate is dead?
@@ -305,6 +333,12 @@ class Isolate {
    *
    * This call requires the [terminateCapability] for the isolate.
    * If the capability is not correct, no change is made.
+   *
+   * Since isolates run concurrently, it's possible for it to exit due to an
+   * error before errors are set non-fatal.
+   * To avoid this, either use the corresponding parameter to the spawn
+   * function, or start the isolate paused, set errors non-fatal and
+   * then resume the isolate.
    */
   external void setErrorsFatal(bool errorsAreFatal);
 
@@ -368,10 +402,10 @@ class Isolate {
    *
    * Listening using the same port more than once does nothing. It will only
    * get each error once.
-   * 
+   *
    * Since isolates run concurrently, it's possible for it to exit before the
    * error listener is established. To avoid this, start the isolate paused,
-   * add the listener, then resume it.
+   * add the listener and then resume the isolate.
    */
   external void addErrorListener(SendPort port);
 
@@ -451,6 +485,10 @@ abstract class SendPort implements Capability {
    * is also possible to send object instances (which would be copied in the
    * process). This is currently only supported by the dartvm.  For now, the
    * dart2js compiler only supports the restricted messages described above.
+   *
+   * The send happens immediately and doesn't block.  The corresponding receive
+   * port can receive the message as soon as its isolate's event loop is ready
+   * to deliver it, independently of what the sending isolate is doing.
    */
   void send(var message);
 

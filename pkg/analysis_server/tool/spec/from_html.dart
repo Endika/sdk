@@ -37,7 +37,8 @@ const List<String> specialElements = const [
   'ref',
   'code',
   'version',
-  'union'
+  'union',
+  'index'
 ];
 
 /**
@@ -73,6 +74,9 @@ Api apiFromHtml(dom.Element html) {
     },
     'version': (dom.Element element) {
       versions.add(innerText(element));
+    },
+    'index': (dom.Element element) {
+      /* Ignore; generated dynamically. */
     }
   });
   if (versions.length != 1) {
@@ -303,7 +307,7 @@ void recurse(dom.Element parent, String context,
       if (elementProcessors.containsKey(node.localName)) {
         elementProcessors[node.localName](node);
       } else if (specialElements.contains(node.localName)) {
-        throw new Exception('$context: Unexpected use of <${node.localName}');
+        throw new Exception('$context: Unexpected use of <${node.localName}>');
       } else {
         recurse(node, context, elementProcessors);
       }

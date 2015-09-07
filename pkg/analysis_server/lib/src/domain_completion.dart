@@ -7,9 +7,10 @@ library domain.completion;
 import 'dart:async';
 
 import 'package:analysis_server/completion/completion_core.dart'
-    show CompletionRequest;
+    show CompletionRequest, CompletionResult;
 import 'package:analysis_server/src/analysis_server.dart';
 import 'package:analysis_server/src/constants.dart';
+import 'package:analysis_server/src/context_manager.dart';
 import 'package:analysis_server/src/protocol.dart';
 import 'package:analysis_server/src/services/completion/completion_manager.dart';
 import 'package:analysis_server/src/services/search/search_engine.dart';
@@ -191,15 +192,16 @@ class CompletionDomainHandler implements RequestHandler {
     int notificationCount = 0;
     manager.results(completionRequest).listen((CompletionResult result) {
       ++notificationCount;
+      bool isLast = result is CompletionResultImpl ? result.isLast : true;
       performance.logElapseTime("notification $notificationCount send", () {
         sendCompletionNotification(completionId, result.replacementOffset,
-            result.replacementLength, result.suggestions, result.last);
+            result.replacementLength, result.suggestions, isLast);
       });
       if (notificationCount == 1) {
         performance.logFirstNotificationComplete('notification 1 complete');
         performance.suggestionCountFirst = result.suggestions.length;
       }
-      if (result.last) {
+      if (isLast) {
         performance.notificationCount = notificationCount;
         performance.suggestionCountLast = result.suggestions.length;
         performance.complete();

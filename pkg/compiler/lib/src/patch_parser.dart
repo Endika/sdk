@@ -112,27 +112,48 @@
  *   element.
  */
 
-library patchparser;
+library dart2js.patchparser;
 
 import 'dart:async';
 
-import 'constants/values.dart' show ConstantValue;
-import 'dart2jslib.dart'
-    show Compiler,
-         CompilerTask,
-         DiagnosticListener,
-         MessageKind,
-         Script;
+import 'constants/values.dart' show
+    ConstantValue;
+import 'compiler.dart' show
+    Compiler;
+import 'common/tasks.dart' show
+    CompilerTask;
+import 'diagnostics/diagnostic_listener.dart';
+import 'diagnostics/messages.dart' show
+    MessageKind;
 import 'elements/elements.dart';
-import 'elements/modelx.dart'
-    show BaseFunctionElementX,
-         ClassElementX,
-         GetterElementX,
-         LibraryElementX,
-         MetadataAnnotationX,
-         SetterElementX;
-import 'library_loader.dart' show LibraryLoader;
-import 'scanner/scannerlib.dart';  // Scanner, Parsers, Listeners
+import 'elements/modelx.dart' show
+    BaseFunctionElementX,
+    ClassElementX,
+    GetterElementX,
+    LibraryElementX,
+    MetadataAnnotationX,
+    SetterElementX;
+import 'library_loader.dart' show
+    LibraryLoader;
+import 'parser/listener.dart' show
+    Listener,
+    ParserError;
+import 'parser/element_listener.dart' show
+    ElementListener;
+import 'parser/member_listener.dart' show
+    MemberListener;
+import 'parser/partial_elements.dart' show
+  PartialClassElement;
+import 'parser/partial_parser.dart' show
+    PartialParser;
+import 'parser/parser.dart' show
+    Parser;
+import 'scanner/scanner.dart' show
+    Scanner;
+import 'script.dart';
+import 'tokens/token.dart' show
+    StringToken,
+    Token;
 import 'util/util.dart';
 
 class PatchParserTask extends CompilerTask {
@@ -436,10 +457,12 @@ class PatchAnnotationHandler implements EagerAnnotationHandler<PatchVersion> {
     if (annotation.beginToken != null) {
       if (annotation.beginToken.next.value == 'patch') {
         return const PatchVersion(null);
-      } else if (annotation.beginToken.next.value == 'patch_old') {
-        return const PatchVersion('old');
-      } else if (annotation.beginToken.next.value == 'patch_new') {
-        return const PatchVersion('new');
+      } else if (annotation.beginToken.next.value == 'patch_full') {
+        return const PatchVersion('full');
+      } else if (annotation.beginToken.next.value == 'patch_lazy') {
+        return const PatchVersion('lazy');
+      } else if (annotation.beginToken.next.value == 'patch_startup') {
+        return const PatchVersion('startup');
       }
     }
     return null;
