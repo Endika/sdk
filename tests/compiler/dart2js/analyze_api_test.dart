@@ -24,10 +24,10 @@ const Map<String, List<String>> WHITE_LIST = const {
 
 void main() {
   var uriList = new List<Uri>();
-  LIBRARIES.forEach((String name, LibraryInfo info) {
+  libraries.forEach((String name, LibraryInfo info) {
     if (info.documented) {
       uriList.add(new Uri(scheme: 'dart', path: name));
     }
   });
-  asyncTest(() => analyze(uriList, WHITE_LIST));
+  asyncTest(() => analyze(uriList, WHITE_LIST, mode: AnalysisMode.ALL));
 }

@@ -164,7 +164,6 @@ Future<Isolate> hasStoppedAtBreakpoint(Isolate isolate) {
   isolate.vm.getEventStream(VM.kDebugStream).then((stream) {
     var subscription;
     subscription = stream.listen((ServiceEvent event) {
-        print("Event: $event");
         if (event.kind == ServiceEvent.kPauseBreakpoint) {
           print('Breakpoint reached');
           subscription.cancel();
@@ -195,6 +194,41 @@ Future<Isolate> hasStoppedAtBreakpoint(Isolate isolate) {
 }
 
 
+Future<Isolate> hasPausedAtStart(Isolate isolate) {
+  // Set up a listener to wait for breakpoint events.
+  Completer completer = new Completer();
+  isolate.vm.getEventStream(VM.kDebugStream).then((stream) {
+    var subscription;
+    subscription = stream.listen((ServiceEvent event) {
+        if (event.kind == ServiceEvent.kPauseStart) {
+          print('Paused at isolate start');
+          subscription.cancel();
+          if (completer != null) {
+            // Reload to update isolate.pauseEvent.
+            completer.complete(isolate.reload());
+            completer = null;
+          }
+        }
+    });
+
+    // Pause may have happened before we subscribed.
+    isolate.reload().then((_) {
+      if ((isolate.pauseEvent != null) &&
+         (isolate.pauseEvent.kind == ServiceEvent.kPauseStart)) {
+        print('Paused at isolate start');
+        subscription.cancel();
+        if (completer != null) {
+          completer.complete(isolate);
+          completer = null;
+        }
+      }
+    });
+  });
+
+  return completer.future;
+}
+
+
 // Currying is your friend.
 IsolateTest setBreakpointAtLine(int line) {
   return (Isolate isolate) async {
@@ -215,12 +249,20 @@ IsolateTest stoppedAtLine(int line) {
 
     ServiceMap stack = await isolate.getStack();
     expect(stack.type, equals('Stack'));
-    expect(stack['frames'].length, greaterThanOrEqualTo(1));
 
-    Frame top = stack['frames'][0];
-    print("We are at $top");
+    List<Frame> frames = stack['frames'];
+    expect(frames.length, greaterThanOrEqualTo(1));
+
+    Frame top = frames[0];
     Script script = await top.location.script.load();
-    expect(script.tokenToLine(top.location.tokenPos), equals(line));
+    if (script.tokenToLine(top.location.tokenPos) != line) {
+      var sb = new StringBuffer();
+      sb.write("Expected to be at line $line, but got stack trace:\n");
+      for (Frame f in stack['frames']) {
+        sb.write(" $f\n");
+      }
+      throw sb.toString();
+    }
   };
 }
 
@@ -274,6 +316,17 @@ Future<Class> getClassFromRootLib(Isolate isolate, String className) async {
     }
   }
   return null;
+}
+
+
+Future<Instance> rootLibraryFieldValue(Isolate isolate,
+                                       String fieldName) async {
+  Library rootLib = await isolate.rootLibrary.load();
+  Field field = rootLib.variables.singleWhere((v) => v.name == fieldName);
+  await field.load();
+  Instance value = field.staticValue;
+  await value.load();
+  return value;
 }
 
 

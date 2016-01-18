@@ -4,8 +4,8 @@
 
 library services.src.correction.namespace;
 
+import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/src/generated/ast.dart';
-import 'package:analyzer/src/generated/element.dart';
 import 'package:analyzer/src/generated/resolver.dart';
 
 /**
@@ -57,8 +57,10 @@ ImportElement getImportElement(SimpleIdentifier prefixNode) {
  * [element] - the referenced element.
  * [importElementsMap] - the cache of [Element]s imported by [ImportElement]s.
  */
-ImportElement internal_getImportElement(LibraryElement libraryElement,
-    String prefix, Element element,
+ImportElement internal_getImportElement(
+    LibraryElement libraryElement,
+    String prefix,
+    Element element,
     Map<ImportElement, Set<Element>> importElementsMap) {
   // validate Element
   if (element == null) {

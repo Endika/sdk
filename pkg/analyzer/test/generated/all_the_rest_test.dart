@@ -2,17 +2,17 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library engine.all_the_rest_test;
+library analyzer.test.generated.all_the_rest_test;
 
+import 'package:analyzer/dart/element/element.dart';
+import 'package:analyzer/dart/element/type.dart';
 import 'package:analyzer/file_system/physical_file_system.dart';
+import 'package:analyzer/src/dart/element/element.dart';
 import 'package:analyzer/src/generated/ast.dart' hide ConstantEvaluator;
 import 'package:analyzer/src/generated/constant.dart';
-import 'package:analyzer/src/generated/element.dart';
 import 'package:analyzer/src/generated/engine.dart';
 import 'package:analyzer/src/generated/error.dart';
-import 'package:analyzer/src/generated/html.dart' as ht;
 import 'package:analyzer/src/generated/java_core.dart';
-import 'package:analyzer/src/generated/java_engine.dart';
 import 'package:analyzer/src/generated/java_engine_io.dart';
 import 'package:analyzer/src/generated/java_io.dart';
 import 'package:analyzer/src/generated/resolver.dart';
@@ -23,13 +23,13 @@ import 'package:analyzer/src/generated/source.dart';
 import 'package:analyzer/src/generated/source_io.dart';
 import 'package:analyzer/src/generated/testing/ast_factory.dart';
 import 'package:analyzer/src/generated/testing/element_factory.dart';
-import 'package:analyzer/src/generated/testing/html_factory.dart';
 import 'package:analyzer/src/generated/testing/test_type_provider.dart';
 import 'package:analyzer/src/generated/testing/token_factory.dart';
 import 'package:analyzer/src/generated/utilities_collection.dart';
 import 'package:analyzer/src/generated/utilities_dart.dart';
 import 'package:analyzer/src/task/dart.dart';
 import 'package:path/path.dart';
+import 'package:source_span/source_span.dart';
 import 'package:unittest/unittest.dart';
 
 import '../reflective_tests.dart';
@@ -61,388 +61,9 @@ main() {
   runReflectiveTests(ExitDetectorTest2);
   runReflectiveTests(FileBasedSourceTest);
   runReflectiveTests(FileUriResolverTest);
-  if (!AnalysisEngine.instance.useTaskModel) {
-    runReflectiveTests(HtmlParserTest);
-    runReflectiveTests(HtmlTagInfoBuilderTest);
-    runReflectiveTests(HtmlUnitBuilderTest);
-    runReflectiveTests(HtmlWarningCodeTest);
-  }
   runReflectiveTests(ReferenceFinderTest);
   runReflectiveTests(SDKLibrariesReaderTest);
-  runReflectiveTests(ToSourceVisitorTest);
   runReflectiveTests(UriKindTest);
-  runReflectiveTests(StringScannerTest);
-}
-
-abstract class AbstractScannerTest {
-  ht.AbstractScanner newScanner(String input);
-
-  void test_tokenize_attribute() {
-    _tokenize("<html bob=\"one two\">", <Object>[
-      ht.TokenType.LT,
-      "html",
-      "bob",
-      ht.TokenType.EQ,
-      "\"one two\"",
-      ht.TokenType.GT
-    ]);
-  }
-
-  void test_tokenize_comment() {
-    _tokenize("<!-- foo -->", <Object>["<!-- foo -->"]);
-  }
-
-  void test_tokenize_comment_incomplete() {
-    _tokenize("<!-- foo", <Object>["<!-- foo"]);
-  }
-
-  void test_tokenize_comment_with_gt() {
-    _tokenize("<!-- foo > -> -->", <Object>["<!-- foo > -> -->"]);
-  }
-
-  void test_tokenize_declaration() {
-    _tokenize("<! foo ><html>",
-        <Object>["<! foo >", ht.TokenType.LT, "html", ht.TokenType.GT]);
-  }
-
-  void test_tokenize_declaration_malformed() {
-    _tokenize("<! foo /><html>",
-        <Object>["<! foo />", ht.TokenType.LT, "html", ht.TokenType.GT]);
-  }
-
-  void test_tokenize_directive_incomplete() {
-    _tokenize2("<? \nfoo", <Object>["<? \nfoo"], <int>[0, 4]);
-  }
-
-  void test_tokenize_directive_xml() {
-    _tokenize("<?xml version=\"1.0\" encoding=\"UTF-8\" ?>",
-        <Object>["<?xml version=\"1.0\" encoding=\"UTF-8\" ?>"]);
-  }
-
-  void test_tokenize_directives_incomplete_with_newline() {
-    _tokenize2("<! \nfoo", <Object>["<! \nfoo"], <int>[0, 4]);
-  }
-
-  void test_tokenize_empty() {
-    _tokenize("", <Object>[]);
-  }
-
-  void test_tokenize_lt() {
-    _tokenize("<", <Object>[ht.TokenType.LT]);
-  }
-
-  void test_tokenize_script_embedded_tags() {
-    _tokenize("<script> <p></p></script>", <Object>[
-      ht.TokenType.LT,
-      "script",
-      ht.TokenType.GT,
-      " <p></p>",
-      ht.TokenType.LT_SLASH,
-      "script",
-      ht.TokenType.GT
-    ]);
-  }
-
-  void test_tokenize_script_embedded_tags2() {
-    _tokenize("<script> <p></p><</script>", <Object>[
-      ht.TokenType.LT,
-      "script",
-      ht.TokenType.GT,
-      " <p></p><",
-      ht.TokenType.LT_SLASH,
-      "script",
-      ht.TokenType.GT
-    ]);
-  }
-
-  void test_tokenize_script_embedded_tags3() {
-    _tokenize("<script> <p></p></</script>", <Object>[
-      ht.TokenType.LT,
-      "script",
-      ht.TokenType.GT,
-      " <p></p></",
-      ht.TokenType.LT_SLASH,
-      "script",
-      ht.TokenType.GT
-    ]);
-  }
-
-  void test_tokenize_script_partial() {
-    _tokenize("<script> <p> ",
-        <Object>[ht.TokenType.LT, "script", ht.TokenType.GT, " <p> "]);
-  }
-
-  void test_tokenize_script_partial2() {
-    _tokenize("<script> <p> <",
-        <Object>[ht.TokenType.LT, "script", ht.TokenType.GT, " <p> <"]);
-  }
-
-  void test_tokenize_script_partial3() {
-    _tokenize("<script> <p> </",
-        <Object>[ht.TokenType.LT, "script", ht.TokenType.GT, " <p> </"]);
-  }
-
-  void test_tokenize_script_ref() {
-    _tokenize("<script source='some.dart'/> <p>", <Object>[
-      ht.TokenType.LT,
-      "script",
-      "source",
-      ht.TokenType.EQ,
-      "'some.dart'",
-      ht.TokenType.SLASH_GT,
-      " ",
-      ht.TokenType.LT,
-      "p",
-      ht.TokenType.GT
-    ]);
-  }
-
-  void test_tokenize_script_with_newline() {
-    _tokenize2("<script> <p>\n </script>", <Object>[
-      ht.TokenType.LT,
-      "script",
-      ht.TokenType.GT,
-      " <p>\n ",
-      ht.TokenType.LT_SLASH,
-      "script",
-      ht.TokenType.GT
-    ], <int>[
-      0,
-      13
-    ]);
-  }
-
-  void test_tokenize_spaces_and_newlines() {
-    ht.Token token = _tokenize2(
-        " < html \n bob = 'joe\n' >\n <\np > one \r\n two <!-- \rfoo --> </ p > </ html > ",
-        <Object>[
-      " ",
-      ht.TokenType.LT,
-      "html",
-      "bob",
-      ht.TokenType.EQ,
-      "'joe\n'",
-      ht.TokenType.GT,
-      "\n ",
-      ht.TokenType.LT,
-      "p",
-      ht.TokenType.GT,
-      " one \r\n two ",
-      "<!-- \rfoo -->",
-      " ",
-      ht.TokenType.LT_SLASH,
-      "p",
-      ht.TokenType.GT,
-      " ",
-      ht.TokenType.LT_SLASH,
-      "html",
-      ht.TokenType.GT,
-      " "
-    ],
-        <int>[
-      0,
-      9,
-      21,
-      25,
-      28,
-      38,
-      49
-    ]);
-    token = token.next;
-    expect(token.offset, 1);
-    token = token.next;
-    expect(token.offset, 3);
-    token = token.next;
-    expect(token.offset, 10);
-  }
-
-  void test_tokenize_string() {
-    _tokenize("<p bob=\"foo\">", <Object>[
-      ht.TokenType.LT,
-      "p",
-      "bob",
-      ht.TokenType.EQ,
-      "\"foo\"",
-      ht.TokenType.GT
-    ]);
-  }
-
-  void test_tokenize_string_partial() {
-    _tokenize("<p bob=\"foo",
-        <Object>[ht.TokenType.LT, "p", "bob", ht.TokenType.EQ, "\"foo"]);
-  }
-
-  void test_tokenize_string_single_quote() {
-    _tokenize("<p bob='foo'>", <Object>[
-      ht.TokenType.LT,
-      "p",
-      "bob",
-      ht.TokenType.EQ,
-      "'foo'",
-      ht.TokenType.GT
-    ]);
-  }
-
-  void test_tokenize_string_single_quote_partial() {
-    _tokenize("<p bob='foo",
-        <Object>[ht.TokenType.LT, "p", "bob", ht.TokenType.EQ, "'foo"]);
-  }
-
-  void test_tokenize_tag_begin_end() {
-    _tokenize("<html></html>", <Object>[
-      ht.TokenType.LT,
-      "html",
-      ht.TokenType.GT,
-      ht.TokenType.LT_SLASH,
-      "html",
-      ht.TokenType.GT
-    ]);
-  }
-
-  void test_tokenize_tag_begin_only() {
-    ht.Token token =
-        _tokenize("<html>", <Object>[ht.TokenType.LT, "html", ht.TokenType.GT]);
-    token = token.next;
-    expect(token.offset, 1);
-  }
-
-  void test_tokenize_tag_incomplete_with_special_characters() {
-    _tokenize("<br-a_b", <Object>[ht.TokenType.LT, "br-a_b"]);
-  }
-
-  void test_tokenize_tag_self_contained() {
-    _tokenize("<br/>", <Object>[ht.TokenType.LT, "br", ht.TokenType.SLASH_GT]);
-  }
-
-  void test_tokenize_tags_wellformed() {
-    _tokenize("<html><p>one two</p></html>", <Object>[
-      ht.TokenType.LT,
-      "html",
-      ht.TokenType.GT,
-      ht.TokenType.LT,
-      "p",
-      ht.TokenType.GT,
-      "one two",
-      ht.TokenType.LT_SLASH,
-      "p",
-      ht.TokenType.GT,
-      ht.TokenType.LT_SLASH,
-      "html",
-      ht.TokenType.GT
-    ]);
-  }
-
-  /**
-   * Given an object representing an expected token, answer the expected token type.
-   *
-   * @param count the token count for error reporting
-   * @param expected the object representing an expected token
-   * @return the expected token type
-   */
-  ht.TokenType _getExpectedTokenType(int count, Object expected) {
-    if (expected is ht.TokenType) {
-      return expected;
-    }
-    if (expected is String) {
-      String lexeme = expected;
-      if (lexeme.startsWith("\"") || lexeme.startsWith("'")) {
-        return ht.TokenType.STRING;
-      }
-      if (lexeme.startsWith("<!--")) {
-        return ht.TokenType.COMMENT;
-      }
-      if (lexeme.startsWith("<!")) {
-        return ht.TokenType.DECLARATION;
-      }
-      if (lexeme.startsWith("<?")) {
-        return ht.TokenType.DIRECTIVE;
-      }
-      if (_isTag(lexeme)) {
-        return ht.TokenType.TAG;
-      }
-      return ht.TokenType.TEXT;
-    }
-    fail(
-        "Unknown expected token $count: ${expected != null ? expected.runtimeType : "null"}");
-    return null;
-  }
-
-  bool _isTag(String lexeme) {
-    if (lexeme.length == 0 || !Character.isLetter(lexeme.codeUnitAt(0))) {
-      return false;
-    }
-    for (int index = 1; index < lexeme.length; index++) {
-      int ch = lexeme.codeUnitAt(index);
-      if (!Character.isLetterOrDigit(ch) && ch != 0x2D && ch != 0x5F) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  ht.Token _tokenize(String input, List<Object> expectedTokens) =>
-      _tokenize2(input, expectedTokens, <int>[0]);
-  ht.Token _tokenize2(
-      String input, List<Object> expectedTokens, List<int> expectedLineStarts) {
-    ht.AbstractScanner scanner = newScanner(input);
-    scanner.passThroughElements = <String>["script"];
-    int count = 0;
-    ht.Token firstToken = scanner.tokenize();
-    ht.Token token = firstToken;
-    ht.Token previousToken = token.previous;
-    expect(previousToken.type == ht.TokenType.EOF, isTrue);
-    expect(previousToken.previous, same(previousToken));
-    expect(previousToken.offset, -1);
-    expect(previousToken.next, same(token));
-    expect(token.offset, 0);
-    while (token.type != ht.TokenType.EOF) {
-      if (count == expectedTokens.length) {
-        fail("too many parsed tokens");
-      }
-      Object expected = expectedTokens[count];
-      ht.TokenType expectedTokenType = _getExpectedTokenType(count, expected);
-      expect(token.type, same(expectedTokenType), reason: "token $count");
-      if (expectedTokenType.lexeme != null) {
-        expect(token.lexeme, expectedTokenType.lexeme, reason: "token $count");
-      } else {
-        expect(token.lexeme, expected, reason: "token $count");
-      }
-      count++;
-      previousToken = token;
-      token = token.next;
-      expect(token.previous, same(previousToken));
-    }
-    expect(token.next, same(token));
-    expect(token.offset, input.length);
-    if (count != expectedTokens.length) {
-      expect(false, isTrue, reason: "not enough parsed tokens");
-    }
-    List<int> lineStarts = scanner.lineStarts;
-    bool success = expectedLineStarts.length == lineStarts.length;
-    if (success) {
-      for (int i = 0; i < lineStarts.length; i++) {
-        if (expectedLineStarts[i] != lineStarts[i]) {
-          success = false;
-          break;
-        }
-      }
-    }
-    if (!success) {
-      StringBuffer buffer = new StringBuffer();
-      buffer.write("Expected line starts ");
-      for (int start in expectedLineStarts) {
-        buffer.write(start);
-        buffer.write(", ");
-      }
-      buffer.write(" but found ");
-      for (int start in lineStarts) {
-        buffer.write(start);
-        buffer.write(", ");
-      }
-      fail(buffer.toString());
-    }
-    return firstToken;
-  }
 }
 
 /**
@@ -609,7 +230,7 @@ class ConstantEvaluatorTest extends ResolverTestCase {
     expect(result.isValid, isTrue);
     DartObject value = result.value;
     expect(value.type.name, "double");
-    expect(value.doubleValue.isInfinite, isTrue);
+    expect(value.toDoubleValue().isInfinite, isTrue);
   }
 
   void test_divide_int_int() {
@@ -825,7 +446,7 @@ class ConstantEvaluatorTest extends ResolverTestCase {
     EvaluationResult result = _getExpressionValue(contents);
     DartObject value = result.value;
     expect(value.type.name, "bool");
-    expect(value.boolValue, expectedValue);
+    expect(value.toBoolValue(), expectedValue);
   }
 
   void _assertValue2(double expectedValue, String contents) {
@@ -833,7 +454,7 @@ class ConstantEvaluatorTest extends ResolverTestCase {
     expect(result.isValid, isTrue);
     DartObject value = result.value;
     expect(value.type.name, "double");
-    expect(value.doubleValue, expectedValue);
+    expect(value.toDoubleValue(), expectedValue);
   }
 
   void _assertValue3(int expectedValue, String contents) {
@@ -841,7 +462,7 @@ class ConstantEvaluatorTest extends ResolverTestCase {
     expect(result.isValid, isTrue);
     DartObject value = result.value;
     expect(value.type.name, "int");
-    expect(value.intValue, expectedValue);
+    expect(value.toIntValue(), expectedValue);
   }
 
   void _assertValue4(String expectedValue, String contents) {
@@ -851,7 +472,7 @@ class ConstantEvaluatorTest extends ResolverTestCase {
     ParameterizedType type = value.type;
     expect(type, isNotNull);
     expect(type.name, "String");
-    expect(value.stringValue, expectedValue);
+    expect(value.toStringValue(), expectedValue);
   }
 
   EvaluationResult _getExpressionValue(String contents) {
@@ -868,23 +489,23 @@ class ConstantEvaluatorTest extends ResolverTestCase {
     NodeList<VariableDeclaration> variables =
         (declaration as TopLevelVariableDeclaration).variables.variables;
     expect(variables, hasLength(1));
-    ConstantEvaluator evaluator =
-        new ConstantEvaluator(source, analysisContext.typeProvider);
+    ConstantEvaluator evaluator = new ConstantEvaluator(
+        source, analysisContext.typeProvider,
+        typeSystem: analysisContext.typeSystem);
     return evaluator.evaluate(variables[0].initializer);
   }
 }
 
 @reflectiveTest
-class ConstantFinderTest extends EngineTestCase {
+class ConstantFinderTest {
   AstNode _node;
   TypeProvider _typeProvider;
   AnalysisContext _context;
   Source _source;
 
   void setUp() {
-    super.setUp();
     _typeProvider = new TestTypeProvider();
-    _context = new TestAnalysisContext();
+    _context = new TestAnalysisContext_ConstantFinderTest();
     _source = new TestSource();
   }
 
@@ -954,19 +575,22 @@ class ConstantFinderTest extends EngineTestCase {
     expect(_findConstants(), contains(field.element));
   }
 
-  void test_visitVariableDeclaration_static_const_inClassWithConstConstructor() {
+  void
+      test_visitVariableDeclaration_static_const_inClassWithConstConstructor() {
     VariableDeclaration field = _setupFieldDeclaration('C', 'f', Keyword.CONST,
         isStatic: true, hasConstConstructor: true);
     expect(_findConstants(), contains(field.element));
   }
 
-  void test_visitVariableDeclaration_static_final_inClassWithConstConstructor() {
+  void
+      test_visitVariableDeclaration_static_final_inClassWithConstConstructor() {
     VariableDeclaration field = _setupFieldDeclaration('C', 'f', Keyword.FINAL,
         isStatic: true, hasConstConstructor: true);
     expect(_findConstants(), isNot(contains(field.element)));
   }
 
-  void test_visitVariableDeclaration_uninitialized_final_inClassWithConstConstructor() {
+  void
+      test_visitVariableDeclaration_uninitialized_final_inClassWithConstConstructor() {
     VariableDeclaration field = _setupFieldDeclaration('C', 'f', Keyword.FINAL,
         isInitialized: false, hasConstConstructor: true);
     expect(_findConstants(), isNot(contains(field.element)));
@@ -1000,8 +624,8 @@ class ConstantFinderTest extends EngineTestCase {
 
   ConstructorElement _setupConstructorDeclaration(String name, bool isConst) {
     Keyword constKeyword = isConst ? Keyword.CONST : null;
-    ConstructorDeclaration constructorDeclaration = AstFactory
-        .constructorDeclaration2(
+    ConstructorDeclaration constructorDeclaration =
+        AstFactory.constructorDeclaration2(
             constKeyword,
             null,
             null,
@@ -1042,8 +666,8 @@ class ConstantFinderTest extends EngineTestCase {
     classElement.fields = <FieldElement>[fieldElement];
     classDeclaration.name.staticElement = classElement;
     if (hasConstConstructor) {
-      ConstructorDeclaration constructorDeclaration = AstFactory
-          .constructorDeclaration2(
+      ConstructorDeclaration constructorDeclaration =
+          AstFactory.constructorDeclaration2(
               Keyword.CONST,
               null,
               AstFactory.identifier3(className),
@@ -1256,23 +880,27 @@ class C {
   void test_computeValues_cycle() {
     TestLogger logger = new TestLogger();
     AnalysisEngine.instance.logger = logger;
-    Source librarySource = addSource(r'''
-const int a = c;
-const int b = a;
-const int c = b;''');
-    LibraryElement libraryElement = resolve2(librarySource);
-    CompilationUnit unit =
-        analysisContext.resolveCompilationUnit(librarySource, libraryElement);
-    analysisContext.computeErrors(librarySource);
-    expect(unit, isNotNull);
-    ConstantValueComputer computer = _makeConstantValueComputer();
-    computer.add(unit, librarySource, librarySource);
-    computer.computeValues();
-    NodeList<CompilationUnitMember> members = unit.declarations;
-    expect(members, hasLength(3));
-    _validate(false, (members[0] as TopLevelVariableDeclaration).variables);
-    _validate(false, (members[1] as TopLevelVariableDeclaration).variables);
-    _validate(false, (members[2] as TopLevelVariableDeclaration).variables);
+    try {
+      Source librarySource = addSource(r'''
+  const int a = c;
+  const int b = a;
+  const int c = b;''');
+      LibraryElement libraryElement = resolve2(librarySource);
+      CompilationUnit unit =
+          analysisContext.resolveCompilationUnit(librarySource, libraryElement);
+      analysisContext.computeErrors(librarySource);
+      expect(unit, isNotNull);
+      ConstantValueComputer computer = _makeConstantValueComputer();
+      computer.add(unit, librarySource, librarySource);
+      computer.computeValues();
+      NodeList<CompilationUnitMember> members = unit.declarations;
+      expect(members, hasLength(3));
+      _validate(false, (members[0] as TopLevelVariableDeclaration).variables);
+      _validate(false, (members[1] as TopLevelVariableDeclaration).variables);
+      _validate(false, (members[2] as TopLevelVariableDeclaration).variables);
+    } finally {
+      AnalysisEngine.instance.logger = Logger.NULL;
+    }
   }
 
   void test_computeValues_dependentVariables() {
@@ -1708,19 +1336,23 @@ class A {
     _assertIntField(fields, "k", 13);
   }
 
-  void test_instanceCreationExpression_computedField_namedOptionalWithDefault() {
+  void
+      test_instanceCreationExpression_computedField_namedOptionalWithDefault() {
     _checkInstanceCreationOptionalParams(false, true, true);
   }
 
-  void test_instanceCreationExpression_computedField_namedOptionalWithoutDefault() {
+  void
+      test_instanceCreationExpression_computedField_namedOptionalWithoutDefault() {
     _checkInstanceCreationOptionalParams(false, true, false);
   }
 
-  void test_instanceCreationExpression_computedField_unnamedOptionalWithDefault() {
+  void
+      test_instanceCreationExpression_computedField_unnamedOptionalWithDefault() {
     _checkInstanceCreationOptionalParams(false, false, true);
   }
 
-  void test_instanceCreationExpression_computedField_unnamedOptionalWithoutDefault() {
+  void
+      test_instanceCreationExpression_computedField_unnamedOptionalWithoutDefault() {
     _checkInstanceCreationOptionalParams(false, false, false);
   }
 
@@ -1813,19 +1445,23 @@ class A {
     _assertIntField(fields, "x", 42);
   }
 
-  void test_instanceCreationExpression_fieldFormalParameter_namedOptionalWithDefault() {
+  void
+      test_instanceCreationExpression_fieldFormalParameter_namedOptionalWithDefault() {
     _checkInstanceCreationOptionalParams(true, true, true);
   }
 
-  void test_instanceCreationExpression_fieldFormalParameter_namedOptionalWithoutDefault() {
+  void
+      test_instanceCreationExpression_fieldFormalParameter_namedOptionalWithoutDefault() {
     _checkInstanceCreationOptionalParams(true, true, false);
   }
 
-  void test_instanceCreationExpression_fieldFormalParameter_unnamedOptionalWithDefault() {
+  void
+      test_instanceCreationExpression_fieldFormalParameter_unnamedOptionalWithDefault() {
     _checkInstanceCreationOptionalParams(true, false, true);
   }
 
-  void test_instanceCreationExpression_fieldFormalParameter_unnamedOptionalWithoutDefault() {
+  void
+      test_instanceCreationExpression_fieldFormalParameter_unnamedOptionalWithoutDefault() {
     _checkInstanceCreationOptionalParams(true, false, false);
   }
 
@@ -2037,7 +1673,7 @@ const A<int> a = const A<int>(10);''');
     expect(evaluationResult.value, isNotNull);
     DartObjectImpl value = evaluationResult.value;
     expect(value.type, typeProvider.symbolType);
-    expect(value.value, "a");
+    expect(value.toSymbolValue(), "a");
   }
 
   void test_instanceCreationExpression_withSupertypeParams_explicit() {
@@ -2148,7 +1784,7 @@ const A a = const A();
         (voidSymbol.element as VariableElementImpl).evaluationResult;
     DartObjectImpl value = voidSymbolResult.value;
     expect(value.type, typeProvider.symbolType);
-    expect(value.value, "void");
+    expect(value.toSymbolValue(), "void");
   }
 
   Map<String, DartObjectImpl> _assertFieldType(
@@ -2164,7 +1800,7 @@ const A a = const A();
       Map<String, DartObjectImpl> fields, String fieldName, int expectedValue) {
     DartObjectImpl field = fields[fieldName];
     expect(field.type.name, "int");
-    expect(field.intValue, expectedValue);
+    expect(field.toIntValue(), expectedValue);
   }
 
   void _assertNullField(Map<String, DartObjectImpl> fields, String fieldName) {
@@ -2197,7 +1833,7 @@ const A a = const A();
     expect(result.value, isNotNull);
     DartObjectImpl value = result.value;
     expect(value.type, typeProvider.boolType);
-    bool boolValue = value.boolValue;
+    bool boolValue = value.toBoolValue();
     expect(boolValue, isNotNull);
     return boolValue;
   }
@@ -2206,7 +1842,7 @@ const A a = const A();
     expect(result.value, isNotNull);
     DartObjectImpl value = result.value;
     expect(value.type, typeProvider.intType);
-    return value.intValue;
+    return value.toIntValue();
   }
 
   void _assertValidNull(EvaluationResultImpl result) {
@@ -2219,7 +1855,7 @@ const A a = const A();
     expect(result.value, isNotNull);
     DartObjectImpl value = result.value;
     expect(value.type, typeProvider.stringType);
-    return value.stringValue;
+    return value.toStringValue();
   }
 
   void _assertValidUnknown(EvaluationResultImpl result) {
@@ -2362,7 +1998,8 @@ class A {
         analysisContext2,
         analysisContext2.typeProvider,
         analysisContext2.declaredVariables,
-        validator);
+        validator,
+        analysisContext2.typeSystem);
     return validator.computer;
   }
 
@@ -2382,6 +2019,53 @@ class A {
 
 @reflectiveTest
 class ConstantVisitorTest extends ResolverTestCase {
+  void test_visitBinaryExpression_questionQuestion_notNull_notNull() {
+    Expression left = AstFactory.string2('a');
+    Expression right = AstFactory.string2('b');
+    Expression expression =
+        AstFactory.binaryExpression(left, TokenType.QUESTION_QUESTION, right);
+
+    GatheringErrorListener errorListener = new GatheringErrorListener();
+    ErrorReporter errorReporter =
+        new ErrorReporter(errorListener, _dummySource());
+    DartObjectImpl result = _evaluate(expression, errorReporter);
+    expect(result, isNotNull);
+    expect(result.isNull, isFalse);
+    expect(result.toStringValue(), 'a');
+    errorListener.assertNoErrors();
+  }
+
+  void test_visitBinaryExpression_questionQuestion_null_notNull() {
+    Expression left = AstFactory.nullLiteral();
+    Expression right = AstFactory.string2('b');
+    Expression expression =
+        AstFactory.binaryExpression(left, TokenType.QUESTION_QUESTION, right);
+
+    GatheringErrorListener errorListener = new GatheringErrorListener();
+    ErrorReporter errorReporter =
+        new ErrorReporter(errorListener, _dummySource());
+    DartObjectImpl result = _evaluate(expression, errorReporter);
+    expect(result, isNotNull);
+    expect(result.isNull, isFalse);
+    expect(result.toStringValue(), 'b');
+    errorListener.assertNoErrors();
+  }
+
+  void test_visitBinaryExpression_questionQuestion_null_null() {
+    Expression left = AstFactory.nullLiteral();
+    Expression right = AstFactory.nullLiteral();
+    Expression expression =
+        AstFactory.binaryExpression(left, TokenType.QUESTION_QUESTION, right);
+
+    GatheringErrorListener errorListener = new GatheringErrorListener();
+    ErrorReporter errorReporter =
+        new ErrorReporter(errorListener, _dummySource());
+    DartObjectImpl result = _evaluate(expression, errorReporter);
+    expect(result, isNotNull);
+    expect(result.isNull, isTrue);
+    errorListener.assertNoErrors();
+  }
+
   void test_visitConditionalExpression_false() {
     Expression thenExpression = AstFactory.integer(1);
     Expression elseExpression = AstFactory.integer(0);
@@ -2390,12 +2074,7 @@ class ConstantVisitorTest extends ResolverTestCase {
     GatheringErrorListener errorListener = new GatheringErrorListener();
     ErrorReporter errorReporter =
         new ErrorReporter(errorListener, _dummySource());
-    _assertValue(
-        0,
-        expression.accept(new ConstantVisitor(
-            new ConstantEvaluationEngine(
-                new TestTypeProvider(), new DeclaredVariables()),
-            errorReporter)));
+    _assertValue(0, _evaluate(expression, errorReporter));
     errorListener.assertNoErrors();
   }
 
@@ -2408,10 +2087,7 @@ class ConstantVisitorTest extends ResolverTestCase {
     GatheringErrorListener errorListener = new GatheringErrorListener();
     ErrorReporter errorReporter =
         new ErrorReporter(errorListener, _dummySource());
-    DartObjectImpl result = expression.accept(new ConstantVisitor(
-        new ConstantEvaluationEngine(
-            new TestTypeProvider(), new DeclaredVariables()),
-        errorReporter));
+    DartObjectImpl result = _evaluate(expression, errorReporter);
     expect(result, isNull);
     errorListener
         .assertErrorsWithCodes([CompileTimeErrorCode.CONST_EVAL_TYPE_BOOL]);
@@ -2425,10 +2101,7 @@ class ConstantVisitorTest extends ResolverTestCase {
     GatheringErrorListener errorListener = new GatheringErrorListener();
     ErrorReporter errorReporter =
         new ErrorReporter(errorListener, _dummySource());
-    DartObjectImpl result = expression.accept(new ConstantVisitor(
-        new ConstantEvaluationEngine(
-            new TestTypeProvider(), new DeclaredVariables()),
-        errorReporter));
+    DartObjectImpl result = _evaluate(expression, errorReporter);
     expect(result, isNull);
     errorListener
         .assertErrorsWithCodes([CompileTimeErrorCode.INVALID_CONSTANT]);
@@ -2442,10 +2115,7 @@ class ConstantVisitorTest extends ResolverTestCase {
     GatheringErrorListener errorListener = new GatheringErrorListener();
     ErrorReporter errorReporter =
         new ErrorReporter(errorListener, _dummySource());
-    DartObjectImpl result = expression.accept(new ConstantVisitor(
-        new ConstantEvaluationEngine(
-            new TestTypeProvider(), new DeclaredVariables()),
-        errorReporter));
+    DartObjectImpl result = _evaluate(expression, errorReporter);
     expect(result, isNull);
     errorListener
         .assertErrorsWithCodes([CompileTimeErrorCode.INVALID_CONSTANT]);
@@ -2459,12 +2129,7 @@ class ConstantVisitorTest extends ResolverTestCase {
     GatheringErrorListener errorListener = new GatheringErrorListener();
     ErrorReporter errorReporter =
         new ErrorReporter(errorListener, _dummySource());
-    _assertValue(
-        1,
-        expression.accept(new ConstantVisitor(
-            new ConstantEvaluationEngine(
-                new TestTypeProvider(), new DeclaredVariables()),
-            errorReporter)));
+    _assertValue(1, _evaluate(expression, errorReporter));
     errorListener.assertNoErrors();
   }
 
@@ -2475,8 +2140,7 @@ class C {}
 ''');
     DartObjectImpl result = _evaluateConstant(compilationUnit, 'a', null);
     expect(result.type, typeProvider.typeType);
-    ClassElement element = result.value;
-    expect(element.name, 'C');
+    expect(result.toTypeValue().name, 'C');
   }
 
   void test_visitSimpleIdentifier_dynamic() {
@@ -2485,7 +2149,7 @@ const a = dynamic;
 ''');
     DartObjectImpl result = _evaluateConstant(compilationUnit, 'a', null);
     expect(result.type, typeProvider.typeType);
-    expect(result.value, typeProvider.dynamicType.element);
+    expect(result.toTypeValue(), typeProvider.dynamicType);
   }
 
   void test_visitSimpleIdentifier_inEnvironment() {
@@ -2520,12 +2184,20 @@ const b = 3;''');
   void _assertValue(int expectedValue, DartObjectImpl result) {
     expect(result, isNotNull);
     expect(result.type.name, "int");
-    expect(result.intValue, expectedValue);
+    expect(result.toIntValue(), expectedValue);
   }
 
   NonExistingSource _dummySource() {
     String path = '/test.dart';
     return new NonExistingSource(path, toUri(path), UriKind.FILE_URI);
+  }
+
+  DartObjectImpl _evaluate(Expression expression, ErrorReporter errorReporter) {
+    return expression.accept(new ConstantVisitor(
+        new ConstantEvaluationEngine(
+            new TestTypeProvider(), new DeclaredVariables(),
+            typeSystem: new TypeSystemImpl()),
+        errorReporter));
   }
 
   DartObjectImpl _evaluateConstant(CompilationUnit compilationUnit, String name,
@@ -2536,7 +2208,8 @@ const b = 3;''');
     GatheringErrorListener errorListener = new GatheringErrorListener();
     ErrorReporter errorReporter = new ErrorReporter(errorListener, source);
     DartObjectImpl result = expression.accept(new ConstantVisitor(
-        new ConstantEvaluationEngine(typeProvider, new DeclaredVariables()),
+        new ConstantEvaluationEngine(typeProvider, new DeclaredVariables(),
+            typeSystem: typeSystem),
         errorReporter,
         lexicalEnvironment: lexicalEnvironment));
     errorListener.assertNoErrors();
@@ -2923,51 +2596,51 @@ class DartObjectImplTest extends EngineTestCase {
   }
 
   void test_getValue_bool_false() {
-    expect(_boolValue(false).value, false);
+    expect(_boolValue(false).toBoolValue(), false);
   }
 
   void test_getValue_bool_true() {
-    expect(_boolValue(true).value, true);
+    expect(_boolValue(true).toBoolValue(), true);
   }
 
   void test_getValue_bool_unknown() {
-    expect(_boolValue(null).value, isNull);
+    expect(_boolValue(null).toBoolValue(), isNull);
   }
 
   void test_getValue_double_known() {
     double value = 2.3;
-    expect(_doubleValue(value).value, value);
+    expect(_doubleValue(value).toDoubleValue(), value);
   }
 
   void test_getValue_double_unknown() {
-    expect(_doubleValue(null).value, isNull);
+    expect(_doubleValue(null).toDoubleValue(), isNull);
   }
 
   void test_getValue_int_known() {
     int value = 23;
-    expect(_intValue(value).value, value);
+    expect(_intValue(value).toIntValue(), value);
   }
 
   void test_getValue_int_unknown() {
-    expect(_intValue(null).value, isNull);
+    expect(_intValue(null).toIntValue(), isNull);
   }
 
   void test_getValue_list_empty() {
-    Object result = _listValue().value;
+    Object result = _listValue().toListValue();
     _assertInstanceOfObjectArray(result);
     List<Object> array = result as List<Object>;
     expect(array, hasLength(0));
   }
 
   void test_getValue_list_valid() {
-    Object result = _listValue([_intValue(23)]).value;
+    Object result = _listValue([_intValue(23)]).toListValue();
     _assertInstanceOfObjectArray(result);
     List<Object> array = result as List<Object>;
     expect(array, hasLength(1));
   }
 
   void test_getValue_map_empty() {
-    Object result = _mapValue().value;
+    Object result = _mapValue().toMapValue();
     EngineTestCase.assertInstanceOf((obj) => obj is Map, Map, result);
     Map map = result as Map;
     expect(map, hasLength(0));
@@ -2975,23 +2648,23 @@ class DartObjectImplTest extends EngineTestCase {
 
   void test_getValue_map_valid() {
     Object result =
-        _mapValue([_stringValue("key"), _stringValue("value")]).value;
+        _mapValue([_stringValue("key"), _stringValue("value")]).toMapValue();
     EngineTestCase.assertInstanceOf((obj) => obj is Map, Map, result);
     Map map = result as Map;
     expect(map, hasLength(1));
   }
 
   void test_getValue_null() {
-    expect(_nullValue().value, isNull);
+    expect(_nullValue().isNull, isTrue);
   }
 
   void test_getValue_string_known() {
     String value = "twenty-three";
-    expect(_stringValue(value).value, value);
+    expect(_stringValue(value).toStringValue(), value);
   }
 
   void test_getValue_string_unknown() {
-    expect(_stringValue(null).value, isNull);
+    expect(_stringValue(null).toStringValue(), isNull);
   }
 
   void test_greaterThan_knownDouble_knownDouble_false() {
@@ -3132,84 +2805,84 @@ class DartObjectImplTest extends EngineTestCase {
     _assertGreaterThanOrEqual(_boolValue(null), _intValue(null), _intValue(2));
   }
 
-  void test_hasExactValue_bool_false() {
-    expect(_boolValue(false).hasExactValue, isTrue);
+  void test_hasKnownValue_bool_false() {
+    expect(_boolValue(false).hasKnownValue, isTrue);
   }
 
-  void test_hasExactValue_bool_true() {
-    expect(_boolValue(true).hasExactValue, isTrue);
+  void test_hasKnownValue_bool_true() {
+    expect(_boolValue(true).hasKnownValue, isTrue);
   }
 
-  void test_hasExactValue_bool_unknown() {
-    expect(_boolValue(null).hasExactValue, isTrue);
+  void test_hasKnownValue_bool_unknown() {
+    expect(_boolValue(null).hasKnownValue, isFalse);
   }
 
-  void test_hasExactValue_double_known() {
-    expect(_doubleValue(2.3).hasExactValue, isTrue);
+  void test_hasKnownValue_double_known() {
+    expect(_doubleValue(2.3).hasKnownValue, isTrue);
   }
 
-  void test_hasExactValue_double_unknown() {
-    expect(_doubleValue(null).hasExactValue, isTrue);
+  void test_hasKnownValue_double_unknown() {
+    expect(_doubleValue(null).hasKnownValue, isFalse);
   }
 
-  void test_hasExactValue_dynamic() {
-    expect(_dynamicValue().hasExactValue, isFalse);
+  void test_hasKnownValue_dynamic() {
+    expect(_dynamicValue().hasKnownValue, isTrue);
   }
 
-  void test_hasExactValue_int_known() {
-    expect(_intValue(23).hasExactValue, isTrue);
+  void test_hasKnownValue_int_known() {
+    expect(_intValue(23).hasKnownValue, isTrue);
   }
 
-  void test_hasExactValue_int_unknown() {
-    expect(_intValue(null).hasExactValue, isTrue);
+  void test_hasKnownValue_int_unknown() {
+    expect(_intValue(null).hasKnownValue, isFalse);
   }
 
-  void test_hasExactValue_list_empty() {
-    expect(_listValue().hasExactValue, isTrue);
+  void test_hasKnownValue_list_empty() {
+    expect(_listValue().hasKnownValue, isTrue);
   }
 
-  void test_hasExactValue_list_invalid() {
-    expect(_dynamicValue().hasExactValue, isFalse);
+  void test_hasKnownValue_list_invalidElement() {
+    expect(_listValue([_dynamicValue]).hasKnownValue, isTrue);
   }
 
-  void test_hasExactValue_list_valid() {
-    expect(_listValue([_intValue(23)]).hasExactValue, isTrue);
+  void test_hasKnownValue_list_valid() {
+    expect(_listValue([_intValue(23)]).hasKnownValue, isTrue);
   }
 
-  void test_hasExactValue_map_empty() {
-    expect(_mapValue().hasExactValue, isTrue);
+  void test_hasKnownValue_map_empty() {
+    expect(_mapValue().hasKnownValue, isTrue);
   }
 
-  void test_hasExactValue_map_invalidKey() {
-    expect(_mapValue([_dynamicValue(), _stringValue("value")]).hasExactValue,
-        isFalse);
-  }
-
-  void test_hasExactValue_map_invalidValue() {
-    expect(_mapValue([_stringValue("key"), _dynamicValue()]).hasExactValue,
-        isFalse);
-  }
-
-  void test_hasExactValue_map_valid() {
-    expect(
-        _mapValue([_stringValue("key"), _stringValue("value")]).hasExactValue,
+  void test_hasKnownValue_map_invalidKey() {
+    expect(_mapValue([_dynamicValue(), _stringValue("value")]).hasKnownValue,
         isTrue);
   }
 
-  void test_hasExactValue_null() {
-    expect(_nullValue().hasExactValue, isTrue);
+  void test_hasKnownValue_map_invalidValue() {
+    expect(_mapValue([_stringValue("key"), _dynamicValue()]).hasKnownValue,
+        isTrue);
   }
 
-  void test_hasExactValue_num() {
-    expect(_numValue().hasExactValue, isFalse);
+  void test_hasKnownValue_map_valid() {
+    expect(
+        _mapValue([_stringValue("key"), _stringValue("value")]).hasKnownValue,
+        isTrue);
   }
 
-  void test_hasExactValue_string_known() {
-    expect(_stringValue("twenty-three").hasExactValue, isTrue);
+  void test_hasKnownValue_null() {
+    expect(_nullValue().hasKnownValue, isTrue);
   }
 
-  void test_hasExactValue_string_unknown() {
-    expect(_stringValue(null).hasExactValue, isTrue);
+  void test_hasKnownValue_num() {
+    expect(_numValue().hasKnownValue, isFalse);
+  }
+
+  void test_hasKnownValue_string_known() {
+    expect(_stringValue("twenty-three").hasKnownValue, isTrue);
+  }
+
+  void test_hasKnownValue_string_unknown() {
+    expect(_stringValue(null).hasKnownValue, isFalse);
   }
 
   void test_identical_bool_false() {
@@ -4766,7 +4439,7 @@ class DeclaredVariablesTest extends EngineTestCase {
     variables.define(variableName, "false");
     DartObject object = variables.getBool(typeProvider, variableName);
     expect(object, isNotNull);
-    expect(object.boolValue, false);
+    expect(object.toBoolValue(), false);
   }
 
   void test_getBool_invalid() {
@@ -4785,7 +4458,7 @@ class DeclaredVariablesTest extends EngineTestCase {
     variables.define(variableName, "true");
     DartObject object = variables.getBool(typeProvider, variableName);
     expect(object, isNotNull);
-    expect(object.boolValue, true);
+    expect(object.toBoolValue(), true);
   }
 
   void test_getBool_undefined() {
@@ -4820,7 +4493,7 @@ class DeclaredVariablesTest extends EngineTestCase {
     variables.define(variableName, "23");
     DartObject object = variables.getInt(typeProvider, variableName);
     expect(object, isNotNull);
-    expect(object.intValue, 23);
+    expect(object.toIntValue(), 23);
   }
 
   void test_getString_defined() {
@@ -4831,7 +4504,7 @@ class DeclaredVariablesTest extends EngineTestCase {
     variables.define(variableName, value);
     DartObject object = variables.getString(typeProvider, variableName);
     expect(object, isNotNull);
-    expect(object.stringValue, value);
+    expect(object.toStringValue(), value);
   }
 
   void test_getString_undefined() {
@@ -5044,6 +4717,8 @@ class ElementBuilderTest extends EngineTestCase {
     String className = "C";
     ClassDeclaration classDeclaration =
         AstFactory.classDeclaration(null, className, null, null, null, null);
+    classDeclaration.documentationComment = AstFactory.documentationComment(
+        [TokenFactory.tokenFromString('/// aaa')..offset = 50], []);
     classDeclaration.accept(builder);
     List<ClassElement> types = holder.types;
     expect(types, hasLength(1));
@@ -5055,6 +4730,7 @@ class ElementBuilderTest extends EngineTestCase {
     expect(type.isAbstract, isFalse);
     expect(type.isMixinApplication, isFalse);
     expect(type.isSynthetic, isFalse);
+    _assertHasDocRange(type, 50, 7);
   }
 
   void test_visitClassDeclaration_parameterized() {
@@ -5223,8 +4899,8 @@ class ElementBuilderTest extends EngineTestCase {
     ElementHolder holder = new ElementHolder();
     ElementBuilder builder = new ElementBuilder(holder);
     String className = "A";
-    ConstructorDeclaration constructorDeclaration = AstFactory
-        .constructorDeclaration2(
+    ConstructorDeclaration constructorDeclaration =
+        AstFactory.constructorDeclaration2(
             null,
             null,
             AstFactory.identifier3(className),
@@ -5252,8 +4928,8 @@ class ElementBuilderTest extends EngineTestCase {
     ElementHolder holder = new ElementHolder();
     ElementBuilder builder = new ElementBuilder(holder);
     String className = "A";
-    ConstructorDeclaration constructorDeclaration = AstFactory
-        .constructorDeclaration2(
+    ConstructorDeclaration constructorDeclaration =
+        AstFactory.constructorDeclaration2(
             null,
             Keyword.FACTORY,
             AstFactory.identifier3(className),
@@ -5279,8 +4955,8 @@ class ElementBuilderTest extends EngineTestCase {
     ElementHolder holder = new ElementHolder();
     ElementBuilder builder = new ElementBuilder(holder);
     String className = "A";
-    ConstructorDeclaration constructorDeclaration = AstFactory
-        .constructorDeclaration2(
+    ConstructorDeclaration constructorDeclaration =
+        AstFactory.constructorDeclaration2(
             null,
             null,
             AstFactory.identifier3(className),
@@ -5288,11 +4964,16 @@ class ElementBuilderTest extends EngineTestCase {
             AstFactory.formalParameterList(),
             null,
             AstFactory.blockFunctionBody2());
+    constructorDeclaration.documentationComment = AstFactory
+        .documentationComment(
+            [TokenFactory.tokenFromString('/// aaa')..offset = 50], []);
     constructorDeclaration.accept(builder);
+
     List<ConstructorElement> constructors = holder.constructors;
     expect(constructors, hasLength(1));
     ConstructorElement constructor = constructors[0];
     expect(constructor, isNotNull);
+    _assertHasDocRange(constructor, 50, 7);
     expect(constructor.isExternal, isFalse);
     expect(constructor.isFactory, isFalse);
     expect(constructor.name, "");
@@ -5307,8 +4988,8 @@ class ElementBuilderTest extends EngineTestCase {
     ElementBuilder builder = new ElementBuilder(holder);
     String className = "A";
     String constructorName = "c";
-    ConstructorDeclaration constructorDeclaration = AstFactory
-        .constructorDeclaration2(
+    ConstructorDeclaration constructorDeclaration =
+        AstFactory.constructorDeclaration2(
             null,
             null,
             AstFactory.identifier3(className),
@@ -5336,8 +5017,8 @@ class ElementBuilderTest extends EngineTestCase {
     ElementHolder holder = new ElementHolder();
     ElementBuilder builder = new ElementBuilder(holder);
     String className = "A";
-    ConstructorDeclaration constructorDeclaration = AstFactory
-        .constructorDeclaration2(
+    ConstructorDeclaration constructorDeclaration =
+        AstFactory.constructorDeclaration2(
             null,
             null,
             AstFactory.identifier3(className),
@@ -5417,8 +5098,8 @@ class ElementBuilderTest extends EngineTestCase {
     ElementHolder holder = new ElementHolder();
     ElementBuilder builder = new ElementBuilder(holder);
     String parameterName = 'p';
-    DefaultFormalParameter formalParameter = AstFactory
-        .positionalFormalParameter(
+    DefaultFormalParameter formalParameter =
+        AstFactory.positionalFormalParameter(
             AstFactory.simpleFormalParameter3(parameterName),
             AstFactory.integer(0));
     formalParameter.accept(builder);
@@ -5470,11 +5151,14 @@ class ElementBuilderTest extends EngineTestCase {
     String enumName = "E";
     EnumDeclaration enumDeclaration =
         AstFactory.enumDeclaration2(enumName, ["ONE"]);
+    enumDeclaration.documentationComment = AstFactory.documentationComment(
+        [TokenFactory.tokenFromString('/// aaa')..offset = 50], []);
     enumDeclaration.accept(builder);
     List<ClassElement> enums = holder.enums;
     expect(enums, hasLength(1));
     ClassElement enumElement = enums[0];
     expect(enumElement, isNotNull);
+    _assertHasDocRange(enumElement, 50, 7);
     expect(enumElement.name, enumName);
   }
 
@@ -5488,18 +5172,25 @@ class ElementBuilderTest extends EngineTestCase {
       AstFactory.variableDeclaration(firstFieldName),
       AstFactory.variableDeclaration(secondFieldName)
     ]);
+    fieldDeclaration.documentationComment = AstFactory.documentationComment(
+        [TokenFactory.tokenFromString('/// aaa')..offset = 50], []);
     fieldDeclaration.accept(builder);
+
     List<FieldElement> fields = holder.fields;
     expect(fields, hasLength(2));
+
     FieldElement firstField = fields[0];
     expect(firstField, isNotNull);
+    _assertHasDocRange(firstField, 50, 7);
     expect(firstField.name, firstFieldName);
     expect(firstField.initializer, isNull);
     expect(firstField.isConst, isFalse);
     expect(firstField.isFinal, isFalse);
     expect(firstField.isSynthetic, isFalse);
+
     FieldElement secondField = fields[1];
     expect(secondField, isNotNull);
+    _assertHasDocRange(secondField, 50, 7);
     expect(secondField.name, secondFieldName);
     expect(secondField.initializer, isNull);
     expect(secondField.isConst, isFalse);
@@ -5606,12 +5297,15 @@ class ElementBuilderTest extends EngineTestCase {
         functionName,
         AstFactory.functionExpression2(
             AstFactory.formalParameterList(), AstFactory.blockFunctionBody2()));
+    declaration.documentationComment = AstFactory.documentationComment(
+        [TokenFactory.tokenFromString('/// aaa')..offset = 50], []);
     declaration.accept(builder);
 
     List<PropertyAccessorElement> accessors = holder.accessors;
     expect(accessors, hasLength(1));
     PropertyAccessorElement accessor = accessors[0];
     expect(accessor, isNotNull);
+    _assertHasDocRange(accessor, 50, 7);
     expect(accessor.name, functionName);
     expect(declaration.element, same(accessor));
     expect(declaration.functionExpression.element, same(accessor));
@@ -5638,12 +5332,15 @@ class ElementBuilderTest extends EngineTestCase {
         functionName,
         AstFactory.functionExpression2(
             AstFactory.formalParameterList(), AstFactory.blockFunctionBody2()));
+    declaration.documentationComment = AstFactory.documentationComment(
+        [TokenFactory.tokenFromString('/// aaa')..offset = 50], []);
     declaration.accept(builder);
 
     List<FunctionElement> functions = holder.functions;
     expect(functions, hasLength(1));
     FunctionElement function = functions[0];
     expect(function, isNotNull);
+    _assertHasDocRange(function, 50, 7);
     expect(function.hasImplicitReturnType, isFalse);
     expect(function.name, functionName);
     expect(declaration.element, same(function));
@@ -5664,13 +5361,16 @@ class ElementBuilderTest extends EngineTestCase {
         functionName,
         AstFactory.functionExpression2(
             AstFactory.formalParameterList(), AstFactory.blockFunctionBody2()));
+    declaration.documentationComment = AstFactory.documentationComment(
+        [TokenFactory.tokenFromString('/// aaa')..offset = 50], []);
     declaration.accept(builder);
 
     List<PropertyAccessorElement> accessors = holder.accessors;
     expect(accessors, hasLength(1));
     PropertyAccessorElement accessor = accessors[0];
     expect(accessor, isNotNull);
-    expect(accessor.hasImplicitReturnType, isFalse);
+    _assertHasDocRange(accessor, 50, 7);
+    expect(accessor.hasImplicitReturnType, isTrue);
     expect(accessor.name, "$functionName=");
     expect(declaration.element, same(accessor));
     expect(declaration.functionExpression.element, same(accessor));
@@ -5739,11 +5439,15 @@ class ElementBuilderTest extends EngineTestCase {
     String parameterName = "E";
     FunctionTypeAlias aliasNode = AstFactory.typeAlias(
         null, aliasName, AstFactory.typeParameterList([parameterName]), null);
+    aliasNode.documentationComment = AstFactory.documentationComment(
+        [TokenFactory.tokenFromString('/// aaa')..offset = 50], []);
     aliasNode.accept(builder);
+
     List<FunctionTypeAliasElement> aliases = holder.typeAliases;
     expect(aliases, hasLength(1));
     FunctionTypeAliasElement alias = aliases[0];
     expect(alias, isNotNull);
+    _assertHasDocRange(alias, 50, 7);
     expect(alias.name, aliasName);
     expect(alias.parameters, hasLength(0));
     List<TypeParameterElement> typeParameters = alias.typeParameters;
@@ -5895,6 +5599,8 @@ class ElementBuilderTest extends EngineTestCase {
         AstFactory.identifier3(methodName),
         AstFactory.formalParameterList(),
         AstFactory.blockFunctionBody2());
+    methodDeclaration.documentationComment = AstFactory.documentationComment(
+        [TokenFactory.tokenFromString('/// aaa')..offset = 50], []);
     methodDeclaration.accept(builder);
 
     List<FieldElement> fields = holder.fields;
@@ -5906,6 +5612,7 @@ class ElementBuilderTest extends EngineTestCase {
     expect(field.setter, isNull);
     PropertyAccessorElement getter = field.getter;
     expect(getter, isNotNull);
+    _assertHasDocRange(getter, 50, 7);
     expect(getter.hasImplicitReturnType, isTrue);
     expect(getter.isAbstract, isFalse);
     expect(getter.isExternal, isFalse);
@@ -6007,11 +5714,15 @@ class ElementBuilderTest extends EngineTestCase {
         AstFactory.identifier3(methodName),
         AstFactory.formalParameterList(),
         AstFactory.blockFunctionBody2());
+    methodDeclaration.documentationComment = AstFactory.documentationComment(
+        [TokenFactory.tokenFromString('/// aaa')..offset = 50], []);
     methodDeclaration.accept(builder);
+
     List<MethodElement> methods = holder.methods;
     expect(methods, hasLength(1));
     MethodElement method = methods[0];
     expect(method, isNotNull);
+    _assertHasDocRange(method, 50, 7);
     expect(method.hasImplicitReturnType, isFalse);
     expect(method.name, methodName);
     expect(method.functions, hasLength(0));
@@ -6071,6 +5782,8 @@ class ElementBuilderTest extends EngineTestCase {
         AstFactory.identifier3(methodName),
         AstFactory.formalParameterList(),
         AstFactory.blockFunctionBody2());
+    methodDeclaration.documentationComment = AstFactory.documentationComment(
+        [TokenFactory.tokenFromString('/// aaa')..offset = 50], []);
     methodDeclaration.accept(builder);
 
     List<FieldElement> fields = holder.fields;
@@ -6080,9 +5793,11 @@ class ElementBuilderTest extends EngineTestCase {
     expect(field.name, methodName);
     expect(field.isSynthetic, isTrue);
     expect(field.getter, isNull);
+
     PropertyAccessorElement setter = field.setter;
     expect(setter, isNotNull);
-    expect(setter.hasImplicitReturnType, isFalse);
+    _assertHasDocRange(setter, 50, 7);
+    expect(setter.hasImplicitReturnType, isTrue);
     expect(setter.isAbstract, isFalse);
     expect(setter.isExternal, isFalse);
     expect(setter.isSetter, isTrue);
@@ -6120,7 +5835,7 @@ class ElementBuilderTest extends EngineTestCase {
     expect(field.getter, isNull);
     PropertyAccessorElement setter = field.setter;
     expect(setter, isNotNull);
-    expect(setter.hasImplicitReturnType, isFalse);
+    expect(setter.hasImplicitReturnType, isTrue);
     expect(setter.isAbstract, isTrue);
     expect(setter.isExternal, isFalse);
     expect(setter.isSetter, isTrue);
@@ -6159,7 +5874,7 @@ class ElementBuilderTest extends EngineTestCase {
     expect(field.getter, isNull);
     PropertyAccessorElement setter = field.setter;
     expect(setter, isNotNull);
-    expect(setter.hasImplicitReturnType, isFalse);
+    expect(setter.hasImplicitReturnType, isTrue);
     expect(setter.isAbstract, isFalse);
     expect(setter.isExternal, isTrue);
     expect(setter.isSetter, isTrue);
@@ -6623,6 +6338,34 @@ class ElementBuilderTest extends EngineTestCase {
     expect(variable.setter, isNull);
   }
 
+  void test_visitVariableDeclaration_top_docRange() {
+    // final a, b;
+    ElementHolder holder = new ElementHolder();
+    ElementBuilder builder = new ElementBuilder(holder);
+    VariableDeclaration variableDeclaration1 =
+        AstFactory.variableDeclaration('a');
+    VariableDeclaration variableDeclaration2 =
+        AstFactory.variableDeclaration('b');
+    TopLevelVariableDeclaration topLevelVariableDeclaration = AstFactory
+        .topLevelVariableDeclaration(
+            Keyword.FINAL, null, [variableDeclaration1, variableDeclaration2]);
+    topLevelVariableDeclaration.documentationComment = AstFactory
+        .documentationComment(
+            [TokenFactory.tokenFromString('/// aaa')..offset = 50], []);
+
+    topLevelVariableDeclaration.accept(builder);
+    List<TopLevelVariableElement> variables = holder.topLevelVariables;
+    expect(variables, hasLength(2));
+
+    TopLevelVariableElement variable1 = variables[0];
+    expect(variable1, isNotNull);
+    _assertHasDocRange(variable1, 50, 7);
+
+    TopLevelVariableElement variable2 = variables[1];
+    expect(variable2, isNotNull);
+    _assertHasDocRange(variable2, 50, 7);
+  }
+
   void test_visitVariableDeclaration_top_final() {
     // final v;
     ElementHolder holder = new ElementHolder();
@@ -6644,6 +6387,15 @@ class ElementBuilderTest extends EngineTestCase {
     expect(variable.isSynthetic, isFalse);
     expect(variable.getter, isNotNull);
     expect(variable.setter, isNull);
+  }
+
+  void _assertHasDocRange(
+      Element element, int expectedOffset, int expectedLength) {
+    // Cast to dynamic here to avoid a hint about @deprecated docRange.
+    SourceRange docRange = (element as dynamic).docRange;
+    expect(docRange, isNotNull);
+    expect(docRange.offset, expectedOffset);
+    expect(docRange.length, expectedLength);
   }
 
   void _useParameterInMethod(
@@ -6752,7 +6504,8 @@ class A {
         (obj) => obj is FunctionElement, FunctionElement, element);
   }
 
-  void test_locate_Identifier_annotationClass_namedConstructor_forSimpleFormalParameter() {
+  void
+      test_locate_Identifier_annotationClass_namedConstructor_forSimpleFormalParameter() {
     AstNode id = _findNodeIndexedIn(
         "Class",
         2,
@@ -6767,7 +6520,8 @@ void main(@Class.name() parameter) {
         (obj) => obj is ClassElement, ClassElement, element);
   }
 
-  void test_locate_Identifier_annotationClass_unnamedConstructor_forSimpleFormalParameter() {
+  void
+      test_locate_Identifier_annotationClass_unnamedConstructor_forSimpleFormalParameter() {
     AstNode id = _findNodeIndexedIn(
         "Class",
         2,
@@ -6874,8 +6628,8 @@ void main() {
     SimpleIdentifier identifier = AstFactory.identifier3("A");
     PrefixedIdentifier prefixedIdentifier =
         AstFactory.identifier4("pref", identifier);
-    InstanceCreationExpression creation = AstFactory
-        .instanceCreationExpression2(
+    InstanceCreationExpression creation =
+        AstFactory.instanceCreationExpression2(
             Keyword.NEW, AstFactory.typeName3(prefixedIdentifier));
     // set ClassElement
     ClassElement classElement = ElementFactory.classElement2("A");
@@ -6892,8 +6646,8 @@ void main() {
   void test_locate_InstanceCreationExpression_type_simpleIdentifier() {
     // prepare: new A()
     SimpleIdentifier identifier = AstFactory.identifier3("A");
-    InstanceCreationExpression creation = AstFactory
-        .instanceCreationExpression2(
+    InstanceCreationExpression creation =
+        AstFactory.instanceCreationExpression2(
             Keyword.NEW, AstFactory.typeName3(identifier));
     // set ClassElement
     ClassElement classElement = ElementFactory.classElement2("A");
@@ -6958,6 +6712,26 @@ void main() {
     Element element = ElementLocator.locate(invocation);
     EngineTestCase.assertInstanceOf(
         (obj) => obj is FunctionElement, FunctionElement, element);
+  }
+
+  void test_locate_PartOfDirective() {
+    Source librarySource = addNamedSource(
+        '/lib.dart',
+        '''
+library my.lib;
+part 'part.dart';
+''');
+    Source unitSource = addNamedSource(
+        '/part.dart',
+        '''
+part of my.lib;
+''');
+    CompilationUnit unit =
+        analysisContext.resolveCompilationUnit2(unitSource, librarySource);
+    PartOfDirective partOf = unit.directives.first;
+    Element element = ElementLocator.locate(partOf);
+    EngineTestCase.assertInstanceOf(
+        (obj) => obj is LibraryElement, LibraryElement, element);
   }
 
   void test_locate_PostfixExpression() {
@@ -7025,19 +6799,6 @@ core.int value;''');
     Element element = ElementLocator.locate(declaration);
     EngineTestCase.assertInstanceOf((obj) => obj is TopLevelVariableElement,
         TopLevelVariableElement, element);
-  }
-
-  void test_locateWithOffset_BinaryExpression() {
-    AstNode id = _findNodeIn("+", "var x = 3 + 4;");
-    Element element = ElementLocator.locateWithOffset(id, 0);
-    EngineTestCase.assertInstanceOf(
-        (obj) => obj is MethodElement, MethodElement, element);
-  }
-
-  void test_locateWithOffset_StringLiteral() {
-    AstNode id = _findNodeIn("abc", "var x = 'abc';");
-    Element element = ElementLocator.locateWithOffset(id, 1);
-    expect(element, isNull);
   }
 
   /**
@@ -7241,6 +7002,29 @@ class ErrorReporterTest extends EngineTestCase {
     expect(error.offset, element.nameOffset);
   }
 
+  void test_reportErrorForSpan() {
+    GatheringErrorListener listener = new GatheringErrorListener();
+    ErrorReporter reporter = new ErrorReporter(listener, new TestSource());
+
+    var src = '''
+foo: bar
+zap: baz
+''';
+
+    int offset = src.indexOf('baz');
+    int length = 'baz'.length;
+
+    SourceSpan span = new SourceFile(src).span(offset, offset + length);
+
+    reporter.reportErrorForSpan(
+        AnalysisOptionsWarningCode.UNSUPPORTED_OPTION_WITH_LEGAL_VALUE,
+        span,
+        ['test', 'zip', 'zap']);
+    expect(listener.errors, hasLength(1));
+    expect(listener.errors.first.offset, offset);
+    expect(listener.errors.first.length, length);
+  }
+
   void test_reportTypeErrorForNode_differentNames() {
     DartType firstType = createType("/test1.dart", "A");
     DartType secondType = createType("/test2.dart", "B");
@@ -7351,7 +7135,7 @@ class ExitDetectorTest extends ParserTestCase {
   }
 
   void test_assertStatement_throw() {
-    _assertTrue("assert((throw 0));");
+    _assertFalse("assert((throw 0));");
   }
 
   void test_assignmentExpression() {
@@ -7383,15 +7167,31 @@ class ExitDetectorTest extends ParserTestCase {
   }
 
   void test_binaryExpression_and_rhs() {
-    _assertTrue("a && (throw '');");
+    _assertFalse("a && (throw '');");
   }
 
   void test_binaryExpression_and_rhs2() {
-    _assertTrue("false && (throw '');");
+    _assertFalse("false && (throw '');");
   }
 
   void test_binaryExpression_and_rhs3() {
-    _assertFalse("true && (throw '');");
+    _assertTrue("true && (throw '');");
+  }
+
+  void test_binaryExpression_ifNull() {
+    _assertFalse("a ?? b;");
+  }
+
+  void test_binaryExpression_ifNull_lhs() {
+    _assertTrue("throw '' ?? b;");
+  }
+
+  void test_binaryExpression_ifNull_rhs() {
+    _assertFalse("a ?? (throw '');");
+  }
+
+  void test_binaryExpression_ifNull_rhs2() {
+    _assertFalse("null ?? (throw '');");
   }
 
   void test_binaryExpression_or() {
@@ -7403,15 +7203,15 @@ class ExitDetectorTest extends ParserTestCase {
   }
 
   void test_binaryExpression_or_rhs() {
-    _assertTrue("a || (throw '');");
+    _assertFalse("a || (throw '');");
   }
 
   void test_binaryExpression_or_rhs2() {
-    _assertTrue("true || (throw '');");
+    _assertFalse("true || (throw '');");
   }
 
   void test_binaryExpression_or_rhs3() {
-    _assertFalse("false || (throw '');");
+    _assertTrue("false || (throw '');");
   }
 
   void test_block_empty() {
@@ -7460,6 +7260,62 @@ class ExitDetectorTest extends ParserTestCase {
 
   void test_conditional_ifElse_thenThrow() {
     _assertFalse("c ? throw '' : j;");
+  }
+
+  void test_conditionalAccess() {
+    _assertFalse("a?.b;");
+  }
+
+  void test_conditionalAccess_lhs() {
+    _assertTrue("(throw '')?.b;");
+  }
+
+  void test_conditionalAccessAssign() {
+    _assertFalse("a?.b = c;");
+  }
+
+  void test_conditionalAccessAssign_lhs() {
+    _assertTrue("(throw '')?.b = c;");
+  }
+
+  void test_conditionalAccessAssign_rhs() {
+    _assertFalse("a?.b = throw '';");
+  }
+
+  void test_conditionalAccessAssign_rhs2() {
+    _assertFalse("null?.b = throw '';");
+  }
+
+  void test_conditionalAccessIfNullAssign() {
+    _assertFalse("a?.b ??= c;");
+  }
+
+  void test_conditionalAccessIfNullAssign_lhs() {
+    _assertTrue("(throw '')?.b ??= c;");
+  }
+
+  void test_conditionalAccessIfNullAssign_rhs() {
+    _assertFalse("a?.b ??= throw '';");
+  }
+
+  void test_conditionalAccessIfNullAssign_rhs2() {
+    _assertFalse("null?.b ??= throw '';");
+  }
+
+  void test_conditionalCall() {
+    _assertFalse("a?.b(c);");
+  }
+
+  void test_conditionalCall_lhs() {
+    _assertTrue("(throw '')?.b(c);");
+  }
+
+  void test_conditionalCall_rhs() {
+    _assertFalse("a?.b(throw '');");
+  }
+
+  void test_conditionalCall_rhs2() {
+    _assertFalse("null?.b(throw '');");
   }
 
   void test_creation() {
@@ -7616,6 +7472,14 @@ class ExitDetectorTest extends ParserTestCase {
 
   void test_ifElse_thenReturn() {
     _assertFalse("if (c) return 0; else j++;");
+  }
+
+  void test_ifNullAssign() {
+    _assertFalse("a ??= b;");
+  }
+
+  void test_ifNullAssign_rhs() {
+    _assertFalse("a ??= throw '';");
   }
 
   void test_indexExpression() {
@@ -8205,473 +8069,6 @@ class FileUriResolverTest {
   }
 }
 
-@reflectiveTest
-class HtmlParserTest extends EngineTestCase {
-  /**
-   * The name of the 'script' tag in an HTML file.
-   */
-  static String _TAG_SCRIPT = "script";
-  void fail_parse_scriptWithComment() {
-    String scriptBody = r'''
-      /**
-       *     <editable-label bind-value="dartAsignableValue">
-       *     </editable-label>
-       */
-      class Foo {}''';
-    ht.HtmlUnit htmlUnit = parse("""
-<html>
-  <body>
-    <script type='application/dart'>
-$scriptBody
-    </script>
-  </body>
-</html>""");
-    _validate(htmlUnit, [
-      _t4("html", [
-        _t4("body", [
-          _t("script", _a(["type", "'application/dart'"]), scriptBody)
-        ])
-      ])
-    ]);
-  }
-
-  ht.HtmlUnit parse(String contents) {
-//    TestSource source =
-//        new TestSource.con1(FileUtilities2.createFile("/test.dart"), contents);
-    ht.AbstractScanner scanner = new ht.StringScanner(null, contents);
-    scanner.passThroughElements = <String>[_TAG_SCRIPT];
-    ht.Token token = scanner.tokenize();
-    LineInfo lineInfo = new LineInfo(scanner.lineStarts);
-    GatheringErrorListener errorListener = new GatheringErrorListener();
-    AnalysisOptionsImpl options = new AnalysisOptionsImpl();
-    ht.HtmlUnit unit =
-        new ht.HtmlParser(null, errorListener, options).parse(token, lineInfo);
-    errorListener.assertNoErrors();
-    return unit;
-  }
-
-  void test_parse_attribute() {
-    ht.HtmlUnit htmlUnit = parse("<html><body foo=\"sdfsdf\"></body></html>");
-    _validate(htmlUnit, [
-      _t4("html", [
-        _t("body", _a(["foo", "\"sdfsdf\""]), "")
-      ])
-    ]);
-    ht.XmlTagNode htmlNode = htmlUnit.tagNodes[0];
-    ht.XmlTagNode bodyNode = htmlNode.tagNodes[0];
-    expect(bodyNode.attributes[0].text, "sdfsdf");
-  }
-
-  void test_parse_attribute_EOF() {
-    ht.HtmlUnit htmlUnit = parse("<html><body foo=\"sdfsdf\"");
-    _validate(htmlUnit, [
-      _t4("html", [
-        _t("body", _a(["foo", "\"sdfsdf\""]), "")
-      ])
-    ]);
-  }
-
-  void test_parse_attribute_EOF_missing_quote() {
-    ht.HtmlUnit htmlUnit = parse("<html><body foo=\"sdfsd");
-    _validate(htmlUnit, [
-      _t4("html", [
-        _t("body", _a(["foo", "\"sdfsd"]), "")
-      ])
-    ]);
-    ht.XmlTagNode htmlNode = htmlUnit.tagNodes[0];
-    ht.XmlTagNode bodyNode = htmlNode.tagNodes[0];
-    expect(bodyNode.attributes[0].text, "sdfsd");
-  }
-
-  void test_parse_attribute_extra_quote() {
-    ht.HtmlUnit htmlUnit = parse("<html><body foo=\"sdfsdf\"\"></body></html>");
-    _validate(htmlUnit, [
-      _t4("html", [
-        _t("body", _a(["foo", "\"sdfsdf\""]), "")
-      ])
-    ]);
-  }
-
-  void test_parse_attribute_single_quote() {
-    ht.HtmlUnit htmlUnit = parse("<html><body foo='sdfsdf'></body></html>");
-    _validate(htmlUnit, [
-      _t4("html", [
-        _t("body", _a(["foo", "'sdfsdf'"]), "")
-      ])
-    ]);
-    ht.XmlTagNode htmlNode = htmlUnit.tagNodes[0];
-    ht.XmlTagNode bodyNode = htmlNode.tagNodes[0];
-    expect(bodyNode.attributes[0].text, "sdfsdf");
-  }
-
-  void test_parse_comment_embedded() {
-    ht.HtmlUnit htmlUnit = parse("<html <!-- comment -->></html>");
-    _validate(htmlUnit, [_t3("html", "")]);
-  }
-
-  void test_parse_comment_first() {
-    ht.HtmlUnit htmlUnit = parse("<!-- comment --><html></html>");
-    _validate(htmlUnit, [_t3("html", "")]);
-  }
-
-  void test_parse_comment_in_content() {
-    ht.HtmlUnit htmlUnit = parse("<html><!-- comment --></html>");
-    _validate(htmlUnit, [_t3("html", "<!-- comment -->")]);
-  }
-
-  void test_parse_content() {
-    ht.HtmlUnit htmlUnit = parse("<html>\n<p a=\"b\">blat \n </p>\n</html>");
-    // ht.XmlTagNode.getContent() does not include whitespace
-    // between '<' and '>' at this time
-    _validate(htmlUnit, [
-      _t3("html", "\n<pa=\"b\">blat \n </p>\n", [
-        _t("p", _a(["a", "\"b\""]), "blat \n ")
-      ])
-    ]);
-  }
-
-  void test_parse_content_none() {
-    ht.HtmlUnit htmlUnit = parse("<html><p/>blat<p/></html>");
-    _validate(htmlUnit, [
-      _t3("html", "<p/>blat<p/>", [_t3("p", ""), _t3("p", "")])
-    ]);
-  }
-
-  void test_parse_declaration() {
-    ht.HtmlUnit htmlUnit = parse("<!DOCTYPE html>\n\n<html><p></p></html>");
-    _validate(htmlUnit, [
-      _t4("html", [_t3("p", "")])
-    ]);
-  }
-
-  void test_parse_directive() {
-    ht.HtmlUnit htmlUnit = parse("<?xml ?>\n\n<html><p></p></html>");
-    _validate(htmlUnit, [
-      _t4("html", [_t3("p", "")])
-    ]);
-  }
-
-  void test_parse_getAttribute() {
-    ht.HtmlUnit htmlUnit = parse("<html><body foo=\"sdfsdf\"></body></html>");
-    ht.XmlTagNode htmlNode = htmlUnit.tagNodes[0];
-    ht.XmlTagNode bodyNode = htmlNode.tagNodes[0];
-    expect(bodyNode.getAttribute("foo").text, "sdfsdf");
-    expect(bodyNode.getAttribute("bar"), null);
-    expect(bodyNode.getAttribute(null), null);
-  }
-
-  void test_parse_getAttributeText() {
-    ht.HtmlUnit htmlUnit = parse("<html><body foo=\"sdfsdf\"></body></html>");
-    ht.XmlTagNode htmlNode = htmlUnit.tagNodes[0];
-    ht.XmlTagNode bodyNode = htmlNode.tagNodes[0];
-    expect(bodyNode.getAttributeText("foo"), "sdfsdf");
-    expect(bodyNode.getAttributeText("bar"), null);
-    expect(bodyNode.getAttributeText(null), null);
-  }
-
-  void test_parse_headers() {
-    String code = r'''
-<html>
-  <body>
-    <h2>000</h2>
-    <div>
-      111
-    </div>
-  </body>
-</html>''';
-    ht.HtmlUnit htmlUnit = parse(code);
-    _validate(htmlUnit, [
-      _t4("html", [
-        _t4("body", [_t3("h2", "000"), _t4("div")])
-      ])
-    ]);
-  }
-
-  void test_parse_script() {
-    ht.HtmlUnit htmlUnit =
-        parse("<html><script >here is <p> some</script></html>");
-    _validate(htmlUnit, [
-      _t4("html", [_t3("script", "here is <p> some")])
-    ]);
-  }
-
-  void test_parse_self_closing() {
-    ht.HtmlUnit htmlUnit = parse("<html>foo<br>bar</html>");
-    _validate(htmlUnit, [
-      _t3("html", "foo<br>bar", [_t3("br", "")])
-    ]);
-  }
-
-  void test_parse_self_closing_declaration() {
-    ht.HtmlUnit htmlUnit = parse("<!DOCTYPE html><html>foo</html>");
-    _validate(htmlUnit, [_t3("html", "foo")]);
-  }
-
-  XmlValidator_Attributes _a(List<String> keyValuePairs) =>
-      new XmlValidator_Attributes(keyValuePairs);
-  XmlValidator_Tag _t(
-          String tag, XmlValidator_Attributes attributes, String content,
-          [List<XmlValidator_Tag> children = XmlValidator_Tag.EMPTY_LIST]) =>
-      new XmlValidator_Tag(tag, attributes, content, children);
-  XmlValidator_Tag _t3(String tag, String content,
-          [List<XmlValidator_Tag> children = XmlValidator_Tag.EMPTY_LIST]) =>
-      new XmlValidator_Tag(
-          tag, new XmlValidator_Attributes(), content, children);
-  XmlValidator_Tag _t4(String tag,
-          [List<XmlValidator_Tag> children = XmlValidator_Tag.EMPTY_LIST]) =>
-      new XmlValidator_Tag(tag, new XmlValidator_Attributes(), null, children);
-  void _validate(ht.HtmlUnit htmlUnit, List<XmlValidator_Tag> expectedTags) {
-    XmlValidator validator = new XmlValidator();
-    validator.expectTags(expectedTags);
-    htmlUnit.accept(validator);
-    validator.assertValid();
-  }
-}
-
-@reflectiveTest
-class HtmlTagInfoBuilderTest extends HtmlParserTest {
-  void test_builder() {
-    HtmlTagInfoBuilder builder = new HtmlTagInfoBuilder();
-    ht.HtmlUnit unit = parse(r'''
-<html>
-  <body>
-    <div id="x"></div>
-    <p class='c'></p>
-    <div class='c'></div>
-  </body>
-</html>''');
-    unit.accept(builder);
-    HtmlTagInfo info = builder.getTagInfo();
-    expect(info, isNotNull);
-    List<String> allTags = info.allTags;
-    expect(allTags, hasLength(4));
-    expect(info.getTagWithId("x"), "div");
-    List<String> tagsWithClass = info.getTagsWithClass("c");
-    expect(tagsWithClass, hasLength(2));
-  }
-}
-
-@reflectiveTest
-class HtmlUnitBuilderTest extends EngineTestCase {
-  InternalAnalysisContext _context;
-  @override
-  void setUp() {
-    _context = AnalysisContextFactory.contextWithCore();
-  }
-
-  @override
-  void tearDown() {
-    _context = null;
-    super.tearDown();
-  }
-
-  void test_embedded_script() {
-    HtmlElementImpl element = _build(r'''
-<html>
-<script type="application/dart">foo=2;</script>
-</html>''');
-    _validate(element, [
-      _s(_l([_v("foo")]))
-    ]);
-  }
-
-  void test_embedded_script_no_content() {
-    HtmlElementImpl element = _build(r'''
-<html>
-<script type="application/dart"></script>
-</html>''');
-    _validate(element, [_s(_l())]);
-  }
-
-  void test_external_script() {
-    HtmlElementImpl element = _build(r'''
-<html>
-<script type="application/dart" src="other.dart"/>
-</html>''');
-    _validate(element, [_s2("other.dart")]);
-  }
-
-  void test_external_script_no_source() {
-    HtmlElementImpl element = _build(r'''
-<html>
-<script type="application/dart"/>
-</html>''');
-    _validate(element, [_s2(null)]);
-  }
-
-  void test_external_script_with_content() {
-    HtmlElementImpl element = _build(r'''
-<html>
-<script type="application/dart" src="other.dart">blat=2;</script>
-</html>''');
-    _validate(element, [_s2("other.dart")]);
-  }
-
-  void test_no_scripts() {
-    HtmlElementImpl element = _build(r'''
-<!DOCTYPE html>
-<html><p></p></html>''');
-    _validate(element, []);
-  }
-
-  void test_two_dart_scripts() {
-    HtmlElementImpl element = _build(r'''
-<html>
-<script type="application/dart">bar=2;</script>
-<script type="application/dart" src="other.dart"/>
-<script src="dart.js"/>
-</html>''');
-    _validate(element, [
-      _s(_l([_v("bar")])),
-      _s2("other.dart")
-    ]);
-  }
-
-  HtmlElementImpl _build(String contents) {
-    TestSource source = new TestSource(
-        FileUtilities2.createFile("/test.html").getAbsolutePath(), contents);
-    ChangeSet changeSet = new ChangeSet();
-    changeSet.addedSource(source);
-    _context.applyChanges(changeSet);
-    HtmlUnitBuilder builder = new HtmlUnitBuilder(_context);
-    return builder.buildHtmlElement(source, _context.parseHtmlUnit(source));
-  }
-
-  HtmlUnitBuilderTest_ExpectedLibrary _l(
-          [List<HtmlUnitBuilderTest_ExpectedVariable> expectedVariables =
-              HtmlUnitBuilderTest_ExpectedVariable.EMPTY_LIST]) =>
-      new HtmlUnitBuilderTest_ExpectedLibrary(this, expectedVariables);
-  _ExpectedScript _s(HtmlUnitBuilderTest_ExpectedLibrary expectedLibrary) =>
-      new _ExpectedScript.con1(expectedLibrary);
-  _ExpectedScript _s2(String scriptSourcePath) =>
-      new _ExpectedScript.con2(scriptSourcePath);
-  HtmlUnitBuilderTest_ExpectedVariable _v(String varName) =>
-      new HtmlUnitBuilderTest_ExpectedVariable(varName);
-  void _validate(
-      HtmlElementImpl element, List<_ExpectedScript> expectedScripts) {
-    expect(element.context, same(_context));
-    List<HtmlScriptElement> scripts = element.scripts;
-    expect(scripts, isNotNull);
-    expect(scripts, hasLength(expectedScripts.length));
-    for (int scriptIndex = 0; scriptIndex < scripts.length; scriptIndex++) {
-      expectedScripts[scriptIndex]._validate(scriptIndex, scripts[scriptIndex]);
-    }
-  }
-}
-
-class HtmlUnitBuilderTest_ExpectedLibrary {
-  final HtmlUnitBuilderTest HtmlUnitBuilderTest_this;
-  final List<HtmlUnitBuilderTest_ExpectedVariable> _expectedVariables;
-  HtmlUnitBuilderTest_ExpectedLibrary(this.HtmlUnitBuilderTest_this,
-      [this._expectedVariables =
-          HtmlUnitBuilderTest_ExpectedVariable.EMPTY_LIST]);
-  void _validate(int scriptIndex, EmbeddedHtmlScriptElementImpl script) {
-    LibraryElement library = script.scriptLibrary;
-    expect(library, isNotNull, reason: "script $scriptIndex");
-    expect(script.context, same(HtmlUnitBuilderTest_this._context),
-        reason: "script $scriptIndex");
-    CompilationUnitElement unit = library.definingCompilationUnit;
-    expect(unit, isNotNull, reason: "script $scriptIndex");
-    List<TopLevelVariableElement> variables = unit.topLevelVariables;
-    expect(variables, hasLength(_expectedVariables.length));
-    for (int index = 0; index < variables.length; index++) {
-      _expectedVariables[index].validate(scriptIndex, variables[index]);
-    }
-    expect(library.enclosingElement, same(script),
-        reason: "script $scriptIndex");
-  }
-}
-
-class HtmlUnitBuilderTest_ExpectedVariable {
-  static const List<HtmlUnitBuilderTest_ExpectedVariable> EMPTY_LIST =
-      const <HtmlUnitBuilderTest_ExpectedVariable>[];
-  final String _expectedName;
-  HtmlUnitBuilderTest_ExpectedVariable(this._expectedName);
-  void validate(int scriptIndex, TopLevelVariableElement variable) {
-    expect(variable, isNotNull, reason: "script $scriptIndex");
-    expect(variable.name, _expectedName, reason: "script $scriptIndex");
-  }
-}
-
-/**
- * Instances of the class `HtmlWarningCodeTest` test the generation of HTML warning codes.
- */
-@reflectiveTest
-class HtmlWarningCodeTest extends EngineTestCase {
-  /**
-   * The analysis context used to resolve the HTML files.
-   */
-  InternalAnalysisContext _context;
-
-  /**
-   * The contents of the 'test.html' file.
-   */
-  String _contents;
-
-  /**
-   * The list of reported errors.
-   */
-  List<AnalysisError> _errors;
-  @override
-  void setUp() {
-    _context = AnalysisContextFactory.contextWithCore();
-  }
-
-  @override
-  void tearDown() {
-    _context = null;
-    _contents = null;
-    _errors = null;
-    super.tearDown();
-  }
-
-  void test_invalidUri() {
-    _verify(
-        r'''
-<html>
-<script type='application/dart' src='ht:'/>
-</html>''',
-        [HtmlWarningCode.INVALID_URI]);
-    _assertErrorLocation2(_errors[0], "ht:");
-  }
-
-  void test_uriDoesNotExist() {
-    _verify(
-        r'''
-<html>
-<script type='application/dart' src='other.dart'/>
-</html>''',
-        [HtmlWarningCode.URI_DOES_NOT_EXIST]);
-    _assertErrorLocation2(_errors[0], "other.dart");
-  }
-
-  void _assertErrorLocation(
-      AnalysisError error, int expectedOffset, int expectedLength) {
-    expect(error.offset, expectedOffset, reason: error.toString());
-    expect(error.length, expectedLength, reason: error.toString());
-  }
-
-  void _assertErrorLocation2(AnalysisError error, String expectedString) {
-    _assertErrorLocation(
-        error, _contents.indexOf(expectedString), expectedString.length);
-  }
-
-  void _verify(String contents, List<ErrorCode> expectedErrorCodes) {
-    this._contents = contents;
-    TestSource source = new TestSource(
-        FileUtilities2.createFile("/test.html").getAbsolutePath(), contents);
-    ChangeSet changeSet = new ChangeSet();
-    changeSet.addedSource(source);
-    _context.applyChanges(changeSet);
-    HtmlUnitBuilder builder = new HtmlUnitBuilder(_context);
-    builder.buildHtmlElement(source, _context.parseHtmlUnit(source));
-    GatheringErrorListener errorListener = new GatheringErrorListener();
-    errorListener.addAll2(builder.errorListener);
-    errorListener.assertErrorsWithCodes(expectedErrorCodes);
-    _errors = errorListener.errors;
-  }
-}
-
 /**
  * Instances of the class `MockDartSdk` implement a [DartSdk].
  */
@@ -8699,11 +8096,11 @@ class MockDartSdk implements DartSdk {
 }
 
 @reflectiveTest
-class ReferenceFinderTest extends EngineTestCase {
+class ReferenceFinderTest {
   DirectedGraph<ConstantEvaluationTarget> _referenceGraph;
   VariableElement _head;
   Element _tail;
-  @override
+
   void setUp() {
     _referenceGraph = new DirectedGraph<ConstantEvaluationTarget>();
     _head = ElementFactory.topLevelVariableElement2("v1");
@@ -8755,8 +8152,8 @@ class ReferenceFinderTest extends EngineTestCase {
       String name, bool isConst) {
     List<ConstructorInitializer> initializers =
         new List<ConstructorInitializer>();
-    ConstructorDeclaration constructorDeclaration = AstFactory
-        .constructorDeclaration(AstFactory.identifier3(name), null,
+    ConstructorDeclaration constructorDeclaration =
+        AstFactory.constructorDeclaration(AstFactory.identifier3(name), null,
             AstFactory.formalParameterList(), initializers);
     if (isConst) {
       constructorDeclaration.constKeyword = new KeywordToken(Keyword.CONST, 0);
@@ -8799,7 +8196,7 @@ class SDKLibrariesReaderTest extends EngineTestCase {
 final Map<String, LibraryInfo> LIBRARIES = const <String, LibraryInfo> {
   'first' : const LibraryInfo(
     'first/first.dart',
-    category: 'First',
+    categories: 'Client',
     documented: true,
     platforms: VM_PLATFORM,
     dart2jsPath: 'first/first_dart2js.dart'),
@@ -8808,7 +8205,7 @@ final Map<String, LibraryInfo> LIBRARIES = const <String, LibraryInfo> {
     expect(libraryMap.size(), 1);
     SdkLibrary first = libraryMap.getLibrary("dart:first");
     expect(first, isNotNull);
-    expect(first.category, "First");
+    expect(first.category, "Client");
     expect(first.path, "first/first_dart2js.dart");
     expect(first.shortName, "dart:first");
     expect(first.isDart2JsLibrary, false);
@@ -8831,13 +8228,13 @@ final Map<String, LibraryInfo> LIBRARIES = const <String, LibraryInfo> {
 final Map<String, LibraryInfo> LIBRARIES = const <String, LibraryInfo> {
   'first' : const LibraryInfo(
     'first/first.dart',
-    category: 'First',
+    categories: 'Client',
     documented: true,
     platforms: VM_PLATFORM),
 
   'second' : const LibraryInfo(
     'second/second.dart',
-    category: 'Second',
+    categories: 'Server',
     documented: false,
     implementation: true,
     platforms: 0),
@@ -8846,7 +8243,7 @@ final Map<String, LibraryInfo> LIBRARIES = const <String, LibraryInfo> {
     expect(libraryMap.size(), 2);
     SdkLibrary first = libraryMap.getLibrary("dart:first");
     expect(first, isNotNull);
-    expect(first.category, "First");
+    expect(first.category, "Client");
     expect(first.path, "first/first.dart");
     expect(first.shortName, "dart:first");
     expect(first.isDart2JsLibrary, false);
@@ -8855,7 +8252,7 @@ final Map<String, LibraryInfo> LIBRARIES = const <String, LibraryInfo> {
     expect(first.isVmLibrary, true);
     SdkLibrary second = libraryMap.getLibrary("dart:second");
     expect(second, isNotNull);
-    expect(second.category, "Second");
+    expect(second.category, "Server");
     expect(second.path, "second/second.dart");
     expect(second.shortName, "dart:second");
     expect(second.isDart2JsLibrary, false);
@@ -8865,66 +8262,13 @@ final Map<String, LibraryInfo> LIBRARIES = const <String, LibraryInfo> {
   }
 }
 
-@reflectiveTest
-class StringScannerTest extends AbstractScannerTest {
+class TestAnalysisContext_ConstantFinderTest extends TestAnalysisContext {
+  bool invoked = false;
+  TestAnalysisContext_ConstantFinderTest();
+
   @override
-  ht.AbstractScanner newScanner(String input) {
-    return new ht.StringScanner(null, input);
-  }
-}
-
-/**
- * Instances of the class `ToSourceVisitorTest`
- */
-@reflectiveTest
-class ToSourceVisitorTest extends EngineTestCase {
-  void fail_visitHtmlScriptTagNode_attributes_content() {
-    _assertSource(
-        "<script type='application/dart'>f() {}</script>",
-        HtmlFactory.scriptTagWithContent(
-            "f() {}", [HtmlFactory.attribute("type", "'application/dart'")]));
-  }
-
-  void fail_visitHtmlScriptTagNode_noAttributes_content() {
-    _assertSource(
-        "<script>f() {}</script>", HtmlFactory.scriptTagWithContent("f() {}"));
-  }
-
-  void test_visitHtmlScriptTagNode_attributes_noContent() {
-    _assertSource(
-        "<script type='application/dart'/>",
-        HtmlFactory
-            .scriptTag([HtmlFactory.attribute("type", "'application/dart'")]));
-  }
-
-  void test_visitHtmlScriptTagNode_noAttributes_noContent() {
-    _assertSource("<script/>", HtmlFactory.scriptTag());
-  }
-
-  void test_visitHtmlUnit_empty() {
-    _assertSource("", new ht.HtmlUnit(null, new List<ht.XmlTagNode>(), null));
-  }
-
-  void test_visitHtmlUnit_nonEmpty() {
-    _assertSource(
-        "<html/>", new ht.HtmlUnit(null, [HtmlFactory.tagNode("html")], null));
-  }
-
-  void test_visitXmlAttributeNode() {
-    _assertSource("x=y", HtmlFactory.attribute("x", "y"));
-  }
-
-  /**
-   * Assert that a `ToSourceVisitor` will produce the expected source when visiting the given
-   * node.
-   *
-   * @param expectedSource the source string that the visitor is expected to produce
-   * @param node the AST node being visited to produce the actual source
-   */
-  void _assertSource(String expectedSource, ht.XmlNode node) {
-    PrintStringWriter writer = new PrintStringWriter();
-    node.accept(new ht.ToSourceVisitor(writer));
-    expect(writer.toString(), expectedSource);
+  InternalAnalysisContext getContextFor(Source source) {
+    return this;
   }
 }
 
@@ -8941,287 +8285,5 @@ class UriKindTest {
     expect(UriKind.DART_URI.encoding, 0x64);
     expect(UriKind.FILE_URI.encoding, 0x66);
     expect(UriKind.PACKAGE_URI.encoding, 0x70);
-  }
-}
-
-/**
- * Instances of `XmlValidator` traverse an [XmlNode] structure and validate the node
- * hierarchy.
- */
-class XmlValidator extends ht.RecursiveXmlVisitor<Object> {
-  /**
-   * A list containing the errors found while traversing the AST structure.
-   */
-  List<String> _errors = new List<String>();
-  /**
-   * The tags to expect when visiting or `null` if tags should not be checked.
-   */
-  List<XmlValidator_Tag> _expectedTagsInOrderVisited;
-  /**
-   * The current index into the [expectedTagsInOrderVisited] array.
-   */
-  int _expectedTagsIndex = 0;
-  /**
-   * The key/value pairs to expect when visiting or `null` if attributes should not be
-   * checked.
-   */
-  List<String> _expectedAttributeKeyValuePairs;
-  /**
-   * The current index into the [expectedAttributeKeyValuePairs].
-   */
-  int _expectedAttributeIndex = 0;
-  /**
-   * Assert that no errors were found while traversing any of the AST structures that have been
-   * visited.
-   */
-  void assertValid() {
-    while (_expectedTagsIndex < _expectedTagsInOrderVisited.length) {
-      String expectedTag =
-          _expectedTagsInOrderVisited[_expectedTagsIndex++]._tag;
-      _errors.add("Expected to visit node with tag: $expectedTag");
-    }
-    if (!_errors.isEmpty) {
-      StringBuffer buffer = new StringBuffer();
-      buffer.write("Invalid XML structure:");
-      for (String message in _errors) {
-        buffer.writeln();
-        buffer.write("   ");
-        buffer.write(message);
-      }
-      fail(buffer.toString());
-    }
-  }
-
-  /**
-   * Set the tags to be expected when visiting
-   *
-   * @param expectedTags the expected tags
-   */
-  void expectTags(List<XmlValidator_Tag> expectedTags) {
-    // Flatten the hierarchy into expected order in which the tags are visited
-    List<XmlValidator_Tag> expected = new List<XmlValidator_Tag>();
-    _expectTags(expected, expectedTags);
-    this._expectedTagsInOrderVisited = expected;
-  }
-
-  @override
-  Object visitHtmlUnit(ht.HtmlUnit node) {
-    if (node.parent != null) {
-      _errors.add("HtmlUnit should not have a parent");
-    }
-    if (node.endToken.type != ht.TokenType.EOF) {
-      _errors.add("HtmlUnit end token should be of type EOF");
-    }
-    _validateNode(node);
-    return super.visitHtmlUnit(node);
-  }
-
-  @override
-  Object visitXmlAttributeNode(ht.XmlAttributeNode actual) {
-    if (actual.parent is! ht.XmlTagNode) {
-      _errors.add(
-          "Expected ${actual.runtimeType} to have parent of type XmlTagNode");
-    }
-    String actualName = actual.name;
-    String actualValue = actual.valueToken.lexeme;
-    if (_expectedAttributeIndex < _expectedAttributeKeyValuePairs.length) {
-      String expectedName =
-          _expectedAttributeKeyValuePairs[_expectedAttributeIndex];
-      if (expectedName != actualName) {
-        _errors.add(
-            "Expected ${_expectedTagsIndex - 1} tag: ${_expectedTagsInOrderVisited[_expectedTagsIndex - 1]._tag} attribute ${_expectedAttributeIndex ~/ 2} to have name: $expectedName but found: $actualName");
-      }
-      String expectedValue =
-          _expectedAttributeKeyValuePairs[_expectedAttributeIndex + 1];
-      if (expectedValue != actualValue) {
-        _errors.add(
-            "Expected ${_expectedTagsIndex - 1} tag: ${_expectedTagsInOrderVisited[_expectedTagsIndex - 1]._tag} attribute ${_expectedAttributeIndex ~/ 2} to have value: $expectedValue but found: $actualValue");
-      }
-    } else {
-      _errors.add(
-          "Unexpected ${_expectedTagsIndex - 1} tag: ${_expectedTagsInOrderVisited[_expectedTagsIndex - 1]._tag} attribute ${_expectedAttributeIndex ~/ 2} name: $actualName value: $actualValue");
-    }
-    _expectedAttributeIndex += 2;
-    _validateNode(actual);
-    return super.visitXmlAttributeNode(actual);
-  }
-
-  @override
-  Object visitXmlTagNode(ht.XmlTagNode actual) {
-    if (!(actual.parent is ht.HtmlUnit || actual.parent is ht.XmlTagNode)) {
-      _errors.add(
-          "Expected ${actual.runtimeType} to have parent of type HtmlUnit or XmlTagNode");
-    }
-    if (_expectedTagsInOrderVisited != null) {
-      String actualTag = actual.tag;
-      if (_expectedTagsIndex < _expectedTagsInOrderVisited.length) {
-        XmlValidator_Tag expected =
-            _expectedTagsInOrderVisited[_expectedTagsIndex];
-        if (expected._tag != actualTag) {
-          _errors.add(
-              "Expected $_expectedTagsIndex tag: ${expected._tag} but found: $actualTag");
-        }
-        _expectedAttributeKeyValuePairs = expected._attributes._keyValuePairs;
-        int expectedAttributeCount =
-            _expectedAttributeKeyValuePairs.length ~/ 2;
-        int actualAttributeCount = actual.attributes.length;
-        if (expectedAttributeCount != actualAttributeCount) {
-          _errors.add(
-              "Expected $_expectedTagsIndex tag: ${expected._tag} to have $expectedAttributeCount attributes but found $actualAttributeCount");
-        }
-        _expectedAttributeIndex = 0;
-        _expectedTagsIndex++;
-        expect(actual.attributeEnd, isNotNull);
-        expect(actual.contentEnd, isNotNull);
-        int count = 0;
-        ht.Token token = actual.attributeEnd.next;
-        ht.Token lastToken = actual.contentEnd;
-        while (!identical(token, lastToken)) {
-          token = token.next;
-          if (++count > 1000) {
-            fail(
-                "Expected $_expectedTagsIndex tag: ${expected._tag} to have a sequence of tokens from getAttributeEnd() to getContentEnd()");
-            break;
-          }
-        }
-        if (actual.attributeEnd.type == ht.TokenType.GT) {
-          if (ht.HtmlParser.SELF_CLOSING.contains(actual.tag)) {
-            expect(actual.closingTag, isNull);
-          } else {
-            expect(actual.closingTag, isNotNull);
-          }
-        } else if (actual.attributeEnd.type == ht.TokenType.SLASH_GT) {
-          expect(actual.closingTag, isNull);
-        } else {
-          fail("Unexpected attribute end token: ${actual.attributeEnd.lexeme}");
-        }
-        if (expected._content != null && expected._content != actual.content) {
-          _errors.add(
-              "Expected $_expectedTagsIndex tag: ${expected._tag} to have content '${expected._content}' but found '${actual.content}'");
-        }
-        if (expected._children.length != actual.tagNodes.length) {
-          _errors.add(
-              "Expected $_expectedTagsIndex tag: ${expected._tag} to have ${expected._children.length} children but found ${actual.tagNodes.length}");
-        } else {
-          for (int index = 0; index < expected._children.length; index++) {
-            String expectedChildTag = expected._children[index]._tag;
-            String actualChildTag = actual.tagNodes[index].tag;
-            if (expectedChildTag != actualChildTag) {
-              _errors.add(
-                  "Expected $_expectedTagsIndex tag: ${expected._tag} child $index to have tag: $expectedChildTag but found: $actualChildTag");
-            }
-          }
-        }
-      } else {
-        _errors.add("Visited unexpected tag: $actualTag");
-      }
-    }
-    _validateNode(actual);
-    return super.visitXmlTagNode(actual);
-  }
-
-  /**
-   * Append the specified tags to the array in depth first order
-   *
-   * @param expected the array to which the tags are added (not `null`)
-   * @param expectedTags the expected tags to be added (not `null`, contains no `null`s)
-   */
-  void _expectTags(
-      List<XmlValidator_Tag> expected, List<XmlValidator_Tag> expectedTags) {
-    for (XmlValidator_Tag tag in expectedTags) {
-      expected.add(tag);
-      _expectTags(expected, tag._children);
-    }
-  }
-
-  void _validateNode(ht.XmlNode node) {
-    if (node.beginToken == null) {
-      _errors.add("No begin token for ${node.runtimeType}");
-    }
-    if (node.endToken == null) {
-      _errors.add("No end token for ${node.runtimeType}");
-    }
-    int nodeStart = node.offset;
-    int nodeLength = node.length;
-    if (nodeStart < 0 || nodeLength < 0) {
-      _errors.add("No source info for ${node.runtimeType}");
-    }
-    ht.XmlNode parent = node.parent;
-    if (parent != null) {
-      int nodeEnd = nodeStart + nodeLength;
-      int parentStart = parent.offset;
-      int parentEnd = parentStart + parent.length;
-      if (nodeStart < parentStart) {
-        _errors.add(
-            "Invalid source start ($nodeStart) for ${node.runtimeType} inside ${parent.runtimeType} ($parentStart)");
-      }
-      if (nodeEnd > parentEnd) {
-        _errors.add(
-            "Invalid source end ($nodeEnd) for ${node.runtimeType} inside ${parent.runtimeType} ($parentStart)");
-      }
-    }
-  }
-}
-
-class XmlValidator_Attributes {
-  final List<String> _keyValuePairs;
-  XmlValidator_Attributes([this._keyValuePairs = StringUtilities.EMPTY_ARRAY]);
-}
-
-class XmlValidator_Tag {
-  static const List<XmlValidator_Tag> EMPTY_LIST = const <XmlValidator_Tag>[];
-  final String _tag;
-  final XmlValidator_Attributes _attributes;
-  final String _content;
-  final List<XmlValidator_Tag> _children;
-  XmlValidator_Tag(this._tag, this._attributes, this._content,
-      [this._children = EMPTY_LIST]);
-}
-
-class _ExpectedScript {
-  String _expectedExternalScriptName;
-  HtmlUnitBuilderTest_ExpectedLibrary _expectedLibrary;
-  _ExpectedScript.con1(HtmlUnitBuilderTest_ExpectedLibrary expectedLibrary) {
-    this._expectedExternalScriptName = null;
-    this._expectedLibrary = expectedLibrary;
-  }
-  _ExpectedScript.con2(String expectedExternalScriptPath) {
-    this._expectedExternalScriptName = expectedExternalScriptPath;
-    this._expectedLibrary = null;
-  }
-  void _validate(int scriptIndex, HtmlScriptElement script) {
-    if (_expectedLibrary != null) {
-      _validateEmbedded(scriptIndex, script);
-    } else {
-      _validateExternal(scriptIndex, script);
-    }
-  }
-
-  void _validateEmbedded(int scriptIndex, HtmlScriptElement script) {
-    if (script is! EmbeddedHtmlScriptElementImpl) {
-      fail(
-          "Expected script $scriptIndex to be embedded, but found ${script != null ? script.runtimeType : "null"}");
-    }
-    EmbeddedHtmlScriptElementImpl embeddedScript =
-        script as EmbeddedHtmlScriptElementImpl;
-    _expectedLibrary._validate(scriptIndex, embeddedScript);
-  }
-
-  void _validateExternal(int scriptIndex, HtmlScriptElement script) {
-    if (script is! ExternalHtmlScriptElementImpl) {
-      fail(
-          "Expected script $scriptIndex to be external with src=$_expectedExternalScriptName but found ${script != null ? script.runtimeType : "null"}");
-    }
-    ExternalHtmlScriptElementImpl externalScript =
-        script as ExternalHtmlScriptElementImpl;
-    Source scriptSource = externalScript.scriptSource;
-    if (_expectedExternalScriptName == null) {
-      expect(scriptSource, isNull, reason: "script $scriptIndex");
-    } else {
-      expect(scriptSource, isNotNull, reason: "script $scriptIndex");
-      String actualExternalScriptName = scriptSource.shortName;
-      expect(actualExternalScriptName, _expectedExternalScriptName,
-          reason: "script $scriptIndex");
-    }
   }
 }

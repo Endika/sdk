@@ -6,9 +6,7 @@
 
 import 'dart:_js_helper' show patch;
 import 'dart:_isolate_helper' show CapabilityImpl,
-                                   CloseToken,
                                    IsolateNatives,
-                                   JsIsolateSink,
                                    ReceivePortImpl,
                                    RawReceivePortImpl;
 
@@ -20,6 +18,21 @@ class Isolate {
   // to match the external declaration.
   @patch
   static Isolate get current => _currentIsolateCache;
+
+  @patch
+  static Future<Uri> get packageRoot {
+    throw new UnsupportedError("Isolate.packageRoot");
+  }
+
+  @patch
+  static Future<Uri> get packageConfig {
+    throw new UnsupportedError("Isolate.packageConfig");
+  }
+
+  @patch
+  static Future<Uri> resolvePackageUri(Uri packageUri) {
+    throw new UnsupportedError("Isolate.resolvePackageUri");
+  }
 
   @patch
   static Future<Isolate> spawn(void entryPoint(message), var message,
@@ -62,9 +75,20 @@ class Isolate {
   @patch
   static Future<Isolate> spawnUri(
       Uri uri, List<String> args, var message,
-      {bool paused: false, bool checked, Uri packageRoot, bool errorsAreFatal,
-       SendPort onExit, SendPort onError}) {
+      {bool paused: false,
+       SendPort onExit,
+       SendPort onError,
+       bool errorsAreFatal,
+       bool checked,
+       Map<String, String> environment,
+       Uri packageRoot,
+       Uri packageConfig,
+       bool automaticPackageResolution: false}) {
+    if (environment != null) throw new UnimplementedError("environment");
     if (packageRoot != null) throw new UnimplementedError("packageRoot");
+    if (packageConfig != null) throw new UnimplementedError("packageConfig");
+    // TODO(lrn): Figure out how to handle the automaticPackageResolution
+    // parameter.
     bool forcePause = (errorsAreFatal != null) ||
                       (onExit != null) ||
                       (onError != null);
@@ -78,6 +102,7 @@ class Isolate {
       } else if (args != null) {
         throw new ArgumentError("Args must be a list of Strings $args");
       }
+      // TODO: Handle [packageRoot] somehow, possibly by throwing.
       // TODO: Consider passing the errorsAreFatal/onExit/onError values
       //       as arguments to the internal spawnUri instead of setting
       //       them after the isolate has been created.

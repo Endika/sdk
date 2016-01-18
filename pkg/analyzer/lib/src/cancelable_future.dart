@@ -2,7 +2,7 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library cancelable_future;
+library analyzer.src.cancelable_future;
 
 import 'dart:async';
 
@@ -259,8 +259,8 @@ class _CancelableCompleterFuture<T> implements CancelableFuture<T> {
   Future timeout(Duration timeLimit, {onTimeout()}) {
     // TODO(paulberry): Implement this in such a way that a timeout cancels
     // the future.
-    return _completer._outerCompleter.future.timeout(timeLimit,
-        onTimeout: onTimeout);
+    return _completer._outerCompleter.future
+        .timeout(timeLimit, onTimeout: onTimeout);
   }
 
   @override

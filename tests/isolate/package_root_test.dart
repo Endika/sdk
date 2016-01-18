@@ -1,36 +1,34 @@
-// Copyright (c) 2014, the Dart project authors.  Please see the AUTHORS file
+// Copyright (c) 2015, the Dart project authors.  Please see the AUTHORS file
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
 import 'dart:io';
 import 'dart:isolate';
 
-final SPAWN_PACKAGE_ROOT = Uri.parse("otherPackageRoot");
+final SPAWN_PACKAGE_ROOT = "file:///no/such/file/";
 
-void main([args, port]) {
+main([args, port]) async {
   if (port != null) {
-    testPackageRoot(args);
+    testPackageRoot(port);
     return;
   }
-  var p = new ReceivePort();
+  var p = new RawReceivePort();
   Isolate.spawnUri(Platform.script,
-                   [p.sendPort, Platform.packageRoot],
-                   {},
-                   packageRoot: SPAWN_PACKAGE_ROOT);
-  p.listen((msg) {
+                   [],
+                   p.sendPort,
+                   packageRoot: Uri.parse(SPAWN_PACKAGE_ROOT));
+  p.handler = (msg) {
     p.close();
-  });
+    if (msg != SPAWN_PACKAGE_ROOT) {
+      throw "Bad package root in child isolate: $msg";
+    }
+    print("SUCCESS");
+  };
+  print("Spawning isolate's package root: ${await Isolate.packageRoot}");
 }
 
-
-void testPackageRoot(args) {
-  var parentPackageRoot = args[1];
-  if (parentPackageRoot == Platform.packageRoot) {
-    throw "Got parent package root";
-  }
-  if (Uri.parse(Platform.packageRoot) != SPAWN_PACKAGE_ROOT) {
-    throw "Wrong package root";
-  }
-  args[0].send(null);
+testPackageRoot(port) async {
+  var packageRoot = await Isolate.packageRoot;
+  print("Spawned isolate's package root: $packageRoot");
+  port.send(packageRoot.toString());
 }
-

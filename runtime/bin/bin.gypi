@@ -18,6 +18,8 @@
     'bootstrap_resources_cc_file':
         '<(gen_source_dir)/bootstrap_resources_gen.cc',
     'snapshot_cc_file': '<(gen_source_dir)/snapshot_gen.cc',
+    'observatory_assets_cc_file': '<(gen_source_dir)/observatory_assets.cc',
+    'observatory_assets_tar_file': '<(gen_source_dir)/observatory_assets.tar',
   },
   'targets': [
     {
@@ -199,6 +201,7 @@
         'generate_io_patch_cc_file#host',
         'generate_snapshot_file#host',
         'generate_resources_cc_file#host',
+        'generate_observatory_assets_cc_file#host',
       ],
       'sources': [
         'builtin_common.cc',
@@ -218,6 +221,7 @@
         'vmservice_impl.cc',
         'vmservice_impl.h',
         '<(resources_cc_file)',
+        '<(observatory_assets_cc_file)',
       ],
       'sources/': [
         ['exclude', '_test\\.(cc|h)$'],
@@ -295,7 +299,7 @@
       'conditions': [
         ['dart_io_support==1', {
           'dependencies': [
-            'bin/net/zlib.gyp:zlib_dart',
+            'bin/zlib.gyp:zlib_dart',
           ],
         }],
         ['dart_io_support==1 and dart_io_secure_socket==1', {
@@ -370,8 +374,11 @@
       'type': 'executable',
       'toolsets':['host'],
       'dependencies': [
+        'generate_resources_cc_file#host',
+        'generate_observatory_assets_cc_file#host',
         'libdart_nosnapshot',
         'libdart_builtin',
+        'libdart_io',
       ],
       'include_dirs': [
         '..',
@@ -389,13 +396,16 @@
         'platform_macos.cc',
         'platform_win.cc',
         'platform.h',
+        'vmservice_impl.cc',
+        'vmservice_impl.h',
         # Include generated source files.
         '<(builtin_cc_file)',
         '<(io_cc_file)',
         '<(io_patch_cc_file)',
+        '<(resources_cc_file)',
       ],
       'defines': [
-        'PLATFORM_DISABLE_SOCKET'
+        'PLATFORM_DISABLE_SOCKET',
       ],
       'conditions': [
         ['OS=="win"', {
@@ -469,12 +479,41 @@
       ]
     },
     {
-      'target_name': 'generate_resources_cc_file',
+      'target_name': 'generate_observatory_assets_cc_file',
       'type': 'none',
       'toolsets':['host'],
       'dependencies': [
         'build_observatory#host',
       ],
+      'actions': [
+        {
+          'action_name': 'generate_observatory_assets_cc_file',
+          'inputs': [
+            '../tools/create_archive.py',
+            '<(PRODUCT_DIR)/observatory/deployed/web/index.html'
+          ],
+          'outputs': [
+            '<(observatory_assets_cc_file)',
+          ],
+          'action': [
+            'python',
+            'tools/create_archive.py',
+            '--output', '<(observatory_assets_cc_file)',
+            '--tar_output', '<(observatory_assets_tar_file)',
+            '--outer_namespace', 'dart',
+            '--inner_namespace', 'bin',
+            '--name', 'observatory_assets_archive',
+            '--compress',
+            '--client_root', '<(PRODUCT_DIR)/observatory/deployed/web/',
+          ],
+          'message': 'Generating ''<(observatory_assets_cc_file)'' file.'
+        },
+      ]
+    },
+    {
+      'target_name': 'generate_resources_cc_file',
+      'type': 'none',
+      'toolsets':['host'],
       'includes': [
         'resources_sources.gypi',
       ],
@@ -483,8 +522,6 @@
           'action_name': 'generate_resources_cc',
           'inputs': [
             '../tools/create_resources.py',
-            # The following two files are used to trigger a rebuild.
-            '<(PRODUCT_DIR)/observatory/deployed/web/index.html',
             '<@(_sources)',
           ],
           'outputs': [
@@ -493,13 +530,11 @@
           'action': [
             'python',
             'tools/create_resources.py',
-            '--compress',
             '--output', '<(resources_cc_file)',
             '--outer_namespace', 'dart',
             '--inner_namespace', 'bin',
             '--table_name', 'service_bin',
             '--root_prefix', 'bin/',
-            '--client_root', '<(PRODUCT_DIR)/observatory/deployed/web/',
             '<@(_sources)'
           ],
           'message': 'Generating ''<(resources_cc_file)'' file.'
@@ -549,9 +584,11 @@
         'build_observatory#host',
         'generate_snapshot_file#host',
         'generate_resources_cc_file#host',
+        'generate_observatory_assets_cc_file#host',
       ],
       'include_dirs': [
         '..',
+        '../../third_party/', # Zlib
       ],
       'sources': [
         'main.cc',
@@ -564,6 +601,7 @@
         'vmservice_impl.h',
         '<(snapshot_cc_file)',
         '<(resources_cc_file)',
+        '<(observatory_assets_cc_file)',
       ],
       'conditions': [
         ['OS=="win"', {
@@ -590,6 +628,50 @@
       },
     },
     {
+      # dart binary for running precompiled snapshots without the compiler.
+      'target_name': 'dart_precompiled',
+      'type': 'executable',
+      'dependencies': [
+        'libdart_precompiled',
+        'libdart_builtin',
+        'libdart_io',
+        'build_observatory#host',
+        'generate_resources_cc_file#host',
+        'generate_observatory_assets_cc_file#host',
+      ],
+      'include_dirs': [
+        '..',
+        '../../third_party/', # Zlib
+      ],
+      'sources': [
+        'main.cc',
+        'builtin_common.cc',
+        'builtin_natives.cc',
+        'builtin_nolib.cc',
+        'builtin.h',
+        'io_natives.h',
+        'vmservice_impl.cc',
+        'vmservice_impl.h',
+        'snapshot_empty.cc',
+        '<(resources_cc_file)',
+        '<(observatory_assets_cc_file)',
+      ],
+      'conditions': [
+        ['OS=="win"', {
+          'link_settings': {
+            'libraries': [ '-lws2_32.lib', '-lRpcrt4.lib', '-lwinmm.lib' ],
+          },
+          # Generate an import library on Windows, by exporting a function.
+          # Extensions use this import library to link to the API in dart.exe.
+          'msvs_settings': {
+            'VCLinkerTool': {
+              'AdditionalOptions': [ '/EXPORT:Dart_True' ],
+            },
+          },
+        }],
+      ],
+    },
+    {
       # dart binary built for the host. It does not use a snapshot
       # and does not include Observatory.
       'target_name': 'dart_bootstrap',
@@ -603,6 +685,7 @@
       ],
       'include_dirs': [
         '..',
+        '../../third_party/', # Zlib
       ],
       'sources': [
         'main.cc',
@@ -618,6 +701,7 @@
         '<(io_cc_file)',
         '<(io_patch_cc_file)',
         '<(bootstrap_resources_cc_file)',
+        'observatory_assets_empty.cc',
         'snapshot_empty.cc',
       ],
       'conditions': [
@@ -653,9 +737,11 @@
         'libdart_builtin',
         'libdart_io',
         'generate_resources_cc_file#host',
+        'generate_observatory_assets_cc_file#host',
       ],
       'include_dirs': [
         '..',
+        '../../third_party/', # Zlib
       ],
       'sources': [
         'main.cc',
@@ -671,6 +757,7 @@
         '<(io_cc_file)',
         '<(io_patch_cc_file)',
         '<(resources_cc_file)',
+        '<(observatory_assets_cc_file)',
         'snapshot_empty.cc',
       ],
       'conditions': [

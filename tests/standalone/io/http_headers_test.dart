@@ -8,6 +8,7 @@ import "package:expect/expect.dart";
 import "dart:async";
 import "dart:collection";
 import "dart:convert";
+import "dart:developer";
 import "dart:math";
 import "dart:typed_data";
 import "dart:isolate";
@@ -28,6 +29,7 @@ part "../../../sdk/lib/io/http_date.dart";
 part "../../../sdk/lib/io/http_parser.dart";
 part "../../../sdk/lib/io/http_headers.dart";
 part "../../../sdk/lib/io/http_session.dart";
+part "../../../sdk/lib/io/io_resource_info.dart";
 part "../../../sdk/lib/io/io_service.dart";
 part "../../../sdk/lib/io/io_sink.dart";
 part "../../../sdk/lib/io/platform.dart";
@@ -294,6 +296,8 @@ void testHeaderValue() {
     "  attachment  ;filename=genome.jpeg  ;"
     "modification-date = \"Wed, 12 February 1997 16:29:51 -0500\""  );
   check(headerValue, "attachment", parameters);
+  headerValue = HeaderValue.parse("xxx; aaa; bbb; ccc");
+  check(headerValue, "xxx", {"aaa": null, "bbb": null, "ccc": null});
 }
 
 void testContentType() {

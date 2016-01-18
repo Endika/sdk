@@ -8,8 +8,7 @@ import 'dart:async';
 import 'dart:collection';
 
 import 'package:analyzer/src/context/cache.dart';
-import 'package:analyzer/src/generated/engine.dart'
-    hide AnalysisTask, AnalysisContextImpl, WorkManager;
+import 'package:analyzer/src/generated/engine.dart';
 import 'package:analyzer/src/generated/java_engine.dart';
 import 'package:analyzer/src/generated/resolver.dart';
 import 'package:analyzer/src/generated/utilities_general.dart';
@@ -17,7 +16,10 @@ import 'package:analyzer/src/task/inputs.dart';
 import 'package:analyzer/src/task/manager.dart';
 import 'package:analyzer/task/model.dart';
 
-final PerformanceTag workOrderMoveNextPerfTag =
+final PerformanceTag analysisDriverProcessOutputs =
+    new PerformanceTag('AnalysisDriver.processOutputs');
+
+final PerformanceTag workOrderMoveNextPerformanceTag =
     new PerformanceTag('WorkOrder.moveNext');
 
 /**
@@ -44,8 +46,8 @@ class AnalysisDriver {
   /**
    * The map of [ComputedResult] controllers.
    */
-  final Map<ResultDescriptor,
-          StreamController<ComputedResult>> resultComputedControllers =
+  final Map<ResultDescriptor, StreamController<ComputedResult>>
+      resultComputedControllers =
       <ResultDescriptor, StreamController<ComputedResult>>{};
 
   /**
@@ -102,7 +104,12 @@ class AnalysisDriver {
       WorkOrder workOrder = createWorkOrderForResult(target, result);
       if (workOrder != null) {
         while (workOrder.moveNext()) {
+//          AnalysisTask previousTask = task;
+//          String message = workOrder.current.toString();
           task = performWorkItem(workOrder.current);
+//          if (task == null) {
+//            throw new AnalysisException(message, previousTask.caughtException);
+//          }
         }
       }
       return task;
@@ -160,7 +167,8 @@ class AnalysisDriver {
     }
     TaskDescriptor taskDescriptor = taskManager.findTask(target, result);
     try {
-      WorkItem workItem = new WorkItem(context, target, taskDescriptor, result);
+      WorkItem workItem =
+          new WorkItem(context, target, taskDescriptor, result, 0, null);
       return new WorkOrder(taskManager, workItem);
     } catch (exception, stackTrace) {
       throw new AnalysisException(
@@ -261,31 +269,33 @@ class AnalysisDriver {
     AnalysisTask task = item.buildTask();
     _onTaskStartedController.add(task);
     task.perform();
-    AnalysisTarget target = task.target;
-    CacheEntry entry = context.getCacheEntry(target);
-    if (task.caughtException == null) {
-      List<TargetedResult> dependedOn = item.inputTargetedResults.toList();
-      Map<ResultDescriptor, dynamic> outputs = task.outputs;
-      for (ResultDescriptor result in task.descriptor.results) {
-        // TODO(brianwilkerson) We could check here that a value was produced
-        // and throw an exception if not (unless we want to allow null values).
-        entry.setValue(result, outputs[result], dependedOn);
-      }
-      outputs.forEach((ResultDescriptor descriptor, value) {
-        StreamController<ComputedResult> controller =
-            resultComputedControllers[descriptor];
-        if (controller != null) {
-          ComputedResult event =
-              new ComputedResult(context, descriptor, target, value);
-          controller.add(event);
+    analysisDriverProcessOutputs.makeCurrentWhile(() {
+      AnalysisTarget target = task.target;
+      CacheEntry entry = context.getCacheEntry(target);
+      if (task.caughtException == null) {
+        List<TargetedResult> dependedOn = item.inputTargetedResults.toList();
+        Map<ResultDescriptor, dynamic> outputs = task.outputs;
+        for (ResultDescriptor result in task.descriptor.results) {
+          // TODO(brianwilkerson) We could check here that a value was produced
+          // and throw an exception if not (unless we want to allow null values).
+          entry.setValue(result, outputs[result], dependedOn);
         }
-      });
-      for (WorkManager manager in workManagers) {
-        manager.resultsComputed(target, outputs);
+        outputs.forEach((ResultDescriptor descriptor, value) {
+          StreamController<ComputedResult> controller =
+              resultComputedControllers[descriptor];
+          if (controller != null) {
+            ComputedResult event =
+                new ComputedResult(context, descriptor, target, value);
+            controller.add(event);
+          }
+        });
+        for (WorkManager manager in workManagers) {
+          manager.resultsComputed(target, outputs);
+        }
+      } else {
+        entry.setErrorState(task.caughtException, item.descriptor.results);
       }
-    } else {
-      entry.setErrorState(task.caughtException, item.descriptor.results);
-    }
+    });
     _onTaskCompletedController.add(task);
     return task;
   }
@@ -468,6 +478,14 @@ abstract class ExtendedAnalysisContext implements InternalAnalysisContext {
  */
 class InfiniteTaskLoopException extends AnalysisException {
   /**
+   * A concrete cyclic path of [TargetedResults] within the [dependencyCycle],
+   * `null` if no such path exists.  All nodes in the path are in the
+   * dependencyCycle, but the path is not guaranteed to cover the
+   * entire cycle.
+   */
+  final List<TargetedResult> cyclicPath;
+
+  /**
    * If a dependency cycle was found while computing the inputs for the task,
    * the set of [WorkItem]s contained in the cycle (if there are overlapping
    * cycles, this is the set of all [WorkItem]s in the entire strongly
@@ -479,13 +497,14 @@ class InfiniteTaskLoopException extends AnalysisException {
    * Initialize a newly created exception to represent a failed attempt to
    * perform the given [task] due to the given [dependencyCycle].
    */
-  InfiniteTaskLoopException(AnalysisTask task, this.dependencyCycle)
+  InfiniteTaskLoopException(AnalysisTask task, this.dependencyCycle,
+      [this.cyclicPath])
       : super(
             'Infinite loop while performing task ${task.descriptor.name} for ${task.target}');
 }
 
 /**
- * Object used by CycleAwareDependencyWalker to report a single strongly
+ * Object used by [CycleAwareDependencyWalker] to report a single strongly
  * connected component of nodes.
  */
 class StronglyConnectedComponent<Node> {
@@ -506,7 +525,7 @@ class StronglyConnectedComponent<Node> {
 }
 
 /**
- * A description of a single anaysis task that can be performed to advance
+ * A description of a single analysis task that can be performed to advance
  * analysis.
  */
 class WorkItem {
@@ -529,6 +548,16 @@ class WorkItem {
    * The [ResultDescriptor] which was led to this work item being spawned.
    */
   final ResultDescriptor spawningResult;
+
+  /**
+   * The level of this item in its [WorkOrder].
+   */
+  final int level;
+
+  /**
+   * The work order that this item is part of, may be `null`.
+   */
+  WorkOrder workOrder;
 
   /**
    * An iterator used to iterate over the descriptors of the inputs to the task,
@@ -568,11 +597,13 @@ class WorkItem {
    * Initialize a newly created work item to compute the inputs for the task
    * described by the given descriptor.
    */
-  WorkItem(this.context, this.target, this.descriptor, this.spawningResult) {
+  WorkItem(this.context, this.target, this.descriptor, this.spawningResult,
+      this.level, this.workOrder) {
     AnalysisTarget actualTarget =
         identical(target, AnalysisContextTarget.request)
             ? new AnalysisContextTarget(context)
             : target;
+//    print('${'\t' * level}$spawningResult of $actualTarget');
     Map<String, TaskInput> inputDescriptors =
         descriptor.createTaskInputs(actualTarget);
     builder = new TopLevelTaskInputBuilder(inputDescriptors);
@@ -627,6 +658,25 @@ class WorkItem {
     while (builder != null) {
       AnalysisTarget inputTarget = builder.currentTarget;
       ResultDescriptor inputResult = builder.currentResult;
+
+      // TODO(scheglov) record information to debug
+      // https://github.com/dart-lang/sdk/issues/24939
+      if (inputTarget == null || inputResult == null) {
+        try {
+          String message =
+              'Invalid input descriptor ($inputTarget, $inputResult) for $this';
+          if (workOrder != null) {
+            message += '\nPath:\n' + workOrder.workItems.join('|\n');
+          }
+          throw new AnalysisException(message);
+        } catch (exception, stackTrace) {
+          this.exception = new CaughtException(exception, stackTrace);
+          AnalysisEngine.instance.logger
+              .logError('Task failed: $this', this.exception);
+        }
+        return null;
+      }
+
       inputTargetedResults.add(new TargetedResult(inputTarget, inputResult));
       CacheEntry inputEntry = context.getCacheEntry(inputTarget);
       CacheState inputState = inputEntry.getState(inputResult);
@@ -652,16 +702,25 @@ class WorkItem {
         //
         throw new UnimplementedError();
       } else if (inputState != CacheState.VALID) {
-        try {
-          TaskDescriptor descriptor =
-              taskManager.findTask(inputTarget, inputResult);
-          return new WorkItem(context, inputTarget, descriptor, inputResult);
-        } on AnalysisException catch (exception, stackTrace) {
-          this.exception = new CaughtException(exception, stackTrace);
-          return null;
+        if (context.aboutToComputeResult(inputEntry, inputResult)) {
+          inputState = CacheState.VALID;
+          builder.currentValue = inputEntry.getValue(inputResult);
+        } else {
+          try {
+            TaskDescriptor descriptor =
+                taskManager.findTask(inputTarget, inputResult);
+            return new WorkItem(context, inputTarget, descriptor, inputResult,
+                level + 1, workOrder);
+          } on AnalysisException catch (exception, stackTrace) {
+            this.exception = new CaughtException(exception, stackTrace);
+            return null;
+          }
         }
       } else {
         builder.currentValue = inputEntry.getValue(inputResult);
+        if (builder.flushOnAccess) {
+          inputEntry.setState(inputResult, CacheState.FLUSHED);
+        }
       }
       if (!builder.moveNext()) {
         inputs = builder.inputValue;
@@ -700,7 +759,9 @@ class WorkOrder implements Iterator<WorkItem> {
    * the given work item.
    */
   WorkOrder(TaskManager taskManager, WorkItem item)
-      : _dependencyWalker = new _WorkOrderDependencyWalker(taskManager, item);
+      : _dependencyWalker = new _WorkOrderDependencyWalker(taskManager, item) {
+    item.workOrder = this;
+  }
 
   @override
   WorkItem get current {
@@ -711,9 +772,11 @@ class WorkOrder implements Iterator<WorkItem> {
     }
   }
 
+  List<WorkItem> get workItems => _dependencyWalker._path;
+
   @override
   bool moveNext() {
-    return workOrderMoveNextPerfTag.makeCurrentWhile(() {
+    return workOrderMoveNextPerformanceTag.makeCurrentWhile(() {
       if (currentItems != null && currentItems.length > 1) {
         // Yield more items.
         currentItems.removeLast();
@@ -742,7 +805,7 @@ class WorkOrder implements Iterator<WorkItem> {
 }
 
 /**
- * Specilaization of [CycleAwareDependencyWalker] for use by [WorkOrder].
+ * Specialization of [CycleAwareDependencyWalker] for use by [WorkOrder].
  */
 class _WorkOrderDependencyWalker extends CycleAwareDependencyWalker<WorkItem> {
   /**

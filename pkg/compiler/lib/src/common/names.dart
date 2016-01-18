@@ -9,8 +9,9 @@ library dart2js.common.names;
 import '../elements/elements.dart' show
     Name,
     PublicName;
-import '../universe/universe.dart' show
-    CallStructure,
+import '../universe/call_structure.dart' show
+    CallStructure;
+import '../universe/selector.dart' show
     Selector;
 
 /// [String]s commonly used.
@@ -18,9 +19,16 @@ class Identifiers {
   /// The name of the call operator.
   static const String call = 'call';
 
+  /// The name of the current element property used on iterators in for-each
+  /// loops.
+  static const String current = 'current';
+
   /// The name of the from environment constructors on 'int', 'bool' and
   /// 'String'.
   static const String fromEnvironment = 'fromEnvironment';
+
+  /// The name of the iterator property used in for-each loops.
+  static const String iterator = 'iterator';
 
   /// The name of the main method.
   static const String main = 'main';
@@ -30,6 +38,9 @@ class Identifiers {
 
   /// The name of the runtime type property on 'Object'.
   static const String runtimeType_ = 'runtimeType';
+
+  /// The name of the getter returning the size of containers and strings.
+  static const String length = 'length';
 }
 
 /// [Name]s commonly used.
@@ -39,13 +50,13 @@ class Names {
 
   /// The name of the current element property used on iterators in for-each
   /// loops.
-  static const Name current = const PublicName('current');
+  static const Name current = const PublicName(Identifiers.current);
 
   /// The name of the dynamic type.
   static const Name dynamic_ = const PublicName('dynamic');
 
   /// The name of the iterator property used in for-each loops.
-  static const Name iterator = const PublicName('iterator');
+  static const Name iterator = const PublicName(Identifiers.iterator);
 
   /// The name of the move next method used on iterators in for-each loops.
   static const Name moveNext = const PublicName('moveNext');
@@ -55,6 +66,14 @@ class Names {
 
   /// The name of the to-string method on 'Object'.
   static const Name toString_ = const PublicName('toString');
+
+  static const Name INDEX_NAME = const PublicName("[]");
+  static const Name INDEX_SET_NAME = const PublicName("[]=");
+  static const Name CALL_NAME = Names.call;
+
+  static const Name length = const PublicName(Identifiers.length);
+
+  static const Name runtimeType_ = const PublicName(Identifiers.runtimeType_);
 }
 
 /// [Selector]s commonly used.
@@ -78,9 +97,17 @@ class Selectors {
   static final Selector noSuchMethod_ =
       new Selector.call(Names.noSuchMethod_, CallStructure.ONE_ARG);
 
+  /// The selector for tearing off noSuchMethod.
+  static final Selector noSuchMethodGetter =
+      new Selector.getter(Names.noSuchMethod_);
+
   /// The selector for calling the to-string method on 'Object'.
   static final Selector toString_ =
       new Selector.call(Names.toString_, CallStructure.NO_ARGS);
+
+  /// The selector for tearing off toString.
+  static final Selector toStringGetter =
+      new Selector.getter(Names.toString_);
 
   static final Selector hashCode_ =
       new Selector.getter(const PublicName('hashCode'));
@@ -89,6 +116,24 @@ class Selectors {
       new Selector.call(const PublicName("compareTo"), CallStructure.ONE_ARG);
 
   static final Selector equals = new Selector.binaryOperator('==');
+
+  static final Selector length = new Selector.getter(Names.length);
+
+  static final Selector codeUnitAt =
+      new Selector.call(const PublicName('codeUnitAt'), CallStructure.ONE_ARG);
+
+  static final Selector index = new Selector.index();
+
+  static final Selector runtimeType_ = new Selector.getter(Names.runtimeType_);
+
+  /// List of all the selectors held in static fields.
+  ///
+  /// These objects are shared between different runs in batch-mode and must
+  /// thus remain in the [Selector.canonicalizedValues] map.
+  static final List<Selector> ALL = <Selector>[
+      cancel, current, iterator, moveNext, noSuchMethod_, noSuchMethodGetter,
+      toString_, toStringGetter, hashCode_, compareTo, equals, length,
+      codeUnitAt, index, runtimeType_];
 }
 
 /// [Uri]s commonly used.

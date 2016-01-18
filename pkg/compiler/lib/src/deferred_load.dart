@@ -4,6 +4,7 @@
 
 library deferred_load;
 
+import 'common.dart';
 import 'common/backend_api.dart' show
     Backend;
 import 'common/tasks.dart' show
@@ -16,8 +17,6 @@ import 'constants/values.dart' show
     DeferredConstantValue,
     StringConstantValue;
 import 'dart_types.dart';
-import 'diagnostics/messages.dart' show
-    MessageKind;
 import 'elements/elements.dart' show
     AccessorElement,
     AstElement,
@@ -25,13 +24,15 @@ import 'elements/elements.dart' show
     Element,
     ElementKind,
     Elements,
+    ExportElement,
     FunctionElement,
+    ImportElement,
     LibraryElement,
+    LocalFunctionElement,
     MetadataAnnotation,
     PrefixElement,
     ScopeContainerElement,
-    TypedefElement,
-    VoidElement;
+    TypedefElement;
 import 'js_backend/js_backend.dart' show
     JavaScriptBackend;
 import 'resolution/resolution.dart' show
@@ -47,6 +48,15 @@ import 'tree/tree.dart' show
     LiteralString,
     NewExpression,
     Node;
+import 'universe/use.dart' show
+    DynamicUse,
+    StaticUse,
+    TypeUse,
+    TypeUseKind;
+import 'universe/world_impact.dart' show
+    ImpactUseCase,
+    WorldImpact,
+    WorldImpactVisitorImpl;
 import 'util/setlet.dart' show
     Setlet;
 import 'util/uri_extras.dart' as uri_extras;
@@ -66,13 +76,12 @@ import 'util/util.dart' show
 class OutputUnit {
   /// The deferred imports that will load this output unit when one of them is
   /// loaded.
-  final Setlet<Import> imports = new Setlet<Import>();
+  final Setlet<_DeferredImport> imports = new Setlet<_DeferredImport>();
 
   /// `true` if this output unit is for the main output file.
   final bool isMainOutput;
 
   /// A unique name representing this [OutputUnit].
-  /// Based on the set of [imports].
   String name;
 
   OutputUnit({this.isMainOutput: false});
@@ -86,7 +95,7 @@ class OutputUnit {
 
   int get hashCode {
     int sum = 0;
-    for (Import import in imports) {
+    for (_DeferredImport import in imports) {
       sum = (sum + import.hashCode) & 0x3FFFFFFF;  // Stay in 30 bit range.
     }
     return sum;
@@ -105,8 +114,7 @@ class DeferredLoadTask extends CompilerTask {
 
   /// A synthetic [Import] representing the loading of the main
   /// program.
-  final Import _fakeMainImport = new Import(null, new LiteralString(null,
-      new LiteralDartString("main")), null, null, null);
+  final _DeferredImport _fakeMainImport = const _DeferredImport();
 
   /// The OutputUnit that will be loaded when the program starts.
   final OutputUnit mainOutputUnit = new OutputUnit(isMainOutput: true);
@@ -118,6 +126,8 @@ class DeferredLoadTask extends CompilerTask {
   /// Will be `true` if the program contains deferred libraries.
   bool isProgramSplit = false;
 
+  static const ImpactUseCase IMPACT_USE = const ImpactUseCase('Deferred load');
+
   /// A mapping from the name of a defer import to all the output units it
   /// depends on in a list of lists to be loaded in the order they appear.
   ///
@@ -127,7 +137,11 @@ class DeferredLoadTask extends CompilerTask {
   /// can be loaded in parallel. And finally lib1 can be loaded.
   final Map<String, List<OutputUnit>> hunksToLoad =
       new Map<String, List<OutputUnit>>();
-  final Map<Import, String> importDeferName = new Map<Import, String>();
+
+  /// A cache of the result of calling `computeImportDeferName` on the keys of
+  /// this map.
+  final Map<_DeferredImport, String> importDeferName =
+      <_DeferredImport, String>{};
 
   /// A mapping from elements and constants to their output unit. Query this via
   /// [outputUnitForElement]
@@ -142,17 +156,18 @@ class DeferredLoadTask extends CompilerTask {
   /// All the imports with a [DeferredLibrary] annotation, mapped to the
   /// [LibraryElement] they import.
   /// The main library is included in this set for convenience.
-  final Map<Import, LibraryElement> _allDeferredImports =
-      new Map<Import, LibraryElement>();
+  final Map<_DeferredImport, LibraryElement> _allDeferredImports =
+      new Map<_DeferredImport, LibraryElement>();
 
   /// Because the token-stream is forgotten later in the program, we cache a
   /// description of each deferred import.
-  final _deferredImportDescriptions = new Map<Import, ImportDescription>();
+  final Map<_DeferredImport, ImportDescription> _deferredImportDescriptions =
+      <_DeferredImport, ImportDescription>{};
 
   // For each deferred import we want to know exactly what elements have to
   // be loaded.
-  Map<Import, Set<Element>> _importedDeferredBy = null;
-  Map<Import, Set<ConstantValue>> _constantsDeferredBy = null;
+  Map<_DeferredImport, Set<Element>> _importedDeferredBy = null;
+  Map<_DeferredImport, Set<ConstantValue>> _constantsDeferredBy = null;
 
   Set<Element> _mainElements = new Set<Element>();
 
@@ -192,6 +207,16 @@ class DeferredLoadTask extends CompilerTask {
     return outputUnitForElement(element) != mainOutputUnit;
   }
 
+  /// Returns the unique name for the deferred import of [prefix].
+  String getImportDeferName(Spannable node, PrefixElement prefix) {
+    String name =
+        importDeferName[new _DeclaredDeferredImport(prefix.deferredImport)];
+    if (name == null) {
+      reporter.internalError(node, "No deferred name for $prefix.");
+    }
+    return name;
+  }
+
   /// Returns `true` if element [to] is reachable from element [from] without
   /// crossing a deferred import.
   ///
@@ -207,14 +232,14 @@ class DeferredLoadTask extends CompilerTask {
   void registerConstantDeferredUse(DeferredConstantValue constant,
                                    PrefixElement prefix) {
     OutputUnit outputUnit = new OutputUnit();
-    outputUnit.imports.add(prefix.deferredImport);
+    outputUnit.imports.add(new _DeclaredDeferredImport(prefix.deferredImport));
     _constantToOutputUnit[constant] = outputUnit;
   }
 
   /// Answers whether [element] is explicitly deferred when referred to from
   /// [library].
   bool _isExplicitlyDeferred(Element element, LibraryElement library) {
-    Link<Import> imports = _getImports(element, library);
+    Iterable<ImportElement> imports = _getImports(element, library);
     // If the element is not imported explicitly, it is implicitly imported
     // not deferred.
     if (imports.isEmpty) return false;
@@ -222,11 +247,11 @@ class DeferredLoadTask extends CompilerTask {
     // is explicitly deferred, we say the element is explicitly deferred.
     // TODO(sigurdm): We might want to give a warning if the imports do not
     // agree.
-    return imports.every((Import import) => import.isDeferred);
+    return imports.every((ImportElement import) => import.isDeferred);
   }
 
   /// Returns a [Link] of every [Import] that imports [element] into [library].
-  Link<Import> _getImports(Element element, LibraryElement library) {
+  Iterable<ImportElement> _getImports(Element element, LibraryElement library) {
     if (element.isClassMember) {
       element = element.enclosingClass;
     }
@@ -246,8 +271,15 @@ class DeferredLoadTask extends CompilerTask {
       Set<ConstantValue> constants,
       isMirrorUsage) {
 
+    if (element.isMalformed) {
+      // Malformed elements are ignored.
+      return;
+    }
+
     /// Recursively collects all the dependencies of [type].
     void collectTypeDependencies(DartType type) {
+      // TODO(het): we would like to separate out types that are only needed for
+      // rti from types that are needed for their members.
       if (type is GenericType) {
         type.typeArguments.forEach(collectTypeDependencies);
       }
@@ -264,7 +296,7 @@ class DeferredLoadTask extends CompilerTask {
         collectTypeDependencies(type.returnType);
       } else if (type is TypedefType) {
         elements.add(type.element);
-        collectTypeDependencies(type.unalias(compiler));
+        collectTypeDependencies(type.unaliased);
       } else if (type is InterfaceType) {
         elements.add(type.element);
       }
@@ -278,42 +310,64 @@ class DeferredLoadTask extends CompilerTask {
       // TODO(johnniwinther): Remove this when [AbstractFieldElement] has been
       // removed.
       if (element is! AstElement) return;
-      AstElement astElement = element;
 
-      // TODO(sigurdm): We want to be more specific about this - need a better
-      // way to query "liveness".
-      if (astElement is! TypedefElement &&
-          !compiler.enqueuer.resolution.hasBeenResolved(astElement)) {
-        return;
-      }
-
-      TreeElements treeElements = astElement.resolvedAst.elements;
-
-      assert(treeElements != null);
-
-      for (Element dependency in treeElements.allElements) {
-        if (dependency.isLocal && !dependency.isFunction) continue;
-        if (dependency.isErroneous) continue;
-        if (dependency.isTypeVariable) continue;
-
-        elements.add(dependency);
-      }
-
-      for (DartType type in treeElements.requiredTypes) {
-        collectTypeDependencies(type);
-      }
-
-      treeElements.forEachConstantNode((Node node, _) {
-        // Explicitly depend on the backend constants.
-        ConstantValue value =
-            backend.constants.getConstantValueForNode(node, treeElements);
-        if (value != null) {
-          // TODO(johnniwinther): Assert that all constants have values when
-          // these are directly evaluated.
-          constants.add(value);
+      if (element.isTypedef) {
+        TypedefElement typdef = element;
+        collectTypeDependencies(typdef.thisType);
+      } else {
+        // TODO(sigurdm): We want to be more specific about this - need a better
+        // way to query "liveness".
+        AstElement analyzableElement = element.analyzableElement.declaration;
+        if (!compiler.enqueuer.resolution.hasBeenProcessed(analyzableElement)) {
+          return;
         }
-      });
-      elements.addAll(treeElements.otherDependencies);
+
+        WorldImpact worldImpact =
+            compiler.resolution.getWorldImpact(analyzableElement);
+        compiler.impactStrategy.visitImpact(
+            analyzableElement,
+            worldImpact,
+            new WorldImpactVisitorImpl(
+                visitStaticUse: (StaticUse staticUse) {
+                  elements.add(staticUse.element);
+                },
+                visitTypeUse: (TypeUse typeUse) {
+                  DartType type = typeUse.type;
+                  switch (typeUse.kind) {
+                    case TypeUseKind.TYPE_LITERAL:
+                      if (type.isTypedef || type.isInterfaceType) {
+                        elements.add(type.element);
+                      }
+                      break;
+                    case TypeUseKind.INSTANTIATION:
+                    case TypeUseKind.IS_CHECK:
+                    case TypeUseKind.AS_CAST:
+                    case TypeUseKind.CATCH_TYPE:
+                      collectTypeDependencies(type);
+                      break;
+                    case TypeUseKind.CHECKED_MODE_CHECK:
+                      if (compiler.enableTypeAssertions) {
+                        collectTypeDependencies(type);
+                      }
+                      break;
+                  }
+                }),
+             IMPACT_USE);
+
+        TreeElements treeElements = analyzableElement.resolvedAst.elements;
+        assert(treeElements != null);
+
+        treeElements.forEachConstantNode((Node node, _) {
+          // Explicitly depend on the backend constants.
+          ConstantValue value =
+              backend.constants.getConstantValueForNode(node, treeElements);
+          if (value != null) {
+            // TODO(johnniwinther): Assert that all constants have values when
+            // these are directly evaluated.
+            constants.add(value);
+          }
+        });
+      }
     }
 
     // TODO(sigurdm): How is metadata on a patch-class handled?
@@ -325,8 +379,7 @@ class DeferredLoadTask extends CompilerTask {
       }
     }
 
-    if (element is FunctionElement &&
-        compiler.resolverWorld.closurizedMembers.contains(element)) {
+    if (element is FunctionElement) {
       collectTypeDependencies(element.type);
     }
 
@@ -335,9 +388,10 @@ class DeferredLoadTask extends CompilerTask {
       // to.  Static members are not relevant, unless we are processing
       // extra dependencies due to mirrors.
       void addLiveInstanceMember(Element element) {
-        if (!compiler.enqueuer.resolution.hasBeenResolved(element)) return;
+        if (!compiler.enqueuer.resolution.hasBeenProcessed(element)) return;
         if (!isMirrorUsage && !element.isInstanceMember) return;
-        collectDependencies(element.implementation);
+        elements.add(element);
+        collectDependencies(element);
       }
       ClassElement cls = element.declaration;
       cls.forEachLocalMember(addLiveInstanceMember);
@@ -351,6 +405,7 @@ class DeferredLoadTask extends CompilerTask {
       elements.add(cls.implementation);
     } else if (Elements.isStaticOrTopLevel(element) ||
                element.isConstructor) {
+      elements.add(element);
       collectDependencies(element);
     }
     if (element.isGenerativeConstructor) {
@@ -379,13 +434,15 @@ class DeferredLoadTask extends CompilerTask {
       iterateTags(LibraryElement library) {
         // TODO(sigurdm): Make helper getLibraryDependencyTags when tags is
         // changed to be a List instead of a Link.
-        for (LibraryTag tag in library.tags) {
-          if (tag is! LibraryDependency) continue;
-          LibraryDependency libraryDependency = tag;
-          if (!(libraryDependency is Import && libraryDependency.isDeferred)) {
-            LibraryElement importedLibrary = library.getLibraryFromTag(tag);
+        for (ImportElement import in library.imports) {
+          if (!import.isDeferred) {
+            LibraryElement importedLibrary = import.importedLibrary;
             traverseLibrary(importedLibrary);
           }
+        }
+        for (ExportElement export in library.exports) {
+          LibraryElement exportedLibrary = export.exportedLibrary;
+          traverseLibrary(exportedLibrary);
         }
       }
 
@@ -400,7 +457,8 @@ class DeferredLoadTask extends CompilerTask {
   }
 
   /// Add all dependencies of [constant] to the mapping of [import].
-  void _mapConstantDependencies(ConstantValue constant, Import import) {
+  void _mapConstantDependencies(ConstantValue constant,
+                                _DeferredImport import) {
     Set<ConstantValue> constants = _constantsDeferredBy.putIfAbsent(import,
         () => new Set<ConstantValue>());
     if (constants.contains(constant)) return;
@@ -418,7 +476,7 @@ class DeferredLoadTask extends CompilerTask {
   /// sets [_importedDeferredBy] and [_constantsDeferredBy].
   /// Only one of [element] and [constant] should be given.
   void _mapDependencies({Element element,
-                         Import import,
+                         _DeferredImport import,
                          isMirrorUsage: false}) {
 
     Set<Element> elements = _importedDeferredBy.putIfAbsent(import,
@@ -449,8 +507,9 @@ class DeferredLoadTask extends CompilerTask {
 
     for (Element dependency in dependentElements) {
       if (_isExplicitlyDeferred(dependency, library)) {
-        for (Import deferredImport in _getImports(dependency, library)) {
-          _mapDependencies(element: dependency, import: deferredImport);
+        for (ImportElement deferredImport in _getImports(dependency, library)) {
+          _mapDependencies(element: dependency,
+              import: new _DeclaredDeferredImport(deferredImport));
         }
       } else {
         _mapDependencies(element: dependency, import: import);
@@ -460,7 +519,7 @@ class DeferredLoadTask extends CompilerTask {
     for (ConstantValue dependency in dependentConstants) {
       if (dependency is DeferredConstantValue) {
         _mapConstantDependencies(dependency,
-                                 dependency.prefix.deferredImport);
+            new _DeclaredDeferredImport(dependency.prefix.deferredImport));
       } else {
         _mapConstantDependencies(dependency, import);
       }
@@ -471,7 +530,8 @@ class DeferredLoadTask extends CompilerTask {
   ///
   /// The elements are added with [_mapDependencies].
   void _addMirrorElements() {
-    void mapDependenciesIfResolved(Element element, Import deferredImport) {
+    void mapDependenciesIfResolved(Element element,
+                                   _DeferredImport deferredImport) {
       // If an element is the target of a MirrorsUsed annotation but never used
       // It will not be resolved, and we should not call isNeededForReflection.
       // TODO(sigurdm): Unresolved elements should just answer false when
@@ -479,27 +539,20 @@ class DeferredLoadTask extends CompilerTask {
       // So we have to filter them out here.
       if (element is AnalyzableElementX && !element.hasTreeElements) return;
       if (compiler.backend.isAccessibleByReflection(element)) {
-        _mapDependencies(element: element, import: deferredImport,
-                         isMirrorUsage: true);
+        _mapDependencies(
+            element: element, import: deferredImport, isMirrorUsage: true);
       }
     }
 
     // For each deferred import we analyze all elements reachable from the
     // imported library through non-deferred imports.
-    handleLibrary(LibraryElement library, Import deferredImport) {
+    void handleLibrary(LibraryElement library, _DeferredImport deferredImport) {
       library.implementation.forEachLocalMember((Element element) {
         mapDependenciesIfResolved(element, deferredImport);
       });
 
-      for (MetadataAnnotation metadata in library.metadata) {
-        ConstantValue constant =
-            backend.constants.getConstantValueForMetadata(metadata);
-        if (constant != null) {
-          _mapConstantDependencies(constant, deferredImport);
-        }
-      }
-      for (LibraryTag tag in library.tags) {
-        for (MetadataAnnotation metadata in tag.metadata) {
+      void processMetadata(Element element) {
+        for (MetadataAnnotation metadata in element.metadata) {
           ConstantValue constant =
               backend.constants.getConstantValueForMetadata(metadata);
           if (constant != null) {
@@ -507,9 +560,13 @@ class DeferredLoadTask extends CompilerTask {
           }
         }
       }
+
+      processMetadata(library);
+      library.imports.forEach(processMetadata);
+      library.exports.forEach(processMetadata);
     }
 
-    for (Import deferredImport in _allDeferredImports.keys) {
+    for (_DeferredImport deferredImport in _allDeferredImports.keys) {
       LibraryElement deferredLibrary = _allDeferredImports[deferredImport];
       for (LibraryElement library in
           _nonDeferredReachableLibraries(deferredLibrary)) {
@@ -524,36 +581,15 @@ class DeferredLoadTask extends CompilerTask {
   void _assignNamesToOutputUnits(Set<OutputUnit> allOutputUnits) {
     Set<String> usedImportNames = new Set<String>();
 
-    // Finds the first argument to the [DeferredLibrary] annotation
-    void computeImportDeferName(Import import) {
-      String result;
-      if (import == _fakeMainImport) {
-        result = "main";
-      } else if (import.isDeferred) {
-        result = import.prefix.toString();
-      } else {
-        Link<MetadataAnnotation> metadatas = import.metadata;
-        assert(metadatas != null);
-        for (MetadataAnnotation metadata in metadatas) {
-          metadata.ensureResolved(compiler);
-          ConstantValue value =
-              compiler.constants.getConstantValue(metadata.constant);
-          Element element = value.getType(compiler.coreTypes).element;
-          if (element == deferredLibraryClass) {
-            ConstructedConstantValue constant = value;
-            StringConstantValue s = constant.fields.values.single;
-            result = s.primitiveValue.slowToString();
-            break;
-          }
-        }
-      }
+    void computeImportDeferName(_DeferredImport import) {
+      String result = import.computeImportDeferName(compiler);
       assert(result != null);
-      importDeferName[import] = makeUnique(result, usedImportNames);;
+      importDeferName[import] = makeUnique(result, usedImportNames);
     }
 
     int counter = 1;
 
-    for (Import import in _allDeferredImports.keys) {
+    for (_DeferredImport import in _allDeferredImports.keys) {
       computeImportDeferName(import);
     }
 
@@ -570,19 +606,19 @@ class DeferredLoadTask extends CompilerTask {
     // Sort the output units in descending order of the number of imports they
     // include.
 
-    // The loading of the output units mut be ordered because a superclass needs
-    // to be initialized before its subclass.
+    // The loading of the output units must be ordered because a superclass
+    // needs to be initialized before its subclass.
     // But a class can only depend on another class in an output unit shared by
     // a strict superset of the imports:
     // By contradiction: Assume a class C in output unit shared by imports in
     // the set S1 = (lib1,.., lib_n) depends on a class D in an output unit
     // shared by S2 such that S2 not a superset of S1. Let lib_s be a library in
-    // S1 not in S2. lib_s must depend on C, and then in turn on D therefore D
+    // S1 not in S2. lib_s must depend on C, and then in turn on D. Therefore D
     // is not in the right output unit.
     sortedOutputUnits.sort((a, b) => b.imports.length - a.imports.length);
 
     // For each deferred import we find out which outputUnits to load.
-    for (Import import in _allDeferredImports.keys) {
+    for (_DeferredImport import in _allDeferredImports.keys) {
       if (import == _fakeMainImport) continue;
       hunksToLoad[importDeferName[import]] = new List<OutputUnit>();
       for (OutputUnit outputUnit in sortedOutputUnits) {
@@ -601,8 +637,8 @@ class DeferredLoadTask extends CompilerTask {
     }
     if (main == null) return;
     LibraryElement mainLibrary = main.library;
-    _importedDeferredBy = new Map<Import, Set<Element>>();
-    _constantsDeferredBy = new Map<Import, Set<ConstantValue>>();
+    _importedDeferredBy = new Map<_DeferredImport, Set<Element>>();
+    _constantsDeferredBy = new Map<_DeferredImport, Set<ConstantValue>>();
     _importedDeferredBy[_fakeMainImport] = _mainElements;
 
     measureElement(mainLibrary, () {
@@ -611,7 +647,7 @@ class DeferredLoadTask extends CompilerTask {
       _mapDependencies(element: compiler.mainFunction, import: _fakeMainImport);
 
       // Also add "global" dependencies to the main OutputUnit.  These are
-      // things that the backend need but cannot associate with a particular
+      // things that the backend needs but cannot associate with a particular
       // element, for example, startRootIsolate.  This set also contains
       // elements for which we lack precise information.
       for (Element element in compiler.globalDependencies.otherDependencies) {
@@ -631,7 +667,7 @@ class DeferredLoadTask extends CompilerTask {
 
       // Reverse the mappings. For each element record an OutputUnit collecting
       // all deferred imports mapped to this element. Same for constants.
-      for (Import import in _importedDeferredBy.keys) {
+      for (_DeferredImport import in _importedDeferredBy.keys) {
         for (Element element in _importedDeferredBy[import]) {
           // Only one file should be loaded when the program starts, so make
           // sure that only one OutputUnit is created for [fakeMainImport].
@@ -644,7 +680,7 @@ class DeferredLoadTask extends CompilerTask {
           }
         }
       }
-      for (Import import in _constantsDeferredBy.keys) {
+      for (_DeferredImport import in _constantsDeferredBy.keys) {
         for (ConstantValue constant in _constantsDeferredBy[import]) {
           // Only one file should be loaded when the program starts, so make
           // sure that only one OutputUnit is created for [fakeMainImport].
@@ -686,6 +722,9 @@ class DeferredLoadTask extends CompilerTask {
       // Generate a unique name for each OutputUnit.
       _assignNamesToOutputUnits(allOutputUnits);
     });
+    // Notify the impact strategy impacts are no longer needed for deferred
+    // load.
+    compiler.impactStrategy.onImpactUsed(IMPACT_USE);
   }
 
   void beforeResolution(Compiler compiler) {
@@ -711,47 +750,47 @@ class DeferredLoadTask extends CompilerTask {
     // The prefixes that have been used by any imports in this library.
     Setlet<String> usedPrefixes = new Setlet<String>();
     // The last deferred import we saw with a given prefix (if any).
-    Map<String, Import> prefixDeferredImport = new Map<String, Import>();
+    Map<String, ImportElement> prefixDeferredImport =
+        new Map<String, ImportElement>();
     for (LibraryElement library in compiler.libraryLoader.libraries) {
-      compiler.withCurrentElement(library, () {
+      reporter.withCurrentElement(library, () {
         prefixDeferredImport.clear();
         usedPrefixes.clear();
         // TODO(sigurdm): Make helper getLibraryImportTags when tags is a List
         // instead of a Link.
-        for (LibraryTag tag in library.tags) {
-          if (tag is! Import) continue;
-          Import import = tag;
-
+        for (ImportElement import in library.imports) {
           /// Give an error if the old annotation-based syntax has been used.
-          Link<MetadataAnnotation> metadataList = import.metadata;
+          List<MetadataAnnotation> metadataList = import.metadata;
           if (metadataList != null) {
             for (MetadataAnnotation metadata in metadataList) {
-              metadata.ensureResolved(compiler);
+              metadata.ensureResolved(compiler.resolution);
               ConstantValue value =
                   compiler.constants.getConstantValue(metadata.constant);
               Element element = value.getType(compiler.coreTypes).element;
               if (element == deferredLibraryClass) {
-                 compiler.reportError(
+                 reporter.reportErrorMessage(
                      import, MessageKind.DEFERRED_OLD_SYNTAX);
               }
             }
           }
 
           String prefix = (import.prefix != null)
-              ? import.prefix.toString()
+              ? import.prefix.name
               : null;
           // The last import we saw with the same prefix.
-          Import previousDeferredImport = prefixDeferredImport[prefix];
+          ImportElement previousDeferredImport = prefixDeferredImport[prefix];
           if (import.isDeferred) {
-            LibraryElement importedLibrary = library.getLibraryFromTag(import);
-            _allDeferredImports[import] = importedLibrary;
+            _DeferredImport key = new _DeclaredDeferredImport(import);
+            LibraryElement importedLibrary = import.importedLibrary;
+            _allDeferredImports[key] = importedLibrary;
 
             if (prefix == null) {
-              compiler.reportError(import,
+              reporter.reportErrorMessage(
+                  import,
                   MessageKind.DEFERRED_LIBRARY_WITHOUT_PREFIX);
             } else {
               prefixDeferredImport[prefix] = import;
-              _deferredImportDescriptions[import] =
+              _deferredImportDescriptions[key] =
                   new ImportDescription(import, library, compiler);
             }
             isProgramSplit = true;
@@ -760,10 +799,11 @@ class DeferredLoadTask extends CompilerTask {
           if (prefix != null) {
             if (previousDeferredImport != null ||
                 (import.isDeferred && usedPrefixes.contains(prefix))) {
-              Import failingImport = (previousDeferredImport != null)
+              ImportElement failingImport = (previousDeferredImport != null)
                   ? previousDeferredImport
                   : import;
-              compiler.reportError(failingImport.prefix,
+              reporter.reportErrorMessage(
+                  failingImport.prefix,
                   MessageKind.DEFERRED_LIBRARY_DUPLICATE_PREFIX);
             }
             usedPrefixes.add(prefix);
@@ -840,8 +880,8 @@ class DeferredLoadTask extends CompilerTask {
   /// Where
   ///
   /// - <library uri> is the relative uri of the library making a deferred
-  ///   import
-  /// - <library name> is the name of the libary, and "<unnamed>" if it is
+  ///   import.
+  /// - <library name> is the name of the library, and "<unnamed>" if it is
   ///   unnamed.
   /// - <prefix> is the `as` prefix used for a given deferred import.
   /// - <list of files> is a list of the filenames the must be loaded when that
@@ -850,7 +890,7 @@ class DeferredLoadTask extends CompilerTask {
     JavaScriptBackend backend = compiler.backend;
     Map<String, Map<String, dynamic>> mapping =
         new Map<String, Map<String, dynamic>>();
-    _deferredImportDescriptions.keys.forEach((ast.Import import) {
+    _deferredImportDescriptions.keys.forEach((_DeferredImport import) {
       List<OutputUnit> outputUnits = hunksToLoad[importDeferName[import]];
       ImportDescription description = _deferredImportDescriptions[import];
       Map<String, dynamic> libraryMap =
@@ -858,13 +898,48 @@ class DeferredLoadTask extends CompilerTask {
               () => <String, dynamic>{"name": description.importingLibraryName,
                                       "imports": <String, List<String>>{}});
 
-      libraryMap["imports"][description.prefix] = outputUnits.map(
+      libraryMap["imports"][importDeferName[import]] = outputUnits.map(
             (OutputUnit outputUnit) {
           return backend.deferredPartFileName(outputUnit.name);
         }).toList();
     });
     return mapping;
   }
+
+  /// Creates a textual representation of the output unit content.
+  String dump() {
+    Map<OutputUnit, List<String>> elementMap = <OutputUnit, List<String>>{};
+    Map<OutputUnit, List<String>> constantMap =
+        <OutputUnit, List<String>>{};
+    _elementToOutputUnit.forEach((Element element, OutputUnit output) {
+      elementMap.putIfAbsent(output, () => <String>[]).add('$element');
+    });
+    _constantToOutputUnit.forEach((ConstantValue value, OutputUnit output) {
+      constantMap.putIfAbsent(output, () => <String>[])
+          .add(value.toStructuredString());
+    });
+
+    StringBuffer sb = new StringBuffer();
+    for (OutputUnit outputUnit in allOutputUnits) {
+      sb.write(outputUnit.name);
+      List<String> elements = elementMap[outputUnit];
+      if (elements != null) {
+        sb.write('\n elements:');
+        for (String element in elements..sort()) {
+          sb.write('\n  $element');
+        }
+      }
+      List<String> constants = constantMap[outputUnit];
+      if (constants != null) {
+        sb.write('\n constants:');
+        for (String value in constants..sort()) {
+          sb.write('\n  $value');
+        }
+      }
+    }
+    return sb.toString();
+  }
+
 }
 
 class ImportDescription {
@@ -874,20 +949,73 @@ class ImportDescription {
   final String prefix;
   final LibraryElement _importingLibrary;
 
-  ImportDescription(Import import,
+  ImportDescription(ImportElement import,
                     LibraryElement importingLibrary,
                     Compiler compiler)
       : importingUri = uri_extras.relativize(
           compiler.mainApp.canonicalUri,
           importingLibrary.canonicalUri, false),
-        prefix = import.prefix.source,
+        prefix = import.prefix.name,
         _importingLibrary = importingLibrary;
 
   String get importingLibraryName {
-    String libraryName = _importingLibrary.getLibraryName();
-    return libraryName == ""
-      ? "<unnamed>"
-      : libraryName;
+    return _importingLibrary.hasLibraryName
+        ? _importingLibrary.libraryName : "<unnamed>";
+  }
+}
+
+/// A node in the deferred import graph.
+///
+/// This class serves as the root node; the 'import' of the main library.
+class _DeferredImport {
+  const _DeferredImport();
+
+  /// Computes a suggestive name for this import.
+  String computeImportDeferName(Compiler compiler) => 'main';
+}
+
+/// A node in the deferred import graph defined by a deferred import directive.
+class _DeclaredDeferredImport implements _DeferredImport {
+  final ImportElement declaration;
+
+  _DeclaredDeferredImport(this.declaration);
+
+  @override
+  String computeImportDeferName(Compiler compiler) {
+    String result;
+    if (declaration.isDeferred) {
+      if (declaration.prefix != null) {
+        result = declaration.prefix.name;
+      } else {
+        // This happens when the deferred import isn't declared with a prefix.
+        assert(compiler.compilationFailed);
+        result = '';
+      }
+    } else {
+      // Finds the first argument to the [DeferredLibrary] annotation
+      List<MetadataAnnotation> metadatas = declaration.metadata;
+      assert(metadatas != null);
+      for (MetadataAnnotation metadata in metadatas) {
+        metadata.ensureResolved(compiler.resolution);
+        ConstantValue value =
+            compiler.constants.getConstantValue(metadata.constant);
+        Element element = value.getType(compiler.coreTypes).element;
+        if (element == compiler.deferredLibraryClass) {
+          ConstructedConstantValue constant = value;
+          StringConstantValue s = constant.fields.values.single;
+          result = s.primitiveValue.slowToString();
+          break;
+        }
+      }
+    }
+    assert(result != null);
+    return result;
   }
 
+  bool operator ==(other) {
+    if (other is! _DeclaredDeferredImport) return false;
+    return declaration == other.declaration;
+  }
+
+  int get hashCode => declaration.hashCode * 17;
 }

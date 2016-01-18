@@ -332,6 +332,16 @@ class IdentityOperation implements BinaryOperation {
   apply(left, right) => identical(left, right);
 }
 
+class IfNullOperation implements BinaryOperation {
+  final String name = '??';
+  const IfNullOperation();
+  ConstantValue fold(ConstantValue left, ConstantValue right) {
+    if (left.isNull) return right;
+    return left;
+  }
+  apply(left, right) => left ?? right;
+}
+
 abstract class CodeUnitAtOperation implements BinaryOperation {
   final String name = 'charCodeAt';
   const CodeUnitAtOperation();
@@ -382,6 +392,7 @@ class DartConstantSystem extends ConstantSystem {
   final greaterEqual = const GreaterEqualOperation();
   final greater = const GreaterOperation();
   final identity = const IdentityOperation();
+  final ifNull = const IfNullOperation();
   final lessEqual = const LessEqualOperation();
   final less = const LessOperation();
   final modulo = const ModuloOperation();
@@ -434,7 +445,7 @@ class DartConstantSystem extends ConstantSystem {
     // `compiler.coreTypes.typeType` and check the backend specific value in
     // [checkConstMapKeysDontOverrideEquals] in 'members.dart'.
     return new TypeConstantValue(type,
-        compiler.backend.typeImplementation.computeType(compiler));
+        compiler.backend.typeImplementation.computeType(compiler.resolution));
   }
 
   bool isInt(ConstantValue constant) => constant.isInt;

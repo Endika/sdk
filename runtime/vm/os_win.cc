@@ -15,8 +15,12 @@
 #include "platform/assert.h"
 #include "vm/os_thread.h"
 #include "vm/vtune.h"
+#include "vm/zone.h"
 
 namespace dart {
+
+// Defined in vm/os_thread_win.cc
+extern bool private_flag_windows_run_tls_destructors;
 
 const char* OS::Name() {
   return "windows";
@@ -117,6 +121,43 @@ int64_t OS::GetCurrentTimeMicros() {
   TimeStamp time;
   GetSystemTimeAsFileTime(&time.ft_);
   return (time.t_ - kTimeEpoc) / kTimeScaler;
+}
+
+
+static int64_t qpc_ticks_per_second = 0;
+
+
+int64_t OS::GetCurrentMonotonicTicks() {
+  if (qpc_ticks_per_second == 0) {
+    // QueryPerformanceCounter not supported, fallback.
+    return GetCurrentTimeMicros();
+  }
+  // Grab performance counter value.
+  LARGE_INTEGER now;
+  QueryPerformanceCounter(&now);
+  return static_cast<int64_t>(now.QuadPart);
+}
+
+
+int64_t OS::GetCurrentMonotonicFrequency() {
+  if (qpc_ticks_per_second == 0) {
+    // QueryPerformanceCounter not supported, fallback.
+    return kMicrosecondsPerSecond;
+  }
+  return qpc_ticks_per_second;
+}
+
+
+int64_t OS::GetCurrentMonotonicMicros() {
+  int64_t ticks = GetCurrentMonotonicTicks();
+  int64_t frequency = GetCurrentMonotonicFrequency();
+
+  // Convert to microseconds.
+  int64_t seconds = ticks / frequency;
+  int64_t leftover_ticks = ticks - (seconds * frequency);
+  int64_t result = seconds * kMicrosecondsPerSecond;
+  result += ((leftover_ticks * kMicrosecondsPerSecond) / frequency);
+  return result;
 }
 
 
@@ -271,6 +312,39 @@ int OS::VSNPrint(char* str, size_t size, const char* format, va_list args) {
 }
 
 
+char* OS::SCreate(Zone* zone, const char* format, ...) {
+  va_list args;
+  va_start(args, format);
+  char* buffer = VSCreate(zone, format, args);
+  va_end(args);
+  return buffer;
+}
+
+
+char* OS::VSCreate(Zone* zone, const char* format, va_list args) {
+  // Measure.
+  va_list measure_args;
+  va_copy(measure_args, args);
+  intptr_t len = VSNPrint(NULL, 0, format, measure_args);
+  va_end(measure_args);
+
+  char* buffer;
+  if (zone) {
+    buffer = zone->Alloc<char>(len + 1);
+  } else {
+    buffer = reinterpret_cast<char*>(malloc(len + 1));
+  }
+  ASSERT(buffer != NULL);
+
+  // Print.
+  va_list print_args;
+  va_copy(print_args, args);
+  VSNPrint(buffer, len + 1, format, print_args);
+  va_end(print_args);
+  return buffer;
+}
+
+
 bool OS::StringToInt64(const char* str, int64_t* value) {
   ASSERT(str != NULL && strlen(str) > 0 && value != NULL);
   int32_t base = 10;
@@ -314,22 +388,37 @@ void OS::InitOnce() {
   init_once_called = true;
   // Do not pop up a message box when abort is called.
   _set_abort_behavior(0, _WRITE_ABORT_MSG);
+  ThreadLocalData::InitOnce();
   MonitorWaitData::monitor_wait_data_key_ = OSThread::CreateThreadLocal();
   MonitorData::GetMonitorWaitDataForThread();
+  LARGE_INTEGER ticks_per_sec;
+  if (!QueryPerformanceFrequency(&ticks_per_sec)) {
+    qpc_ticks_per_second = 0;
+  } else {
+    qpc_ticks_per_second = static_cast<int64_t>(ticks_per_sec.QuadPart);
+  }
 }
 
 
 void OS::Shutdown() {
+  // TODO(zra): Enable once VM can shutdown cleanly.
+  // ThreadLocalData::Shutdown();
 }
 
 
 void OS::Abort() {
+  // TODO(zra): Remove once VM shuts down cleanly.
+  private_flag_windows_run_tls_destructors = false;
   abort();
 }
 
 
 void OS::Exit(int code) {
-  exit(code);
+  // TODO(zra): Remove once VM shuts down cleanly.
+  private_flag_windows_run_tls_destructors = false;
+  // On Windows we use ExitProcess so that threads can't clobber the exit_code.
+  // See: https://code.google.com/p/nativeclient/issues/detail?id=2870
+  ::ExitProcess(code);
 }
 
 }  // namespace dart

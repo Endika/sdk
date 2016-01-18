@@ -4,6 +4,7 @@
 
 library analysis.logger;
 
+import 'package:analysis_server/src/analysis_server.dart';
 import 'package:analyzer/src/generated/engine.dart';
 import 'package:analyzer/src/generated/java_engine.dart';
 import 'package:logging/logging.dart' as logging;
@@ -18,10 +19,20 @@ class AnalysisLogger implements Logger {
    */
   final logging.Logger baseLogger = new logging.Logger('analysis.server');
 
-  AnalysisLogger() {
+  /**
+   * The analysis server that is using this logger.
+   */
+  final AnalysisServer server;
+
+  AnalysisLogger(this.server) {
+    assert(server != null);
     logging.Logger.root.onRecord.listen((logging.LogRecord record) {
       AnalysisEngine.instance.instrumentationService.logLogEntry(
-          record.level.name, record.time, record.message, record.error, record.stackTrace);
+          record.level.name,
+          record.time,
+          record.message,
+          record.error,
+          record.stackTrace);
     });
   }
 
@@ -32,11 +43,7 @@ class AnalysisLogger implements Logger {
     } else {
       baseLogger.severe(message, exception.exception, exception.stackTrace);
     }
-  }
-
-  @override
-  void logError2(String message, Object exception) {
-    baseLogger.severe(message, exception);
+    server.sendServerErrorNotification(message, exception, null);
   }
 
   @override
@@ -46,10 +53,5 @@ class AnalysisLogger implements Logger {
     } else {
       baseLogger.info(message, exception.exception, exception.stackTrace);
     }
-  }
-
-  @override
-  void logInformation2(String message, Object exception) {
-    baseLogger.info(message, exception);
   }
 }

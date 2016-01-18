@@ -17,9 +17,16 @@ DEFINE_FLAG(bool, trace_type_propagation, false,
 DECLARE_FLAG(bool, propagate_types);
 DECLARE_FLAG(bool, trace_cha);
 DECLARE_FLAG(bool, use_cha_deopt);
+DECLARE_FLAG(bool, fields_may_be_reset);
 
 
 void FlowGraphTypePropagator::Propagate(FlowGraph* flow_graph) {
+  Thread* thread = flow_graph->thread();
+  Isolate* const isolate = flow_graph->isolate();
+  TimelineStream* compiler_timeline = isolate->GetCompilerStream();
+  TimelineDurationScope tds2(thread,
+                             compiler_timeline,
+                             "FlowGraphTypePropagator");
   FlowGraphTypePropagator propagator(flow_graph);
   propagator.Propagate();
 }
@@ -74,13 +81,13 @@ void FlowGraphTypePropagator::Propagate() {
   while (!worklist_.is_empty()) {
     Definition* def = RemoveLastFromWorklist();
     if (FLAG_trace_type_propagation) {
-      ISL_Print("recomputing type of v%" Pd ": %s\n",
+      THR_Print("recomputing type of v%" Pd ": %s\n",
                 def->ssa_temp_index(),
                 def->Type()->ToCString());
     }
     if (def->RecomputeType()) {
       if (FLAG_trace_type_propagation) {
-        ISL_Print("  ... new type %s\n", def->Type()->ToCString());
+        THR_Print("  ... new type %s\n", def->Type()->ToCString());
       }
       for (Value::Iterator it(def->input_use_list());
            !it.Done();
@@ -149,65 +156,8 @@ void FlowGraphTypePropagator::PropagateRecursive(BlockEntryInstr* block) {
     }
   }
 
-  HandleBranchOnStrictCompare(block);
-
   for (intptr_t i = 0; i < block->dominated_blocks().length(); ++i) {
     PropagateRecursive(block->dominated_blocks()[i]);
-  }
-
-  RollbackTo(rollback_point);
-}
-
-
-void FlowGraphTypePropagator::HandleBranchOnStrictCompare(
-    BlockEntryInstr* block) {
-  BranchInstr* branch = block->last_instruction()->AsBranch();
-  if (branch == NULL) {
-    return;
-  }
-
-  StrictCompareInstr* compare = branch->comparison()->AsStrictCompare();
-  if ((compare == NULL) || !compare->right()->BindsToConstant()) {
-    return;
-  }
-
-  const intptr_t rollback_point = rollback_.length();
-
-  Definition* defn = compare->left()->definition();
-  const Object& right = compare->right()->BoundConstant();
-  intptr_t cid = right.GetClassId();
-
-  if (defn->IsLoadClassId() && right.IsSmi()) {
-    defn = defn->AsLoadClassId()->object()->definition();
-    cid = Smi::Cast(right).Value();
-  }
-
-  if (!CheckClassInstr::IsImmutableClassId(cid)) {
-    if ((cid == kOneByteStringCid) || (cid == kTwoByteStringCid)) {
-      SetTypeOf(defn, ZoneCompileType::Wrap(CompileType::String()));
-      PropagateRecursive((compare->kind() == Token::kEQ_STRICT) ?
-          branch->true_successor() : branch->false_successor());
-      RollbackTo(rollback_point);
-    }
-    return;
-  }
-
-  if (compare->kind() == Token::kEQ_STRICT) {
-    if (cid == kNullCid) {
-      branch->set_constrained_type(MarkNonNullable(defn));
-      PropagateRecursive(branch->false_successor());
-    }
-
-    SetCid(defn, cid);
-    PropagateRecursive(branch->true_successor());
-  } else if (compare->kind() == Token::kNE_STRICT) {
-    if (cid == kNullCid) {
-      branch->set_constrained_type(MarkNonNullable(defn));
-      PropagateRecursive(branch->true_successor());
-    }
-
-    SetCid(defn, cid);
-    PropagateRecursive(branch->false_successor());
   }
 
   RollbackTo(rollback_point);
@@ -267,7 +217,7 @@ void FlowGraphTypePropagator::VisitValue(Value* value) {
   value->SetReachingType(type);
 
   if (FLAG_trace_type_propagation) {
-    ISL_Print("reaching type to v%" Pd " for v%" Pd " is %s\n",
+    THR_Print("reaching type to v%" Pd " for v%" Pd " is %s\n",
               value->instruction()->IsDefinition() ?
                   value->instruction()->AsDefinition()->ssa_temp_index() : -1,
               value->definition()->ssa_temp_index(),
@@ -469,7 +419,7 @@ void CompileType::Union(CompileType* other) {
   // Nothing to do.
   } else {
   // Can't unify.
-  type_ = &Type::ZoneHandle(Type::DynamicType());
+  type_ = &Object::dynamic_type();
   }
 }
 
@@ -497,7 +447,7 @@ CompileType CompileType::FromCid(intptr_t cid) {
 
 
 CompileType CompileType::Dynamic() {
-  return Create(kDynamicCid, Type::ZoneHandle(Type::DynamicType()));
+  return Create(kDynamicCid, Object::dynamic_type());
 }
 
 
@@ -541,7 +491,8 @@ intptr_t CompileType::ToNullableCid() {
       cid_ = kNullCid;
     } else if (type_->HasResolvedTypeClass()) {
       const Class& type_class = Class::Handle(type_->type_class());
-      CHA* cha = Thread::Current()->cha();
+      Thread* thread = Thread::Current();
+      CHA* cha = thread->cha();
       // Don't infer a cid from an abstract type for signature classes since
       // there can be multiple compatible classes with different cids.
       if (!type_class.IsSignatureClass() &&
@@ -550,12 +501,15 @@ intptr_t CompileType::ToNullableCid() {
         if (type_class.IsPrivate()) {
           // Type of a private class cannot change through later loaded libs.
           cid_ = type_class.id();
-        } else if (FLAG_use_cha_deopt) {
+        } else if (FLAG_use_cha_deopt ||
+                   thread->isolate()->all_classes_finalized()) {
           if (FLAG_trace_cha) {
-            ISL_Print("  **(CHA) Compile type not subclassed: %s\n",
+            THR_Print("  **(CHA) Compile type not subclassed: %s\n",
                 type_class.ToCString());
           }
-          cha->AddToLeafClasses(type_class);
+          if (FLAG_use_cha_deopt) {
+            cha->AddToLeafClasses(type_class);
+          }
           cid_ = type_class.id();
         } else {
           cid_ = kDynamicCid;
@@ -584,12 +538,16 @@ bool CompileType::IsNull() {
 
 const AbstractType* CompileType::ToAbstractType() {
   if (type_ == NULL) {
-    ASSERT(cid_ != kIllegalCid);
+    // Type propagation has not run. Return dynamic-type.
+    if (cid_ == kIllegalCid) {
+      type_ = &Object::dynamic_type();
+      return type_;
+    }
 
     // VM-internal objects don't have a compile-type. Return dynamic-type
     // in this case.
     if (cid_ < kInstanceCid) {
-      type_ = &Type::ZoneHandle(Type::DynamicType());
+      type_ = &Object::dynamic_type();
       return type_;
     }
 
@@ -597,7 +555,7 @@ const AbstractType* CompileType::ToAbstractType() {
         Class::Handle(Isolate::Current()->class_table()->At(cid_));
 
     if (type_class.NumTypeArguments() > 0) {
-      type_ = &Type::ZoneHandle(Type::DynamicType());
+      type_ = &Object::dynamic_type();
       return type_;
     }
 
@@ -698,7 +656,7 @@ bool PhiInstr::RecomputeType() {
   CompileType result = CompileType::None();
   for (intptr_t i = 0; i < InputCount(); i++) {
     if (FLAG_trace_type_propagation) {
-      ISL_Print("  phi %" Pd " input %" Pd ": v%" Pd " has reaching type %s\n",
+      THR_Print("  phi %" Pd " input %" Pd ": v%" Pd " has reaching type %s\n",
                 ssa_temp_index(),
                 i,
                 InputAt(i)->definition()->ssa_temp_index(),
@@ -737,7 +695,7 @@ CompileType ParameterInstr::ComputeType() const {
   // verifying the run time type of the passed-in parameter and this check would
   // always be wrongly eliminated.
   // However there are parameters that are known to match their declared type:
-  // for example receiver and construction phase.
+  // for example receiver.
   GraphEntryInstr* graph_entry = block_->AsGraphEntry();
   // Parameters at catch blocks and OSR entries have type dynamic.
   //
@@ -769,11 +727,6 @@ CompileType ParameterInstr::ComputeType() const {
   LocalScope* scope = graph_entry->parsed_function().node_sequence()->scope();
   const AbstractType& type = scope->VariableAt(index())->type();
 
-  // Parameter is the constructor phase.
-  if ((index() == 1) && function.IsGenerativeConstructor()) {
-    return CompileType::FromAbstractType(type, CompileType::kNonNullable);
-  }
-
   // Parameter is the receiver.
   if ((index() == 0) &&
       (function.IsDynamicFunction() || function.IsGenerativeConstructor())) {
@@ -793,13 +746,16 @@ CompileType ParameterInstr::ComputeType() const {
           // Private classes can never be subclassed by later loaded libs.
           cid = type_class.id();
         } else {
-          if (FLAG_use_cha_deopt) {
+          if (FLAG_use_cha_deopt ||
+              thread->isolate()->all_classes_finalized()) {
             if (FLAG_trace_cha) {
-              ISL_Print("  **(CHA) Computing exact type of parameters, "
+              THR_Print("  **(CHA) Computing exact type of receiver, "
                   "no subclasses: %s\n",
                   type_class.ToCString());
             }
-            thread->cha()->AddToLeafClasses(type_class);
+            if (FLAG_use_cha_deopt) {
+              thread->cha()->AddToLeafClasses(type_class);
+            }
             cid = type_class.id();
           }
         }
@@ -904,28 +860,28 @@ CompileType RelationalOpInstr::ComputeType() const {
 CompileType CurrentContextInstr::ComputeType() const {
   return CompileType(CompileType::kNonNullable,
                      kContextCid,
-                     &AbstractType::ZoneHandle(Type::DynamicType()));
+                     &Object::dynamic_type());
 }
 
 
 CompileType CloneContextInstr::ComputeType() const {
   return CompileType(CompileType::kNonNullable,
                      kContextCid,
-                     &AbstractType::ZoneHandle(Type::DynamicType()));
+                     &Object::dynamic_type());
 }
 
 
 CompileType AllocateContextInstr::ComputeType() const {
   return CompileType(CompileType::kNonNullable,
                      kContextCid,
-                     &AbstractType::ZoneHandle(Type::DynamicType()));
+                     &Object::dynamic_type());
 }
 
 
 CompileType AllocateUninitializedContextInstr::ComputeType() const {
   return CompileType(CompileType::kNonNullable,
                      kContextCid,
-                     &AbstractType::ZoneHandle(Type::DynamicType()));
+                     &Object::dynamic_type());
 }
 
 
@@ -998,7 +954,7 @@ CompileType LoadStaticFieldInstr::ComputeType() const {
     abstract_type = &AbstractType::ZoneHandle(field.type());
   }
   ASSERT(field.is_static());
-  if (field.is_final()) {
+  if (field.is_final() && !FLAG_fields_may_be_reset) {
     const Instance& obj = Instance::Handle(field.StaticValue());
     if ((obj.raw() != Object::sentinel().raw()) &&
         (obj.raw() != Object::transition_sentinel().raw()) &&

@@ -237,7 +237,7 @@ DEFINE_NATIVE_ENTRY(Integer_fromEnvironment, 3) {
   GET_NATIVE_ARGUMENT(Integer, default_value, arguments->NativeArgAt(2));
   // Call the embedder to supply us with the environment.
   const String& env_value =
-      String::Handle(Api::CallEnvironmentCallback(isolate, name));
+      String::Handle(Api::CallEnvironmentCallback(thread, name));
   if (!env_value.IsNull()) {
     const Integer& result = Integer::Handle(ParseInteger(env_value));
     if (!result.IsNull()) {
@@ -275,7 +275,9 @@ static RawInteger* ShiftOperationHelper(Token::Kind kind,
         case Token::kSHL:
           return Integer::New(mint_value << shift_count, Heap::kNew, silent);
         case Token::kSHR:
-          return Integer::New(mint_value >> -shift_count, Heap::kNew, silent);
+          shift_count =
+              (-shift_count > Mint::kBits) ? Mint::kBits : -shift_count;
+          return Integer::New(mint_value >> shift_count, Heap::kNew, silent);
         default:
           UNIMPLEMENTED();
       }

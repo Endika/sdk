@@ -96,6 +96,8 @@ class Error {
  * Error thrown by the runtime system when an assert statement fails.
  */
 class AssertionError extends Error {
+  AssertionError();
+  String toString() => "Assertion failed";
 }
 
 /**
@@ -163,12 +165,11 @@ class ArgumentError extends Error {
 
   /**
    * Create an argument error for a `null` argument that must not be `null`.
-   *
-   * Shorthand for calling [ArgumentError.value] with a `null` value and a
-   * message of `"Must not be null"`.
    */
-  ArgumentError.notNull([String name])
-      : this.value(null, name, "Must not be null");
+  ArgumentError.notNull([this.name])
+      : _hasValue = false,
+        message = "Must not be null",
+        invalidValue = null;
 
   // Helper functions for toString overridden in subclasses.
   String get _errorName => "Invalid argument${!_hasValue ? "(s)" : ""}";
@@ -392,12 +393,13 @@ class IndexError extends ArgumentError implements RangeError {
   String get _errorName => "RangeError";
   String get _errorExplanation {
     assert(_hasValue);
-    String target = Error.safeToString(indexable);
-    var explanation = ": index should be less than $length";
     if (invalidValue < 0) {
-      explanation = ": index must not be negative";
+      return ": index must not be negative";
     }
-    return explanation;
+    if (length == 0) {
+      return ": no indices are valid";
+    }
+    return ": index should be less than $length";
   }
 }
 

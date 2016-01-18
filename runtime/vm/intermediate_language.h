@@ -38,6 +38,47 @@ class RangeAnalysis;
 class RangeBoundary;
 class UnboxIntegerInstr;
 
+// These token positions are used to classify instructions that can't be
+// directly tied to an actual source position.
+#define CLASSIFYING_TOKEN_POSITIONS(V)                                         \
+    V(Private, -2)                                                             \
+    V(Box, -3)                                                                 \
+    V(ParallelMove, -4)                                                        \
+    V(TempMove, -5)                                                            \
+    V(Constant, -6)                                                            \
+    V(PushArgument, -7)                                                        \
+    V(ControlFlow, -8)                                                         \
+    V(Context, -9)
+
+// COMPILE_ASSERT that all CLASSIFYING_TOKEN_POSITIONS are less than
+// Scanner::kNoSourcePos.
+#define SANITY_CHECK_VALUES(name, value)                                       \
+  COMPILE_ASSERT(value < Scanner::kNoSourcePos);
+  CLASSIFYING_TOKEN_POSITIONS(SANITY_CHECK_VALUES);
+#undef SANITY_CHECK_VALUES
+
+class ClassifyingTokenPositions : public AllStatic {
+ public:
+#define DEFINE_VALUES(name, value)                                             \
+  static const intptr_t k##name = value;
+  CLASSIFYING_TOKEN_POSITIONS(DEFINE_VALUES);
+#undef DEFINE_VALUES
+
+  static const char* ToCString(intptr_t token_pos) {
+    ASSERT(token_pos < 0);
+    switch (token_pos) {
+      case Scanner::kNoSourcePos: return "NoSource";
+#define DEFINE_CASE(name, value)                                               \
+      case value: return #name;
+      CLASSIFYING_TOKEN_POSITIONS(DEFINE_CASE);
+#undef DEFINE_CASE
+      default:
+        UNIMPLEMENTED();
+        return NULL;
+    }
+  }
+};
+
 // CompileType describes type of the value produced by the definition.
 //
 // It captures the following properties:
@@ -337,8 +378,6 @@ class Value : public ZoneAllocated {
 
   const char* ToCString() const;
 
-  const char* DebugName() const { return "Value"; }
-
   bool IsSmiValue() { return Type()->ToCid() == kSmiCid; }
 
   // Returns true if this value binds to the constant: 0xFFFFFFFF.
@@ -608,15 +647,14 @@ class Instruction : public ZoneAllocated {
   };
 #undef DECLARE_TAG
 
-  explicit Instruction(intptr_t deopt_id = Isolate::kNoDeoptId)
+  explicit Instruction(intptr_t deopt_id = Thread::kNoDeoptId)
       : deopt_id_(deopt_id),
-        lifetime_position_(-1),
+        lifetime_position_(kNoPlaceId),
         previous_(NULL),
         next_(NULL),
         env_(NULL),
         locs_(NULL),
-        inlining_id_(-1),
-        place_id_(kNoPlaceId) { }
+        inlining_id_(-1) { }
 
   virtual ~Instruction() { }
 
@@ -773,7 +811,7 @@ FOR_EACH_ABSTRACT_INSTRUCTION(INSTRUCTION_TYPE_CHECK)
   // to.
   virtual intptr_t DeoptimizationTarget() const {
     UNREACHABLE();
-    return Isolate::kNoDeoptId;
+    return Thread::kNoDeoptId;
   }
 
   // Returns a replacement for the instruction or NULL if the instruction can
@@ -813,7 +851,7 @@ FOR_EACH_ABSTRACT_INSTRUCTION(INSTRUCTION_TYPE_CHECK)
   }
 
   // Get the block entry for this instruction.
-  virtual BlockEntryInstr* GetBlock() const;
+  virtual BlockEntryInstr* GetBlock();
 
   // Place identifiers used by the load optimization pass.
   intptr_t place_id() const { return place_id_; }
@@ -889,13 +927,15 @@ FOR_EACH_ABSTRACT_INSTRUCTION(INSTRUCTION_TYPE_CHECK)
   };
 
   intptr_t deopt_id_;
-  intptr_t lifetime_position_;  // Position used by register allocator.
+  union {
+    intptr_t lifetime_position_;  // Position used by register allocator.
+    intptr_t place_id_;
+  };
   Instruction* previous_;
   Instruction* next_;
   Environment* env_;
   LocationSummary* locs_;
   intptr_t inlining_id_;
-  intptr_t place_id_;
 
   DISALLOW_COPY_AND_ASSIGN(Instruction);
 };
@@ -944,7 +984,7 @@ template<intptr_t N,
          template<typename Default, typename Pure> class CSETrait = NoCSE>
 class TemplateInstruction: public CSETrait<Instruction, PureInstruction>::Base {
  public:
-  explicit TemplateInstruction(intptr_t deopt_id = Isolate::kNoDeoptId)
+  explicit TemplateInstruction(intptr_t deopt_id = Thread::kNoDeoptId)
       : CSETrait<Instruction, PureInstruction>::Base(deopt_id), inputs_() { }
 
   virtual intptr_t InputCount() const { return N; }
@@ -1053,6 +1093,10 @@ class ParallelMoveInstr : public TemplateInstruction<0, NoThrow> {
   bool IsRedundant() const;
 
   virtual void PrintTo(BufferFormatter* f) const;
+
+  virtual intptr_t token_pos() const {
+    return ClassifyingTokenPositions::kParallelMove;
+  }
 
  private:
   GrowableArray<MoveOperands*> moves_;   // Elements cannot be null.
@@ -1182,8 +1226,12 @@ class BlockEntryInstr : public Instruction {
     loop_info_ = loop_info;
   }
 
-  virtual BlockEntryInstr* GetBlock() const {
-    return const_cast<BlockEntryInstr*>(this);
+  virtual BlockEntryInstr* GetBlock() {
+    return this;
+  }
+
+  virtual intptr_t token_pos() const {
+    return ClassifyingTokenPositions::kControlFlow;
   }
 
   // Helper to mutate the graph during inlining. This block should be
@@ -1204,7 +1252,7 @@ class BlockEntryInstr : public Instruction {
 
  protected:
   BlockEntryInstr(intptr_t block_id, intptr_t try_index)
-      : Instruction(Isolate::Current()->GetNextDeoptId()),
+      : Instruction(Thread::Current()->GetNextDeoptId()),
         block_id_(block_id),
         try_index_(try_index),
         preorder_number_(-1),
@@ -1330,7 +1378,7 @@ class GraphEntryInstr : public BlockEntryInstr {
   }
   ConstantInstr* constant_null();
 
-  bool IsCompiledForOsr() const { return osr_id_ != Isolate::kNoDeoptId; }
+  bool IsCompiledForOsr() const;
 
   intptr_t entry_count() const { return entry_count_; }
   void set_entry_count(intptr_t count) { entry_count_ = count; }
@@ -1638,7 +1686,7 @@ class AliasIdentity : public ValueObject {
 // Abstract super-class of all instructions that define a value (Bind, Phi).
 class Definition : public Instruction {
  public:
-  explicit Definition(intptr_t deopt_id = Isolate::kNoDeoptId);
+  explicit Definition(intptr_t deopt_id = Thread::kNoDeoptId);
 
   // Overridden by definitions that have call counts.
   virtual intptr_t CallCount() const {
@@ -1841,7 +1889,7 @@ template<intptr_t N,
          template<typename Impure, typename Pure> class CSETrait = NoCSE>
 class TemplateDefinition : public CSETrait<Definition, PureDefinition>::Base {
  public:
-  explicit TemplateDefinition(intptr_t deopt_id = Isolate::kNoDeoptId)
+  explicit TemplateDefinition(intptr_t deopt_id = Thread::kNoDeoptId)
       : CSETrait<Definition, PureDefinition>::Base(deopt_id), inputs_() { }
 
   virtual intptr_t InputCount() const { return N; }
@@ -1887,7 +1935,7 @@ class PhiInstr : public Definition {
   }
 
   // Get the block entry for that instruction.
-  virtual BlockEntryInstr* GetBlock() const { return block(); }
+  virtual BlockEntryInstr* GetBlock() { return block(); }
   JoinEntryInstr* block() const { return block_; }
 
   virtual CompileType ComputeType() const;
@@ -1982,7 +2030,7 @@ class ParameterInstr : public Definition {
   Register base_reg() const { return base_reg_; }
 
   // Get the block entry for that instruction.
-  virtual BlockEntryInstr* GetBlock() const { return block_; }
+  virtual BlockEntryInstr* GetBlock() { return block_; }
 
   intptr_t InputCount() const { return 0; }
   Value* InputAt(intptr_t i) const {
@@ -2035,6 +2083,10 @@ class PushArgumentInstr : public TemplateDefinition<1, NoThrow> {
 
   virtual void PrintOperandsTo(BufferFormatter* f) const;
 
+  virtual intptr_t token_pos() const {
+    return ClassifyingTokenPositions::kPushArgument;
+  }
+
  private:
   DISALLOW_COPY_AND_ASSIGN(PushArgumentInstr);
 };
@@ -2048,7 +2100,7 @@ inline Definition* Instruction::ArgumentAt(intptr_t index) const {
 class ReturnInstr : public TemplateInstruction<1, NoThrow> {
  public:
   ReturnInstr(intptr_t token_pos, Value* value)
-      : TemplateInstruction(Isolate::Current()->GetNextDeoptId()),
+      : TemplateInstruction(Thread::Current()->GetNextDeoptId()),
         token_pos_(token_pos) {
     SetInputAt(0, value);
   }
@@ -2078,7 +2130,7 @@ class ReturnInstr : public TemplateInstruction<1, NoThrow> {
 class ThrowInstr : public TemplateInstruction<0, Throws> {
  public:
   explicit ThrowInstr(intptr_t token_pos)
-      : TemplateInstruction(Isolate::Current()->GetNextDeoptId()),
+      : TemplateInstruction(Thread::Current()->GetNextDeoptId()),
         token_pos_(token_pos) {
   }
 
@@ -2104,7 +2156,7 @@ class ReThrowInstr : public TemplateInstruction<0, Throws> {
   // 'catch_try_index' can be CatchClauseNode::kInvalidTryIndex if the
   // rethrow has been artifically generated by the parser.
   ReThrowInstr(intptr_t token_pos, intptr_t catch_try_index)
-      : TemplateInstruction(Isolate::Current()->GetNextDeoptId()),
+      : TemplateInstruction(Thread::Current()->GetNextDeoptId()),
         token_pos_(token_pos),
         catch_try_index_(catch_try_index) {
   }
@@ -2157,13 +2209,17 @@ class StopInstr : public TemplateInstruction<0, NoThrow> {
 class GotoInstr : public TemplateInstruction<0, NoThrow> {
  public:
   explicit GotoInstr(JoinEntryInstr* entry)
-    : TemplateInstruction(Isolate::Current()->GetNextDeoptId()),
+    : TemplateInstruction(Thread::Current()->GetNextDeoptId()),
+      block_(NULL),
       successor_(entry),
       edge_weight_(0.0),
       parallel_move_(NULL) {
   }
 
   DECLARE_INSTRUCTION(Goto)
+
+  BlockEntryInstr* block() const { return block_; }
+  void set_block(BlockEntryInstr* block) { block_ = block; }
 
   JoinEntryInstr* successor() const { return successor_; }
   void set_successor(JoinEntryInstr* successor) { successor_ = successor; }
@@ -2205,7 +2261,12 @@ class GotoInstr : public TemplateInstruction<0, NoThrow> {
 
   virtual void PrintTo(BufferFormatter* f) const;
 
+  virtual intptr_t token_pos() const {
+    return ClassifyingTokenPositions::kControlFlow;
+  }
+
  private:
+  BlockEntryInstr* block_;
   JoinEntryInstr* successor_;
   double edge_weight_;
 
@@ -2316,7 +2377,7 @@ class ComparisonInstr : public TemplateDefinition<2, NoThrow, Pure> {
                   Token::Kind kind,
                   Value* left,
                   Value* right,
-                  intptr_t deopt_id = Isolate::kNoDeoptId)
+                  intptr_t deopt_id = Thread::kNoDeoptId)
       : TemplateDefinition(deopt_id),
         token_pos_(token_pos),
         kind_(kind),
@@ -2339,7 +2400,7 @@ class ComparisonInstr : public TemplateDefinition<2, NoThrow, Pure> {
 class BranchInstr : public Instruction {
  public:
   explicit BranchInstr(ComparisonInstr* comparison)
-      : Instruction(Isolate::Current()->GetNextDeoptId()),
+      : Instruction(Thread::Current()->GetNextDeoptId()),
         comparison_(comparison),
         is_checked_(false),
         constrained_type_(NULL),
@@ -2537,7 +2598,8 @@ class ConstraintInstr : public TemplateDefinition<1, NoThrow> {
 
 class ConstantInstr : public TemplateDefinition<0, NoThrow, Pure> {
  public:
-  explicit ConstantInstr(const Object& value);
+  ConstantInstr(const Object& value,
+                intptr_t token_pos = ClassifyingTokenPositions::kConstant);
 
   DECLARE_INSTRUCTION(Constant)
   virtual CompileType ComputeType() const;
@@ -2554,8 +2616,11 @@ class ConstantInstr : public TemplateDefinition<0, NoThrow, Pure> {
 
   virtual bool AttributesEqual(Instruction* other) const;
 
+  virtual intptr_t token_pos() const { return token_pos_; }
+
  private:
   const Object& value_;
+  const intptr_t token_pos_;
 
   DISALLOW_COPY_AND_ASSIGN(ConstantInstr);
 };
@@ -2586,11 +2651,10 @@ class UnboxedConstantInstr : public ConstantInstr {
 };
 
 
-class AssertAssignableInstr : public TemplateDefinition<3, Throws, Pure> {
+class AssertAssignableInstr : public TemplateDefinition<2, Throws, Pure> {
  public:
   AssertAssignableInstr(intptr_t token_pos,
                         Value* value,
-                        Value* instantiator,
                         Value* instantiator_type_arguments,
                         const AbstractType& dst_type,
                         const String& dst_name,
@@ -2602,8 +2666,7 @@ class AssertAssignableInstr : public TemplateDefinition<3, Throws, Pure> {
     ASSERT(!dst_type.IsNull());
     ASSERT(!dst_name.IsNull());
     SetInputAt(0, value);
-    SetInputAt(1, instantiator);
-    SetInputAt(2, instantiator_type_arguments);
+    SetInputAt(1, instantiator_type_arguments);
   }
 
   DECLARE_INSTRUCTION(AssertAssignable)
@@ -2611,8 +2674,7 @@ class AssertAssignableInstr : public TemplateDefinition<3, Throws, Pure> {
   virtual bool RecomputeType();
 
   Value* value() const { return inputs_[0]; }
-  Value* instantiator() const { return inputs_[1]; }
-  Value* instantiator_type_arguments() const { return inputs_[2]; }
+  Value* instantiator_type_arguments() const { return inputs_[1]; }
 
   virtual intptr_t token_pos() const { return token_pos_; }
   const AbstractType& dst_type() const { return dst_type_; }
@@ -2647,7 +2709,7 @@ class AssertAssignableInstr : public TemplateDefinition<3, Throws, Pure> {
 class AssertBooleanInstr : public TemplateDefinition<1, Throws, Pure> {
  public:
   AssertBooleanInstr(intptr_t token_pos, Value* value)
-      : TemplateDefinition(Isolate::Current()->GetNextDeoptId()),
+      : TemplateDefinition(Thread::Current()->GetNextDeoptId()),
         token_pos_(token_pos) {
     SetInputAt(0, value);
   }
@@ -2678,7 +2740,7 @@ class AssertBooleanInstr : public TemplateDefinition<1, Throws, Pure> {
 class CurrentContextInstr : public TemplateDefinition<0, NoThrow> {
  public:
   CurrentContextInstr()
-      : TemplateDefinition(Isolate::Current()->GetNextDeoptId()) {
+      : TemplateDefinition(Thread::Current()->GetNextDeoptId()) {
   }
 
   DECLARE_INSTRUCTION(CurrentContext)
@@ -2700,7 +2762,7 @@ class ClosureCallInstr : public TemplateDefinition<1, Throws> {
   ClosureCallInstr(Value* function,
                    ClosureCallNode* node,
                    ZoneGrowableArray<PushArgumentInstr*>* arguments)
-      : TemplateDefinition(Isolate::Current()->GetNextDeoptId()),
+      : TemplateDefinition(Thread::Current()->GetNextDeoptId()),
         ast_node_(*node),
         arguments_(arguments) {
     SetInputAt(0, function);
@@ -2742,7 +2804,7 @@ class InstanceCallInstr : public TemplateDefinition<0, Throws> {
                     const Array& argument_names,
                     intptr_t checked_argument_count,
                     const ZoneGrowableArray<const ICData*>& ic_data_array)
-      : TemplateDefinition(Isolate::Current()->GetNextDeoptId()),
+      : TemplateDefinition(Thread::Current()->GetNextDeoptId()),
         ic_data_(NULL),
         token_pos_(token_pos),
         function_name_(function_name),
@@ -2966,7 +3028,7 @@ class TestCidsInstr : public ComparisonInstr {
   virtual CompileType ComputeType() const;
 
   virtual bool CanDeoptimize() const {
-    return GetDeoptId() != Isolate::kNoDeoptId;
+    return GetDeoptId() != Thread::kNoDeoptId;
   }
 
   virtual Representation RequiredInputRepresentation(intptr_t idx) const {
@@ -3078,7 +3140,7 @@ class IfThenElseInstr : public Definition {
   IfThenElseInstr(ComparisonInstr* comparison,
                   Value* if_true,
                   Value* if_false)
-      : Definition(Isolate::Current()->GetNextDeoptId()),
+      : Definition(Thread::Current()->GetNextDeoptId()),
         comparison_(comparison),
         if_true_(Smi::Cast(if_true->BoundConstant()).Value()),
         if_false_(Smi::Cast(if_false->BoundConstant()).Value()) {
@@ -3132,7 +3194,8 @@ class IfThenElseInstr : public Definition {
   }
   virtual bool AttributesEqual(Instruction* other) const {
     IfThenElseInstr* other_if_then_else = other->AsIfThenElse();
-    return comparison()->AttributesEqual(other_if_then_else->comparison()) &&
+    return (comparison()->tag() == other_if_then_else->comparison()->tag()) &&
+           comparison()->AttributesEqual(other_if_then_else->comparison()) &&
            (if_true_ == other_if_then_else->if_true_) &&
            (if_false_ == other_if_then_else->if_false_);
   }
@@ -3159,7 +3222,7 @@ class StaticCallInstr : public TemplateDefinition<0, Throws> {
                   const Array& argument_names,
                   ZoneGrowableArray<PushArgumentInstr*>* arguments,
                   const ZoneGrowableArray<const ICData*>& ic_data_array)
-      : TemplateDefinition(Isolate::Current()->GetNextDeoptId()),
+      : TemplateDefinition(Thread::Current()->GetNextDeoptId()),
         ic_data_(NULL),
         token_pos_(token_pos),
         function_(function),
@@ -3248,8 +3311,9 @@ class StaticCallInstr : public TemplateDefinition<0, Throws> {
 
 class LoadLocalInstr : public TemplateDefinition<0, NoThrow> {
  public:
-  explicit LoadLocalInstr(const LocalVariable& local)
-      : local_(local), is_last_(false) { }
+  LoadLocalInstr(const LocalVariable& local,
+                 intptr_t token_pos = Scanner::kNoSourcePos)
+      : local_(local), is_last_(false), token_pos_(token_pos) { }
 
   DECLARE_INSTRUCTION(LoadLocal)
   virtual CompileType ComputeType() const;
@@ -3268,9 +3332,12 @@ class LoadLocalInstr : public TemplateDefinition<0, NoThrow> {
   void mark_last() { is_last_ = true; }
   bool is_last() const { return is_last_; }
 
+  virtual intptr_t token_pos() const { return token_pos_; }
+
  private:
   const LocalVariable& local_;
   bool is_last_;
+  const intptr_t token_pos_;
 
   DISALLOW_COPY_AND_ASSIGN(LoadLocalInstr);
 };
@@ -3293,6 +3360,10 @@ class PushTempInstr : public TemplateDefinition<1, NoThrow> {
   virtual EffectSet Effects() const {
     UNREACHABLE();  // Eliminated by SSA construction.
     return EffectSet::None();
+  }
+
+  virtual intptr_t token_pos() const {
+    return ClassifyingTokenPositions::kTempMove;
   }
 
  private:
@@ -3337,6 +3408,10 @@ class DropTempsInstr : public Definition {
     return false;
   }
 
+  virtual intptr_t token_pos() const {
+    return ClassifyingTokenPositions::kTempMove;
+  }
+
  private:
   virtual void RawSetInputAt(intptr_t i, Value* value) {
     value_ = value;
@@ -3351,8 +3426,10 @@ class DropTempsInstr : public Definition {
 
 class StoreLocalInstr : public TemplateDefinition<1, NoThrow> {
  public:
-  StoreLocalInstr(const LocalVariable& local, Value* value)
-      : local_(local), is_dead_(false), is_last_(false) {
+  StoreLocalInstr(const LocalVariable& local,
+                  Value* value,
+                  intptr_t token_pos = Scanner::kNoSourcePos)
+      : local_(local), is_dead_(false), is_last_(false), token_pos_(token_pos) {
     SetInputAt(0, value);
   }
 
@@ -3377,10 +3454,13 @@ class StoreLocalInstr : public TemplateDefinition<1, NoThrow> {
     return EffectSet::None();
   }
 
+  virtual intptr_t token_pos() const { return token_pos_; }
+
  private:
   const LocalVariable& local_;
   bool is_dead_;
   bool is_last_;
+  const intptr_t token_pos_;
 
   DISALLOW_COPY_AND_ASSIGN(StoreLocalInstr);
 };
@@ -3389,7 +3469,9 @@ class StoreLocalInstr : public TemplateDefinition<1, NoThrow> {
 class NativeCallInstr : public TemplateDefinition<0, Throws> {
  public:
   explicit NativeCallInstr(NativeBodyNode* node)
-      : ast_node_(*node) {}
+      : ast_node_(*node),
+        native_c_function_(NULL),
+        is_bootstrap_native_(false) { }
 
   DECLARE_INSTRUCTION(NativeCall)
 
@@ -3402,11 +3484,11 @@ class NativeCallInstr : public TemplateDefinition<0, Throws> {
   }
 
   NativeFunction native_c_function() const {
-    return ast_node_.native_c_function();
+    return native_c_function_;
   }
 
   bool is_bootstrap_native() const {
-    return ast_node_.is_bootstrap_native();
+    return is_bootstrap_native_;
   }
 
   bool link_lazily() const {
@@ -3419,8 +3501,18 @@ class NativeCallInstr : public TemplateDefinition<0, Throws> {
 
   virtual EffectSet Effects() const { return EffectSet::All(); }
 
+  void SetupNative();
+
  private:
+  void set_native_c_function(NativeFunction value) {
+    native_c_function_ = value;
+  }
+
+  void set_is_bootstrap_native(bool value) { is_bootstrap_native_ = value; }
+
   const NativeBodyNode& ast_node_;
+  NativeFunction native_c_function_;
+  bool is_bootstrap_native_;
 
   DISALLOW_COPY_AND_ASSIGN(NativeCallInstr);
 };
@@ -3630,7 +3722,8 @@ class GuardFieldLengthInstr : public GuardFieldInstr {
 
 class LoadStaticFieldInstr : public TemplateDefinition<1, NoThrow> {
  public:
-  explicit LoadStaticFieldInstr(Value* field_value) {
+  LoadStaticFieldInstr(Value* field_value, intptr_t token_pos)
+      : token_pos_(token_pos) {
     ASSERT(field_value->BindsToConstant());
     SetInputAt(0, field_value);
   }
@@ -3651,15 +3744,22 @@ class LoadStaticFieldInstr : public TemplateDefinition<1, NoThrow> {
   virtual EffectSet Dependencies() const;
   virtual bool AttributesEqual(Instruction* other) const;
 
+  virtual intptr_t token_pos() const { return token_pos_; }
+
  private:
+  const intptr_t token_pos_;
+
   DISALLOW_COPY_AND_ASSIGN(LoadStaticFieldInstr);
 };
 
 
 class StoreStaticFieldInstr : public TemplateDefinition<1, NoThrow> {
  public:
-  StoreStaticFieldInstr(const Field& field, Value* value)
-      : field_(field) {
+  StoreStaticFieldInstr(const Field& field,
+                        Value* value,
+                        intptr_t token_pos = Scanner::kNoSourcePos)
+      : field_(field),
+        token_pos_(token_pos) {
     ASSERT(field.IsZoneHandle());
     SetInputAt(kValuePos, value);
   }
@@ -3682,6 +3782,8 @@ class StoreStaticFieldInstr : public TemplateDefinition<1, NoThrow> {
   // are marked as having no side-effects.
   virtual EffectSet Effects() const { return EffectSet::None(); }
 
+  virtual intptr_t token_pos() const { return token_pos_; }
+
  private:
   bool CanValueBeSmi() const {
     const intptr_t cid = value()->Type()->ToNullableCid();
@@ -3691,6 +3793,7 @@ class StoreStaticFieldInstr : public TemplateDefinition<1, NoThrow> {
   }
 
   const Field& field_;
+  const intptr_t token_pos_;
 
   DISALLOW_COPY_AND_ASSIGN(StoreStaticFieldInstr);
 };
@@ -3734,7 +3837,7 @@ class LoadIndexedInstr : public TemplateDefinition<2, NoThrow> {
   intptr_t class_id() const { return class_id_; }
 
   virtual bool CanDeoptimize() const {
-    return GetDeoptId() != Isolate::kNoDeoptId;
+    return GetDeoptId() != Thread::kNoDeoptId;
   }
 
   virtual Representation representation() const;
@@ -3877,7 +3980,7 @@ class StringToCharCodeInstr : public TemplateDefinition<1, NoThrow, Pure> {
 class StringInterpolateInstr : public TemplateDefinition<1, Throws> {
  public:
   StringInterpolateInstr(Value* value, intptr_t token_pos)
-      : TemplateDefinition(Isolate::Current()->GetNextDeoptId()),
+      : TemplateDefinition(Thread::Current()->GetNextDeoptId()),
         token_pos_(token_pos),
         function_(Function::ZoneHandle()) {
     SetInputAt(0, value);
@@ -3994,11 +4097,10 @@ class BooleanNegateInstr : public TemplateDefinition<1, NoThrow> {
 };
 
 
-class InstanceOfInstr : public TemplateDefinition<3, Throws> {
+class InstanceOfInstr : public TemplateDefinition<2, Throws> {
  public:
   InstanceOfInstr(intptr_t token_pos,
                   Value* value,
-                  Value* instantiator,
                   Value* instantiator_type_arguments,
                   const AbstractType& type,
                   bool negate_result,
@@ -4009,16 +4111,14 @@ class InstanceOfInstr : public TemplateDefinition<3, Throws> {
         negate_result_(negate_result) {
     ASSERT(!type.IsNull());
     SetInputAt(0, value);
-    SetInputAt(1, instantiator);
-    SetInputAt(2, instantiator_type_arguments);
+    SetInputAt(1, instantiator_type_arguments);
   }
 
   DECLARE_INSTRUCTION(InstanceOf)
   virtual CompileType ComputeType() const;
 
   Value* value() const { return inputs_[0]; }
-  Value* instantiator() const { return inputs_[1]; }
-  Value* instantiator_type_arguments() const { return inputs_[2]; }
+  Value* instantiator_type_arguments() const { return inputs_[1]; }
 
   bool negate_result() const { return negate_result_; }
   const AbstractType& type() const { return type_; }
@@ -4033,7 +4133,6 @@ class InstanceOfInstr : public TemplateDefinition<3, Throws> {
  private:
   const intptr_t token_pos_;
   Value* value_;
-  Value* instantiator_;
   Value* type_arguments_;
   const AbstractType& type_;
   const bool negate_result_;
@@ -4244,7 +4343,7 @@ class CreateArrayInstr : public TemplateDefinition<2, Throws> {
   CreateArrayInstr(intptr_t token_pos,
                    Value* element_type,
                    Value* num_elements)
-      : TemplateDefinition(Isolate::Current()->GetNextDeoptId()),
+      : TemplateDefinition(Thread::Current()->GetNextDeoptId()),
         token_pos_(token_pos),
         identity_(AliasIdentity::Unknown())  {
     SetInputAt(kElementTypePos, element_type);
@@ -4360,7 +4459,8 @@ class LoadFieldInstr : public TemplateDefinition<1, NoThrow> {
         field_(NULL),
         token_pos_(token_pos) {
     ASSERT(offset_in_bytes >= 0);
-    ASSERT(type.IsZoneHandle());  // May be null if field is not an instance.
+    // May be null if field is not an instance.
+    ASSERT(type.IsZoneHandle() || type.IsReadOnlyHandle());
     SetInputAt(0, instance);
   }
 
@@ -4376,7 +4476,8 @@ class LoadFieldInstr : public TemplateDefinition<1, NoThrow> {
         field_(field),
         token_pos_(token_pos) {
     ASSERT(field->IsZoneHandle());
-    ASSERT(type.IsZoneHandle());  // May be null if field is not an instance.
+    // May be null if field is not an instance.
+    ASSERT(type.IsZoneHandle() || type.IsReadOnlyHandle());
     SetInputAt(0, instance);
   }
 
@@ -4447,11 +4548,11 @@ class InstantiateTypeInstr : public TemplateDefinition<1, Throws> {
                        const AbstractType& type,
                        const Class& instantiator_class,
                        Value* instantiator)
-      : TemplateDefinition(Isolate::Current()->GetNextDeoptId()),
+      : TemplateDefinition(Thread::Current()->GetNextDeoptId()),
         token_pos_(token_pos),
         type_(type),
         instantiator_class_(instantiator_class) {
-    ASSERT(type.IsZoneHandle());
+    ASSERT(type.IsZoneHandle() || type.IsReadOnlyHandle());
     SetInputAt(0, instantiator);
   }
 
@@ -4484,7 +4585,7 @@ class InstantiateTypeArgumentsInstr : public TemplateDefinition<1, Throws> {
                                 const TypeArguments& type_arguments,
                                 const Class& instantiator_class,
                                 Value* instantiator)
-      : TemplateDefinition(Isolate::Current()->GetNextDeoptId()),
+      : TemplateDefinition(Thread::Current()->GetNextDeoptId()),
         token_pos_(token_pos),
         type_arguments_(type_arguments),
         instantiator_class_(instantiator_class) {
@@ -4548,7 +4649,7 @@ class AllocateContextInstr : public TemplateDefinition<0, NoThrow> {
 class InitStaticFieldInstr : public TemplateInstruction<1, Throws> {
  public:
   InitStaticFieldInstr(Value* input, const Field& field)
-      : TemplateInstruction(Isolate::Current()->GetNextDeoptId()),
+      : TemplateInstruction(Thread::Current()->GetNextDeoptId()),
         field_(field) {
     SetInputAt(0, input);
   }
@@ -4572,7 +4673,7 @@ class InitStaticFieldInstr : public TemplateInstruction<1, Throws> {
 class CloneContextInstr : public TemplateDefinition<1, NoThrow> {
  public:
   CloneContextInstr(intptr_t token_pos, Value* context_value)
-      : TemplateDefinition(Isolate::Current()->GetNextDeoptId()),
+      : TemplateDefinition(Thread::Current()->GetNextDeoptId()),
         token_pos_(token_pos) {
     SetInputAt(0, context_value);
   }
@@ -4694,7 +4795,7 @@ class BoxInstr : public TemplateDefinition<1, NoThrow, Pure> {
 
   virtual bool CanDeoptimize() const { return false; }
   virtual intptr_t DeoptimizationTarget() const {
-    return Isolate::kNoDeoptId;
+    return Thread::kNoDeoptId;
   }
 
   virtual Representation RequiredInputRepresentation(intptr_t idx) const {
@@ -4707,6 +4808,10 @@ class BoxInstr : public TemplateDefinition<1, NoThrow, Pure> {
   }
 
   Definition* Canonicalize(FlowGraph* flow_graph);
+
+  virtual intptr_t token_pos() const {
+    return ClassifyingTokenPositions::kBox;
+  }
 
  protected:
   BoxInstr(Representation from_representation, Value* value)
@@ -4828,6 +4933,10 @@ class UnboxInstr : public TemplateDefinition<1, NoThrow, Pure> {
 
   virtual intptr_t DeoptimizationTarget() const {
     return GetDeoptId();
+  }
+
+  virtual intptr_t token_pos() const {
+    return ClassifyingTokenPositions::kBox;
   }
 
  protected:
@@ -6831,6 +6940,8 @@ class BinaryIntegerOpInstr : public TemplateDefinition<2, NoThrow, Pure> {
                         Range* range);
 
  private:
+  Definition* CreateConstantResult(FlowGraph* graph, const Integer& result);
+
   const Token::Kind op_kind_;
 
   bool can_overflow_;
@@ -7096,7 +7207,7 @@ class UnaryDoubleOpInstr : public TemplateDefinition<1, NoThrow, Pure> {
 class CheckStackOverflowInstr : public TemplateInstruction<0, NoThrow> {
  public:
   CheckStackOverflowInstr(intptr_t token_pos, intptr_t loop_depth)
-      : TemplateInstruction(Isolate::Current()->GetNextDeoptId()),
+      : TemplateInstruction(Thread::Current()->GetNextDeoptId()),
         token_pos_(token_pos),
         loop_depth_(loop_depth) {
   }

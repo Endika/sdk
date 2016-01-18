@@ -8,6 +8,7 @@ import "package:async_helper/async_helper.dart";
 
 import 'package:compiler/compiler.dart'
        show Diagnostic;
+import 'package:compiler/src/commandline_options.dart';
 import 'package:compiler/src/old_to_new_api.dart';
 
 main() {
@@ -32,13 +33,13 @@ main() {
     }
   }
 
-  Compiler compiler = new Compiler(
+  CompilerImpl compiler = new CompilerImpl(
       new LegacyCompilerInput(provider.readStringFromUri),
       new LegacyCompilerOutput(),
       new LegacyCompilerDiagnostics(diagnosticHandler),
       libraryRoot,
       packageRoot,
-      ['--analyze-only'],
+      [Flags.analyzeOnly],
       {});
   asyncTest(() => compiler.run(Uri.parse('memory:main.dart')).then((_) {
     Expect.isTrue(compiler.compilationFailed);

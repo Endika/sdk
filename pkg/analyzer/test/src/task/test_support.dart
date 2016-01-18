@@ -2,9 +2,9 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library test.src.task.test_support;
+library analyzer.test.src.task.test_support;
 
-import 'package:analyzer/src/generated/engine.dart' hide AnalysisTask;
+import 'package:analyzer/src/generated/engine.dart';
 import 'package:analyzer/src/generated/java_engine.dart';
 import 'package:analyzer/task/model.dart';
 
@@ -36,8 +36,11 @@ class TestAnalysisTask extends AnalysisTask {
   final bool handlesDependencyCycles;
 
   TestAnalysisTask(AnalysisContext context, AnalysisTarget target,
-      {this.descriptor, this.exception, this.handlesDependencyCycles: false,
-      this.results, this.value: 1})
+      {this.descriptor,
+      this.exception,
+      this.handlesDependencyCycles: false,
+      this.results,
+      this.value: 1})
       : super(context, target);
 
   @override

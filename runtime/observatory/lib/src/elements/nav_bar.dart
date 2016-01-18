@@ -17,6 +17,9 @@ class NavBarElement extends ObservatoryElement {
   @published bool notifyOnPause = true;
   @published bool pad = true;
 
+  // Desired nav var height in pixels.
+  static const height = 40;
+
   NavBarElement.created() : super.created();
 }
 
@@ -75,6 +78,14 @@ class TopNavMenuElement extends ObservatoryElement {
 class VMNavMenuElement extends ObservatoryElement {
   @published bool last = false;
   @published VM vm;
+
+  String nameAndAddress(name, target) {
+    if (name != null && target != null) {
+      return '${name}@${target.networkAddress}';
+    } else {
+      return '<initializing>';
+    }
+  }
 
   VMNavMenuElement.created() : super.created();
 }

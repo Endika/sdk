@@ -77,11 +77,6 @@ def BuildOptions():
       help='Name of the devenv.com/msbuild executable on Windows (varies for '
            'different versions of Visual Studio)',
       default=vs_executable)
-  result.add_option("--use-bootstrap-for-observatory",
-      help='Use a stripped down Dart binary built on the host machine '
-           'for building Observatory. Necessary on Linux machines which have '
-           'libc incompatibilities with the prebuilt Dart binaries.',
-      default=False, action="store_true")
   return result
 
 
@@ -158,8 +153,10 @@ def GetToolchainPrefix(target_os, arch, options):
   if arch == 'arm':
     # To use a non-hf compiler, specify on the command line with --toolchain.
     return (DEFAULT_ARM_CROSS_COMPILER_PATH + "/arm-linux-gnueabihf")
+  if arch == 'arm64':
+    return (DEFAULT_ARM_CROSS_COMPILER_PATH + "/aarch64-linux-gnu")
 
-  # TODO(zra): Find default MIPS and ARM64 Linux cross-compilers.
+  # TODO(zra): Find default MIPS Linux cross-compiler.
 
   return None
 
@@ -391,8 +388,6 @@ def BuildOneConfig(options, target, target_os, mode, arch, override_tools):
   global filter_xcodebuild_output
   start_time = time.time()
   os.environ['DART_BUILD_MODE'] = mode
-  if options.use_bootstrap_for_observatory != False:
-    os.environ['DART_USE_BOOTSTRAP_BIN'] = '1'
   build_config = utils.GetBuildConf(mode, arch, target_os)
   if HOST_OS == 'macos':
     filter_xcodebuild_output = True

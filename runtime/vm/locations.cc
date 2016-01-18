@@ -6,8 +6,6 @@
 
 #include "vm/assembler.h"
 #include "vm/il_printer.h"
-#include "vm/intermediate_language.h"
-#include "vm/flow_graph_compiler.h"
 #include "vm/log.h"
 #include "vm/stack_frame.h"
 
@@ -225,9 +223,9 @@ const char* Location::ToCString() const {
 
 void Location::Print() const {
   if (kind() == kStackSlot) {
-    ISL_Print("S%+" Pd "", stack_index());
+    THR_Print("S%+" Pd "", stack_index());
   } else {
-    ISL_Print("%s", Name());
+    THR_Print("%s", Name());
   }
 }
 

@@ -16,7 +16,7 @@ Future<Map<String, String>> generate(String code,
   var provider = new MemorySourceFileProvider({ 'main.dart': code });
   var handler = new FormattingDiagnosticHandler(provider);
 
-  Compiler compiler = new Compiler(provider,
+  CompilerImpl compiler = new CompilerImpl(provider,
                                    const NullCompilerOutput(),
                                    handler,
                                    libraryRoot,
@@ -31,7 +31,7 @@ Future<Map<String, String>> generate(String code,
     for (var element in backend.generatedCode.keys) {
       if (element.compilationUnit.script.readableUri != uri) continue;
       var name = element.name;
-      var code = backend.assembleCode(element);
+      var code = backend.getGeneratedCode(element);
       result[name] = code;
     }
     return result;

@@ -4,10 +4,9 @@
 
 library dart2js.parser.element_listener;
 
-import '../diagnostics/diagnostic_listener.dart';
-import '../diagnostics/messages.dart';
-import '../diagnostics/spannable.dart' show
-    Spannable;
+import '../common.dart';
+import '../diagnostics/messages.dart' show
+    MessageTemplate;
 import '../elements/elements.dart' show
     Element,
     LibraryElement,
@@ -19,7 +18,7 @@ import '../elements/modelx.dart' show
     EnumClassElementX,
     FieldElementX,
     LibraryElementX,
-    MixinApplicationElementX,
+    NamedMixinApplicationElementX,
     VariableList;
 import '../native/native.dart' as native;
 import '../string_validator.dart' show
@@ -37,7 +36,8 @@ import '../tokens/token_constants.dart' as Tokens show
     EOF_TOKEN;
 import '../tree/tree.dart';
 import '../util/util.dart' show
-    Link;
+    Link,
+    LinkBuilder;
 
 import 'partial_elements.dart' show
     PartialClassElement,
@@ -54,6 +54,16 @@ import 'listener.dart' show
 
 typedef int IdGenerator();
 
+/// Options used for scanning.
+///
+/// Use this to conditionally support special tokens.
+class ScannerOptions {
+  /// If `true` the pseudo keyword `native` is supported.
+  final bool canUseNative;
+
+  const ScannerOptions({this.canUseNative: false});
+}
+
 /**
  * A parser event listener designed to work with [PartialParser]. It
  * builds elements representing the top-level declarations found in
@@ -62,14 +72,16 @@ typedef int IdGenerator();
  */
 class ElementListener extends Listener {
   final IdGenerator idGenerator;
-  final DiagnosticListener listener;
+  final DiagnosticReporter reporter;
+  final ScannerOptions scannerOptions;
   final CompilationUnitElementX compilationUnitElement;
   final StringValidator stringValidator;
   Link<StringQuoting> interpolationScope;
 
   Link<Node> nodes = const Link<Node>();
 
-  Link<MetadataAnnotation> metadata = const Link<MetadataAnnotation>();
+  LinkBuilder<MetadataAnnotation> metadata =
+      new LinkBuilder<MetadataAnnotation>();
 
   /// Records a stack of booleans for each member parsed (a stack is used to
   /// support nested members which isn't currently possible, but it also serves
@@ -83,11 +95,12 @@ class ElementListener extends Listener {
   bool suppressParseErrors = false;
 
   ElementListener(
-      DiagnosticListener listener,
+      this.scannerOptions,
+      DiagnosticReporter reporter,
       this.compilationUnitElement,
       this.idGenerator)
-      : this.listener = listener,
-        stringValidator = new StringValidator(listener),
+      : this.reporter = reporter,
+        stringValidator = new StringValidator(reporter),
         interpolationScope = const Link<StringQuoting>();
 
   bool get currentMemberHasParseError {
@@ -108,7 +121,7 @@ class ElementListener extends Listener {
     StringNode node = popNode();
     // TODO(lrn): Handle interpolations in script tags.
     if (node.isInterpolation) {
-      listener.internalError(node,
+      reporter.internalError(node,
           "String interpolation not supported in library tags.");
       return null;
     }
@@ -137,10 +150,32 @@ class ElementListener extends Listener {
     if (asKeyword != null) {
       prefix = popNode();
     }
+    NodeList conditionalUris = popNode();
     StringNode uri = popLiteralString();
-    addLibraryTag(new Import(importKeyword, uri, prefix, combinators,
+    addLibraryTag(new Import(importKeyword, uri, conditionalUris,
+                             prefix, combinators,
                              popMetadata(compilationUnitElement),
                              isDeferred: isDeferred));
+  }
+
+  void endDottedName(int count, Token token) {
+    NodeList identifiers = makeNodeList(count, null, null, '.');
+    pushNode(new DottedName(token, identifiers));
+  }
+
+  void endConditionalUris(int count) {
+    if (count == 0) {
+      pushNode(null);
+    } else {
+      pushNode(makeNodeList(count, null, null, " "));
+    }
+  }
+
+  void endConditionalUri(Token ifToken, Token equalSign) {
+    StringNode uri = popNode();
+    LiteralString conditionValue = (equalSign != null) ? popNode() : null;
+    DottedName identifier = popNode();
+    pushNode(new ConditionalUri(ifToken, identifier, conditionValue, uri));
   }
 
   void endEnum(Token enumKeyword, Token endBrace, int count) {
@@ -156,8 +191,9 @@ class ElementListener extends Listener {
 
   void endExport(Token exportKeyword, Token semicolon) {
     NodeList combinators = popNode();
+    NodeList conditionalUris = popNode();
     StringNode uri = popNode();
-    addLibraryTag(new Export(exportKeyword, uri, combinators,
+    addLibraryTag(new Export(exportKeyword, uri, conditionalUris, combinators,
                              popMetadata(compilationUnitElement)));
   }
 
@@ -199,7 +235,7 @@ class ElementListener extends Listener {
   }
 
   void addPartOfTag(PartOf tag) {
-    compilationUnitElement.setPartOf(tag, listener);
+    compilationUnitElement.setPartOf(tag, reporter);
   }
 
   void endMetadata(Token beginToken, Token periodBeforeName, Token endToken) {
@@ -212,9 +248,9 @@ class ElementListener extends Listener {
 
   void endTopLevelDeclaration(Token token) {
     if (!metadata.isEmpty) {
-      recoverableError(metadata.head.beginToken,
+      recoverableError(metadata.first.beginToken,
                        'Metadata not supported here.');
-      metadata = const Link<MetadataAnnotation>();
+      metadata.clear();
     }
   }
 
@@ -265,9 +301,8 @@ class ElementListener extends Listener {
 
     int id = idGenerator();
     Element enclosing = compilationUnitElement;
-    pushElement(new MixinApplicationElementX(name.source, enclosing, id,
-                                             namedMixinApplication,
-                                             modifiers));
+    pushElement(new NamedMixinApplicationElementX(
+        name.source, enclosing, id, namedMixinApplication));
     rejectBuiltInIdentifier(name);
   }
 
@@ -590,24 +625,22 @@ class ElementListener extends Listener {
     reportFatalError(node, message);
   }
 
-  void pushElement(Element element) {
+  void pushElement(ElementX element) {
+    assert(invariant(element, element.declarationSite != null,
+        message: 'Missing declaration site for $element.'));
     popMetadata(element);
-    compilationUnitElement.addMember(element, listener);
+    compilationUnitElement.addMember(element, reporter);
   }
 
-  Link<MetadataAnnotation> popMetadata(ElementX element) {
-    var result = const Link<MetadataAnnotation>();
-    for (Link link = metadata; !link.isEmpty; link = link.tail) {
-      element.addMetadata(link.head);
-      // Reverse the list as is implicitly done by addMetadata.
-      result = result.prepend(link.head);
-    }
-    metadata = const Link<MetadataAnnotation>();
+  List<MetadataAnnotation> popMetadata(ElementX element) {
+    List<MetadataAnnotation> result = metadata.toList();
+    element.metadata = result;
+    metadata.clear();
     return result;
   }
 
   void pushMetadata(MetadataAnnotation annotation) {
-    metadata = metadata.prepend(annotation);
+    metadata.addLast(annotation);
   }
 
   void addLibraryTag(LibraryTag tag) {
@@ -616,7 +649,7 @@ class ElementListener extends Listener {
     }
     LibraryElementX implementationLibrary =
         compilationUnitElement.implementationLibrary;
-    implementationLibrary.addTag(tag, listener);
+    implementationLibrary.addTag(tag, reporter);
   }
 
   void pushNode(Node node) {
@@ -750,6 +783,6 @@ class ElementListener extends Listener {
     if (!memberErrors.isEmpty) {
       memberErrors = memberErrors.tail.prepend(true);
     }
-    listener.reportError(spannable, errorCode, arguments);
+    reporter.reportErrorMessage(spannable, errorCode, arguments);
   }
 }

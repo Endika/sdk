@@ -2,14 +2,15 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library engine.incremental_resolver_test;
+library analyzer.test.generated.incremental_resolver_test;
 
-import 'package:analyzer/src/context/cache.dart' as task;
+import 'package:analyzer/dart/element/element.dart';
+import 'package:analyzer/src/context/cache.dart';
+import 'package:analyzer/src/dart/element/element.dart';
 import 'package:analyzer/src/generated/ast.dart';
-import 'package:analyzer/src/generated/element.dart';
 import 'package:analyzer/src/generated/engine.dart';
 import 'package:analyzer/src/generated/error.dart';
-import 'package:analyzer/src/generated/incremental_logger.dart' as log;
+import 'package:analyzer/src/generated/incremental_logger.dart' as logging;
 import 'package:analyzer/src/generated/incremental_resolution_validator.dart';
 import 'package:analyzer/src/generated/incremental_resolver.dart';
 import 'package:analyzer/src/generated/java_engine.dart';
@@ -19,11 +20,11 @@ import 'package:analyzer/src/generated/scanner.dart';
 import 'package:analyzer/src/generated/source_io.dart';
 import 'package:analyzer/src/generated/testing/ast_factory.dart';
 import 'package:analyzer/src/generated/testing/element_factory.dart';
+import 'package:analyzer/src/task/dart.dart';
 import 'package:analyzer/task/dart.dart';
 import 'package:unittest/unittest.dart';
 
 import '../reflective_tests.dart';
-import 'parser_test.dart';
 import 'resolver_test.dart';
 import 'test_support.dart';
 
@@ -38,11 +39,64 @@ main() {
 void initializeTestEnvironment() {}
 
 void _assertEqualError(AnalysisError incrError, AnalysisError fullError) {
-  expect(incrError.errorCode, same(fullError.errorCode));
-  expect(incrError.source, fullError.source);
-  expect(incrError.offset, fullError.offset);
-  expect(incrError.length, fullError.length);
-  expect(incrError.message, fullError.message);
+  if (incrError.errorCode != fullError.errorCode ||
+      incrError.source != fullError.source ||
+      incrError.offset != fullError.offset ||
+      incrError.length != fullError.length ||
+      incrError.message != fullError.message) {
+    StringBuffer buffer = new StringBuffer();
+    buffer.writeln('Found error does not match expected error:');
+    if (incrError.errorCode == fullError.errorCode) {
+      buffer.write('  errorCode = ');
+      buffer.write(fullError.errorCode.uniqueName);
+    } else {
+      buffer.write('  Expected errorCode = ');
+      buffer.write(fullError.errorCode.uniqueName);
+      buffer.write(' found ');
+      buffer.write(incrError.errorCode.uniqueName);
+    }
+    buffer.writeln();
+    if (incrError.source == fullError.source) {
+      buffer.write('  source = ');
+      buffer.write(fullError.source);
+    } else {
+      buffer.write('  Expected source = ');
+      buffer.write(fullError.source);
+      buffer.write(' found ');
+      buffer.write(incrError.source);
+    }
+    buffer.writeln();
+    if (incrError.offset == fullError.offset) {
+      buffer.write('  offset = ');
+      buffer.write(fullError.offset);
+    } else {
+      buffer.write('  Expected offset = ');
+      buffer.write(fullError.offset);
+      buffer.write(' found ');
+      buffer.write(incrError.offset);
+    }
+    buffer.writeln();
+    if (incrError.length == fullError.length) {
+      buffer.write('  length = ');
+      buffer.write(fullError.length);
+    } else {
+      buffer.write('  Expected length = ');
+      buffer.write(fullError.length);
+      buffer.write(' found ');
+      buffer.write(incrError.length);
+    }
+    buffer.writeln();
+    if (incrError.message == fullError.message) {
+      buffer.write('  message = ');
+      buffer.write(fullError.message);
+    } else {
+      buffer.write('  Expected message = ');
+      buffer.write(fullError.message);
+      buffer.write(' found ');
+      buffer.write(incrError.message);
+    }
+    fail(buffer.toString());
+  }
 }
 
 void _assertEqualErrors(
@@ -781,6 +835,24 @@ class A {
 ''');
   }
 
+  void test_false_fieldFormalParameter_differentField() {
+    _assertDoesNotMatch(
+        r'''
+class A {
+  final aaa;
+  final bbb;
+  A(this.aaa, this.bbb);
+}
+''',
+        r'''
+class A {
+  final aaa;
+  final bbb;
+  A(this.bbb, this.aaa);
+}
+''');
+  }
+
   void test_false_fieldFormalParameter_parameters_add() {
     _assertDoesNotMatch(
         r'''
@@ -873,6 +945,54 @@ class A {
 class A {
   final field;
   A(field);
+}
+''');
+  }
+
+  void test_false_fieldFormalParameter_typeAdd() {
+    _assertDoesNotMatch(
+        r'''
+class A {
+  final fff;
+  A(this.fff);
+}
+''',
+        r'''
+class A {
+  final fff;
+  A(int this.fff);
+}
+''');
+  }
+
+  void test_false_fieldFormalParameter_typeEdit() {
+    _assertDoesNotMatch(
+        r'''
+class A {
+  final fff;
+  A(int this.fff);
+}
+''',
+        r'''
+class A {
+  final fff;
+  A(String this.fff);
+}
+''');
+  }
+
+  void test_false_fieldFormalParameter_typeRemove() {
+    _assertDoesNotMatch(
+        r'''
+class A {
+  final fff;
+  A(int this.fff);
+}
+''',
+        r'''
+class A {
+  final fff;
+  A(this.fff);
 }
 ''');
   }
@@ -1426,6 +1546,34 @@ class A {
 ''');
   }
 
+  void test_false_method_getKeyword_add() {
+    _assertDoesNotMatchOK(
+        r'''
+class A {
+  void foo() {}
+}
+''',
+        r'''
+class A {
+  void get foo {}
+}
+''');
+  }
+
+  void test_false_method_getKeyword_remove() {
+    _assertDoesNotMatchOK(
+        r'''
+class A {
+  void get foo {}
+}
+''',
+        r'''
+class A {
+  void foo() {}
+}
+''');
+  }
+
   void test_false_method_list_add() {
     _assertDoesNotMatchOK(
         r'''
@@ -1516,6 +1664,34 @@ class A {
         r'''
 class A {
   String m() {}
+}
+''');
+  }
+
+  void test_false_method_setKeyword_add() {
+    _assertDoesNotMatchOK(
+        r'''
+class A {
+  void foo(x) {}
+}
+''',
+        r'''
+class A {
+  void set foo(x) {}
+}
+''');
+  }
+
+  void test_false_method_setKeyword_remove() {
+    _assertDoesNotMatchOK(
+        r'''
+class A {
+  void set foo(x) {}
+}
+''',
+        r'''
+class A {
+  void foo(x) {}
 }
 ''');
   }
@@ -2330,6 +2506,22 @@ class A {
 ''');
   }
 
+  void test_true_fieldFormalParameter_changeName_wasUnresolvedField() {
+    _assertMatches(
+        r'''
+class A {
+  final fff;
+  A(this.unresolved);
+}
+''',
+        r'''
+class A {
+  final fff;
+  A(this.fff);
+}
+''');
+  }
+
   void test_true_fieldFormalParameter_function() {
     _assertMatches(
         r'''
@@ -2866,7 +3058,7 @@ class B extends Object with A {}
     LibraryElement library = resolve2(source);
     CompilationUnit oldUnit = resolveCompilationUnit(source, library);
     // parse
-    CompilationUnit newUnit = ParserTestCase.parseCompilationUnit(newContent);
+    CompilationUnit newUnit = IncrementalResolverTest._parseUnit(newContent);
     // build elements
     {
       ElementHolder holder = new ElementHolder();
@@ -2889,28 +3081,18 @@ class IncrementalResolverTest extends ResolverTestCase {
 
   @override
   void reset() {
-    if (AnalysisEngine.instance.useTaskModel) {
-      analysisContext2 = AnalysisContextFactory.contextWithCore();
-    } else {
-      analysisContext2 = AnalysisContextFactory.oldContextWithCore();
-    }
+    analysisContext2 = AnalysisContextFactory.contextWithCore();
   }
 
   @override
   void resetWithOptions(AnalysisOptions options) {
-    if (AnalysisEngine.instance.useTaskModel) {
-      analysisContext2 =
-          AnalysisContextFactory.contextWithCoreAndOptions(options);
-    } else {
-      analysisContext2 =
-          AnalysisContextFactory.oldContextWithCoreAndOptions(options);
-    }
+    AnalysisContextFactory.contextWithCoreAndOptions(options);
   }
 
   void setUp() {
     super.setUp();
     test_resolveApiChanges = true;
-    log.logger = log.NULL_LOGGER;
+    logging.logger = logging.NULL_LOGGER;
   }
 
   void test_classMemberAccessor_body() {
@@ -2932,15 +3114,6 @@ class A {
   }
 }''');
     _resolve(_editString('+', '*'), _isFunctionBody);
-  }
-
-  void test_constructor_fieldFormalParameter() {
-    _resolveUnit(r'''
-class A {
-  int xy;
-  A(this.x);
-}''');
-    _resolve(_editString('this.x', 'this.xy'), _isDeclaration);
   }
 
   void test_constructor_fieldInitializer_add() {
@@ -2995,6 +3168,15 @@ class B extends A {
 }
 ''');
     _resolve(_editString('+', '*'), _isExpression);
+  }
+
+  void test_fieldFormalParameter() {
+    _resolveUnit(r'''
+class A {
+  int xy;
+  A(this.x);
+}''');
+    _resolve(_editString('this.x', 'this.xy'), _isDeclaration);
   }
 
   void test_function_localFunction_add() {
@@ -3254,28 +3436,10 @@ class B {
     int updateEndOld = updateOffset + edit.length;
     int updateOldNew = updateOffset + edit.replacement.length;
     IncrementalResolver resolver;
-    if (AnalysisEngine.instance.useTaskModel) {
-      LibrarySpecificUnit lsu = new LibrarySpecificUnit(source, source);
-      task.AnalysisCache cache = analysisContext2.analysisCache;
-      resolver = new IncrementalResolver(
-          null,
-          cache.get(source),
-          cache.get(lsu),
-          unit.element,
-          updateOffset,
-          updateEndOld,
-          updateOldNew);
-    } else {
-      resolver = new IncrementalResolver(
-          (analysisContext2 as AnalysisContextImpl)
-              .getReadableSourceEntryOrNull(source),
-          null,
-          null,
-          unit.element,
-          updateOffset,
-          updateEndOld,
-          updateOldNew);
-    }
+    LibrarySpecificUnit lsu = new LibrarySpecificUnit(source, source);
+    AnalysisCache cache = analysisContext2.analysisCache;
+    resolver = new IncrementalResolver(cache.get(source), cache.get(lsu),
+        unit.element, updateOffset, updateEndOld, updateOldNew);
     bool success = resolver.resolve(newNode);
     expect(success, isTrue);
     List<AnalysisError> newErrors = analysisContext.computeErrors(source);
@@ -3359,6 +3523,8 @@ class B {
  */
 @reflectiveTest
 class PoorMansIncrementalResolutionTest extends ResolverTestCase {
+  final _TestLogger logger = new _TestLogger();
+
   Source source;
   String code;
   LibraryElement oldLibrary;
@@ -3382,6 +3548,7 @@ class A {
 ''');
   }
 
+  @override
   void setUp() {
     super.setUp();
     _resetWithIncremental(true);
@@ -3721,6 +3888,25 @@ main() {
 ''');
   }
 
+  void test_endOfLineComment_toDartDoc() {
+    _resolveUnit(r'''
+class A {
+  // text
+  main() {
+    print(42);
+  }
+}''');
+    _updateAndValidate(
+        r'''
+class A {
+  /// text
+  main() {
+    print(42);
+  }
+}''',
+        expectedSuccess: false);
+  }
+
   void test_false_constConstructor_initializer() {
     _resolveUnit(r'''
 class C {
@@ -3756,6 +3942,21 @@ class A {
         r'''
 class A {
   final f = (() => 2)();
+}
+''',
+        expectedSuccess: false);
+  }
+
+  void test_false_expressionBody2() {
+    _resolveUnit(r'''
+class A {
+  int m() => 10 * 10;
+}
+''');
+    _updateAndValidate(
+        r'''
+class A {
+  int m() => 10 * 100;
 }
 ''',
         expectedSuccess: false);
@@ -3877,6 +4078,27 @@ class A {
     print(2 + 3);
   }
 }
+''');
+  }
+
+  void test_inBody_functionExpression() {
+    _resolveUnit(r'''
+class C extends D {
+  static final f = () {
+    var x = 0;
+  }();
+}
+
+class D {}
+''');
+    _updateAndValidate(r'''
+class C extends D {
+  static final f = () {
+    var x = 01;
+  }();
+}
+
+class D {}
 ''');
   }
 
@@ -4028,6 +4250,28 @@ b() {
 }
 foo(String p) {}
 ''');
+  }
+
+  void test_true_todoHint() {
+    _resolveUnit(r'''
+main() {
+  print(1);
+}
+foo() {
+ // TODO
+}
+''');
+    List<AnalysisError> oldErrors = analysisContext.computeErrors(source);
+    _updateAndValidate(r'''
+main() {
+  print(2);
+}
+foo() {
+ // TODO
+}
+''');
+    List<AnalysisError> newErrors = analysisContext.computeErrors(source);
+    _assertEqualErrors(newErrors, oldErrors);
   }
 
   void test_true_wholeConstructor() {
@@ -4295,6 +4539,45 @@ foo(int p) {}
 ''');
   }
 
+  void test_updateErrors_invalidVerifyErrors() {
+    _resolveUnit(r'''
+main() {
+  foo('aaa');
+}
+main2() {
+  foo('bbb');
+}
+foo(int p) {}
+''');
+    // Complete analysis, e.g. compute VERIFY_ERRORS.
+    _runTasks();
+    // Invalidate VERIFY_ERRORS.
+    AnalysisCache cache = analysisContext2.analysisCache;
+    LibrarySpecificUnit target = new LibrarySpecificUnit(source, source);
+    CacheEntry cacheEntry = cache.get(target);
+    expect(cacheEntry.getValue(VERIFY_ERRORS), hasLength(2));
+    cacheEntry.setState(VERIFY_ERRORS, CacheState.INVALID);
+    // Perform incremental resolution.
+    _resetWithIncremental(true);
+    analysisContext2.setContents(
+        source,
+        r'''
+main() {
+  foo(0);
+}
+main2() {
+  foo('bbb');
+}
+foo(int p) {}
+''');
+    // VERIFY_ERRORS is still invalid.
+    expect(cacheEntry.getState(VERIFY_ERRORS), CacheState.INVALID);
+    // Continue analysis - run tasks, so recompute VERIFY_ERRORS.
+    _runTasks();
+    expect(cacheEntry.getState(VERIFY_ERRORS), CacheState.VALID);
+    expect(cacheEntry.getValue(VERIFY_ERRORS), hasLength(1));
+  }
+
   void test_updateErrors_removeExisting_hint() {
     _resolveUnit(r'''
 int main() {
@@ -4357,6 +4640,77 @@ f3() {
 ''');
   }
 
+  void test_visibleRange() {
+    _resolveUnit(r'''
+class Test {
+  method1(p1) {
+    var v1;
+    f1() {}
+    return 1;
+  }
+  method2(p2) {
+    var v2;
+    f2() {}
+    return 2;
+  }
+  method3(p3) {
+    var v3;
+    f3() {}
+    return 3;
+  }
+}
+''');
+    _updateAndValidate(r'''
+class Test {
+  method1(p1) {
+    var v1;
+    f1() {}
+    return 1;
+  }
+  method2(p2) {
+    var v2;
+    f2() {}
+    return 2222;
+  }
+  method3(p3) {
+    var v3;
+    f3() {}
+    return 3;
+  }
+}
+''');
+  }
+
+  void test_whitespace_getElementAt() {
+    _resolveUnit(r'''
+class A {}
+class B extends A {}
+''');
+    {
+      ClassElement typeA = oldUnitElement.getType('A');
+      expect(oldUnitElement.getElementAt(typeA.nameOffset), typeA);
+    }
+    {
+      ClassElement typeB = oldUnitElement.getType('B');
+      expect(oldUnitElement.getElementAt(typeB.nameOffset), typeB);
+    }
+    _updateAndValidate(r'''
+class A {}
+
+class B extends A {}
+''');
+    // getElementAt() caches results, it should be notified when offset
+    // are changed.
+    {
+      ClassElement typeA = oldUnitElement.getType('A');
+      expect(oldUnitElement.getElementAt(typeA.nameOffset), typeA);
+    }
+    {
+      ClassElement typeB = oldUnitElement.getType('B');
+      expect(oldUnitElement.getElementAt(typeB.nameOffset), typeB);
+    }
+  }
+
   void _assertEqualLineInfo(LineInfo incrLineInfo, LineInfo fullLineInfo) {
     for (int offset = 0; offset < 1000; offset++) {
       LineInfo_Location incrLocation = incrLineInfo.getLocation(offset);
@@ -4379,8 +4733,7 @@ f3() {
     AnalysisOptionsImpl analysisOptions = new AnalysisOptionsImpl();
     analysisOptions.incremental = enable;
     analysisOptions.incrementalApi = enable;
-//    log.logger = log.PRINT_LOGGER;
-    log.logger = log.NULL_LOGGER;
+    logging.logger = logger;
     analysisContext2.analysisOptions = analysisOptions;
   }
 
@@ -4400,14 +4753,19 @@ f3() {
   }
 
   void _updateAndValidate(String newCode,
-      {bool expectedSuccess: true, bool compareWithFull: true}) {
+      {bool expectedSuccess: true,
+      bool compareWithFull: true,
+      bool runTasksBeforeIncremental: true}) {
     // Run any pending tasks tasks.
-    _runTasks();
+    if (runTasksBeforeIncremental) {
+      _runTasks();
+    }
     // Update the source - currently this may cause incremental resolution.
     // Then request the updated resolved unit.
     _resetWithIncremental(true);
     analysisContext2.setContents(source, newCode);
     CompilationUnit newUnit = resolveCompilationUnit(source, oldLibrary);
+    expect(logger.hasError, isFalse);
     List<AnalysisError> newErrors = analysisContext.computeErrors(source);
     LineInfo newLineInfo = analysisContext.getLineInfo(source);
     // check for expected failure
@@ -4415,8 +4773,11 @@ f3() {
       expect(newUnit.element, isNot(same(oldUnitElement)));
       return;
     }
-    // The existing CompilationUnitElement should be updated.
+    // The existing CompilationUnit[Element] should be updated.
+    expect(newUnit, same(oldUnit));
     expect(newUnit.element, same(oldUnitElement));
+    expect(analysisContext.getResolvedCompilationUnit(source, oldLibrary),
+        same(oldUnit));
     // The only expected pending task should return the same resolved
     // "newUnit", so all clients will get it using the usual way.
     AnalysisResult analysisResult = analysisContext.performAnalysisTask();
@@ -4425,8 +4786,8 @@ f3() {
     // Resolve "newCode" from scratch.
     if (compareWithFull) {
       _resetWithIncremental(false);
-      source = addSource(newCode + ' ');
-      source = addSource(newCode);
+      changeSource(source, '');
+      changeSource(source, newCode);
       _runTasks();
       LibraryElement library = resolve2(source);
       CompilationUnit fullNewUnit = resolveCompilationUnit(source, library);
@@ -4696,4 +5057,27 @@ class _Edit {
   final int length;
   final String replacement;
   _Edit(this.offset, this.length, this.replacement);
+}
+
+class _TestLogger implements logging.Logger {
+  bool hasError = false;
+
+  @override
+  void enter(String name) {}
+
+  @override
+  void exit() {}
+
+  @override
+  void log(Object obj) {}
+
+  @override
+  void logException(Object exception, [Object stackTrace]) {
+    hasError = true;
+  }
+
+  @override
+  logging.LoggingTimer startTimer() {
+    return new logging.LoggingTimer(this);
+  }
 }

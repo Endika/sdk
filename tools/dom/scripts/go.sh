@@ -1,5 +1,8 @@
-#!/bin/bash -x
+#!/usr/bin/env bash
 #
+
+set -x
+
 #   go.sh [systems]
 #
 # Convenience script to generate systems.  Do not call from build steps or tests
@@ -34,4 +37,4 @@ if [[ "$1" != "" ]] ; then
 fi
 
 reset && \
-./dartdomgenerator.py --systems="$SYSTEMS" --logging=40 --update-dom-metadata
+./dartdomgenerator.py --systems="$SYSTEMS" --logging=40 --update-dom-metadata --gen-interop

@@ -51,7 +51,6 @@ class Exceptions : AllStatic {
   enum ExceptionType {
     kNone,
     kRange,
-    kRangeRange,
     kArgument,
     kArgumentValue,
     kNoSuchMethod,
@@ -61,7 +60,6 @@ class Exceptions : AllStatic {
     kOutOfMemory,
     kNullThrown,
     kIsolateSpawn,
-    kIsolateUnhandledException,
     kJavascriptIntegerOverflowError,
     kJavascriptCompatibilityError,
     kAssertion,

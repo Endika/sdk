@@ -57,7 +57,6 @@ class ObjectPointerVisitor;
   V(AnonymousClosure, "<anonymous closure>")                                   \
   V(ImplicitClosure, "<implicit closure>")                                     \
   V(ClosureParameter, ":closure")                                              \
-  V(PhaseParameter, ":phase")                                                  \
   V(TypeArgumentsParameter, ":type_arguments")                                 \
   V(AssertionError, "_AssertionError")                                         \
   V(CastError, "_CastError")                                                   \
@@ -305,7 +304,6 @@ class ObjectPointerVisitor;
   V(OutOfMemoryError, "OutOfMemoryError")                                      \
   V(NullThrownError, "NullThrownError")                                        \
   V(IsolateSpawnException, "IsolateSpawnException")                            \
-  V(IsolateUnhandledException, "_IsolateUnhandledException")                   \
   V(JavascriptIntegerOverflowError, "_JavascriptIntegerOverflowError")         \
   V(JavascriptCompatibilityError, "_JavascriptCompatibilityError")             \
   V(BooleanExpression, "boolean expression")                                   \
@@ -327,6 +325,7 @@ class ObjectPointerVisitor;
   V(_instanceOfString, "_instanceOfString")                                    \
   V(_as, "_as")                                                                \
   V(GetterPrefix, "get:")                                                      \
+  V(ClosurizePrefix, "get:#")                                                  \
   V(SetterPrefix, "set:")                                                      \
   V(InitPrefix, "init:")                                                       \
   V(_New, "_new")                                                              \
@@ -342,7 +341,7 @@ class ObjectPointerVisitor;
   V(DartIsolate, "dart:isolate")                                               \
   V(DartMirrors, "dart:mirrors")                                               \
   V(DartTypedData, "dart:typed_data")                                          \
-  V(DartVMService, "dart:vmservice")                                           \
+  V(DartVMService, "dart:_vmservice")                                          \
   V(DartIOLibName, "dart.io")                                                  \
   V(EvalSourceUri, "evaluate:source")                                          \
   V(_Random, "_Random")                                                        \

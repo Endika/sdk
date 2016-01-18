@@ -150,7 +150,7 @@ class JSArray<E> extends Interceptor implements List<E>, JSIndexable {
 
   E removeLast() {
     checkGrowable('removeLast');
-    if (length == 0) throw new RangeError.value(-1);
+    if (length == 0) throw diagnoseIndexError(this, -1);
     return JS('var', r'#.pop()', this);
   }
 
@@ -351,14 +351,14 @@ class JSArray<E> extends Interceptor implements List<E>, JSIndexable {
     checkNull(start); // TODO(ahe): This is not specified but co19 tests it.
     if (start is !int) throw argumentErrorValue(start);
     if (start < 0 || start > length) {
-      throw new RangeError.range(start, 0, length);
+      throw new RangeError.range(start, 0, length, "start");
     }
     if (end == null) {
       end = length;
     } else {
       if (end is !int) throw argumentErrorValue(end);
       if (end < start || end > length) {
-        throw new RangeError.range(end, start, length);
+        throw new RangeError.range(end, start, length, "end");
       }
     }
     if (start == end) return <E>[];
@@ -581,7 +581,7 @@ class JSArray<E> extends Interceptor implements List<E>, JSIndexable {
 
   int get length => JS('JSUInt32', r'#.length', this);
 
-  void set length(int newLength) {
+  set length(int newLength) {
     checkGrowable('set length');
     if (newLength is !int) {
       throw new ArgumentError.value(newLength, 'newLength');
@@ -650,7 +650,7 @@ class ArrayIterator<E> implements Iterator<E> {
     // inline moveNext() we might be able to GVN the length and eliminate this
     // check on known fixed length JSArray.
     if (_length != length) {
-      throw new ConcurrentModificationError(_iterable);
+      throw throwConcurrentModificationError(_iterable);
     }
 
     if (_index >= length) {

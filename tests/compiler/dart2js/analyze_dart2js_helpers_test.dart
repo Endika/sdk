@@ -10,7 +10,8 @@ import 'package:async_helper/async_helper.dart';
 import 'package:compiler/compiler_new.dart' show
     Diagnostic;
 import 'package:compiler/src/apiimpl.dart' show
-    Compiler;
+    CompilerImpl;
+import 'package:compiler/src/commandline_options.dart';
 import 'package:compiler/src/constants/expressions.dart' show
     ConstructedConstantExpression;
 import 'package:compiler/src/dart_types.dart' show
@@ -26,7 +27,7 @@ import 'package:compiler/src/resolution/tree_elements.dart' show
 import 'package:compiler/src/source_file_provider.dart' show
     FormattingDiagnosticHandler;
 import 'package:compiler/src/tree/tree.dart';
-import 'package:compiler/src/universe/universe.dart' show
+import 'package:compiler/src/universe/call_structure.dart' show
     CallStructure;
 import 'package:expect/expect.dart';
 
@@ -36,14 +37,14 @@ main(List<String> arguments) {
   bool verbose = arguments.contains('-v');
 
   List<String> options = <String>[
-    '--analyze-only',
-    '--analyze-main',
+    Flags.analyzeOnly,
+    Flags.analyzeMain,
     '--categories=Client,Server'];
   if (verbose) {
-    options.add('--verbose');
+    options.add(Flags.verbose);
   }
   asyncTest(() async {
-    Compiler compiler = compilerFor(
+    CompilerImpl compiler = compilerFor(
         options: options, showDiagnostics: verbose);
     FormattingDiagnosticHandler diagnostics =
         new FormattingDiagnosticHandler(compiler.provider);

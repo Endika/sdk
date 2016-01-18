@@ -14,7 +14,7 @@ export 'dart:async' show
 import 'package:async_helper/async_helper.dart' show
     asyncTest;
 
-import '../../compiler/dart2js/compiler_helper.dart' show
+import '../../compiler/dart2js/mock_compiler.dart' show
     MockCompiler,
     compilerFor;
 
@@ -78,7 +78,7 @@ abstract class CompilerTestCase {
   /// Returns a future for the mainApp after running the compiler.
   Future<LibraryElement> compile() {
     return loadMainApp().then((LibraryElement library) {
-      return compiler.runCompiler(scriptUri).then((_) => library);
+      return compiler.run(scriptUri).then((_) => library);
     });
   }
 

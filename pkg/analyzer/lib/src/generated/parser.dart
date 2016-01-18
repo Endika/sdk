@@ -2,20 +2,21 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library engine.parser;
+library analyzer.src.generated.parser;
 
 import 'dart:collection';
 import "dart:math" as math;
 
-import 'ast.dart';
-import 'engine.dart' show AnalysisEngine, AnalysisOptionsImpl;
-import 'error.dart';
-import 'java_core.dart';
-import 'java_engine.dart';
-import 'scanner.dart';
-import 'source.dart';
-import 'utilities_collection.dart' show TokenMap;
-import 'utilities_dart.dart';
+import 'package:analyzer/src/generated/ast.dart';
+import 'package:analyzer/src/generated/engine.dart'
+    show AnalysisEngine, AnalysisOptionsImpl;
+import 'package:analyzer/src/generated/error.dart';
+import 'package:analyzer/src/generated/java_core.dart';
+import 'package:analyzer/src/generated/java_engine.dart';
+import 'package:analyzer/src/generated/scanner.dart';
+import 'package:analyzer/src/generated/source.dart';
+import 'package:analyzer/src/generated/utilities_collection.dart' show TokenMap;
+import 'package:analyzer/src/generated/utilities_dart.dart';
 
 Map<String, MethodTrampoline> methodTable_Parser = <String, MethodTrampoline>{
   'parseCompilationUnit_1': new MethodTrampoline(
@@ -89,11 +90,14 @@ Map<String, MethodTrampoline> methodTable_Parser = <String, MethodTrampoline>{
   'parseWithClause_0':
       new MethodTrampoline(0, (Parser target) => target.parseWithClause()),
   'advance_0': new MethodTrampoline(0, (Parser target) => target._advance()),
-  'appendScalarValue_5': new MethodTrampoline(5, (Parser target, arg0, arg1,
-      arg2, arg3,
-      arg4) => target._appendScalarValue(arg0, arg1, arg2, arg3, arg4)),
-  'computeStringValue_3': new MethodTrampoline(3, (Parser target, arg0, arg1,
-      arg2) => target._computeStringValue(arg0, arg1, arg2)),
+  'appendScalarValue_5': new MethodTrampoline(
+      5,
+      (Parser target, arg0, arg1, arg2, arg3, arg4) =>
+          target._appendScalarValue(arg0, arg1, arg2, arg3, arg4)),
+  'computeStringValue_3': new MethodTrampoline(
+      3,
+      (Parser target, arg0, arg1, arg2) =>
+          target._computeStringValue(arg0, arg1, arg2)),
   'convertToFunctionDeclaration_1': new MethodTrampoline(
       1, (Parser target, arg0) => target._convertToFunctionDeclaration(arg0)),
   'couldBeStartOfCompilationUnitMember_0': new MethodTrampoline(
@@ -159,8 +163,10 @@ Map<String, MethodTrampoline> methodTable_Parser = <String, MethodTrampoline>{
       0, (Parser target) => target._parseAssertStatement()),
   'parseAssignableExpression_1': new MethodTrampoline(
       1, (Parser target, arg0) => target._parseAssignableExpression(arg0)),
-  'parseAssignableSelector_2': new MethodTrampoline(2, (Parser target, arg0,
-      arg1) => target._parseAssignableSelector(arg0, arg1)),
+  'parseAssignableSelector_2': new MethodTrampoline(
+      2,
+      (Parser target, arg0, arg1) =>
+          target._parseAssignableSelector(arg0, arg1)),
   'parseAwaitExpression_0': new MethodTrampoline(
       0, (Parser target) => target._parseAwaitExpression()),
   'parseBitwiseAndExpression_0': new MethodTrampoline(
@@ -175,8 +181,10 @@ Map<String, MethodTrampoline> methodTable_Parser = <String, MethodTrampoline>{
       (Parser target, arg0, arg1) => target._parseClassDeclaration(arg0, arg1)),
   'parseClassMembers_2': new MethodTrampoline(
       2, (Parser target, arg0, arg1) => target._parseClassMembers(arg0, arg1)),
-  'parseClassTypeAlias_3': new MethodTrampoline(3, (Parser target, arg0, arg1,
-      arg2) => target._parseClassTypeAlias(arg0, arg1, arg2)),
+  'parseClassTypeAlias_3': new MethodTrampoline(
+      3,
+      (Parser target, arg0, arg1, arg2) =>
+          target._parseClassTypeAlias(arg0, arg1, arg2)),
   'parseCombinator_0':
       new MethodTrampoline(0, (Parser target) => target.parseCombinator()),
   'parseCombinators_0':
@@ -189,11 +197,14 @@ Map<String, MethodTrampoline> methodTable_Parser = <String, MethodTrampoline>{
       1, (Parser target, arg0) => target._parseCommentReferences(arg0)),
   'parseCompilationUnitMember_1': new MethodTrampoline(
       1, (Parser target, arg0) => target._parseCompilationUnitMember(arg0)),
+  'parseConfiguration_0':
+      new MethodTrampoline(0, (Parser target) => target._parseConfiguration()),
   'parseConstExpression_0': new MethodTrampoline(
       0, (Parser target) => target._parseConstExpression()),
-  'parseConstructor_8': new MethodTrampoline(8, (Parser target, arg0, arg1,
-          arg2, arg3, arg4, arg5, arg6, arg7) =>
-      target._parseConstructor(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7)),
+  'parseConstructor_8': new MethodTrampoline(
+      8,
+      (Parser target, arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7) => target
+          ._parseConstructor(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7)),
   'parseConstructorFieldInitializer_0': new MethodTrampoline(
       0, (Parser target) => target._parseConstructorFieldInitializer()),
   'parseContinueStatement_0': new MethodTrampoline(
@@ -206,6 +217,8 @@ Map<String, MethodTrampoline> methodTable_Parser = <String, MethodTrampoline>{
       0, (Parser target) => target._parseDocumentationComment()),
   'parseDoStatement_0':
       new MethodTrampoline(0, (Parser target) => target._parseDoStatement()),
+  'parseDottedName_0':
+      new MethodTrampoline(0, (Parser target) => target._parseDottedName()),
   'parseEmptyStatement_0':
       new MethodTrampoline(0, (Parser target) => target._parseEmptyStatement()),
   'parseEnumConstantDeclaration_0': new MethodTrampoline(
@@ -224,26 +237,36 @@ Map<String, MethodTrampoline> methodTable_Parser = <String, MethodTrampoline>{
       1, (Parser target, arg0) => target._parseFormalParameter(arg0)),
   'parseForStatement_0':
       new MethodTrampoline(0, (Parser target) => target._parseForStatement()),
-  'parseFunctionBody_3': new MethodTrampoline(3, (Parser target, arg0, arg1,
-      arg2) => target._parseFunctionBody(arg0, arg1, arg2)),
-  'parseFunctionDeclaration_3': new MethodTrampoline(3, (Parser target, arg0,
-      arg1, arg2) => target._parseFunctionDeclaration(arg0, arg1, arg2)),
+  'parseFunctionBody_3': new MethodTrampoline(
+      3,
+      (Parser target, arg0, arg1, arg2) =>
+          target._parseFunctionBody(arg0, arg1, arg2)),
+  'parseFunctionDeclaration_3': new MethodTrampoline(
+      3,
+      (Parser target, arg0, arg1, arg2) =>
+          target._parseFunctionDeclaration(arg0, arg1, arg2)),
   'parseFunctionDeclarationStatement_0': new MethodTrampoline(
       0, (Parser target) => target._parseFunctionDeclarationStatement()),
-  'parseFunctionDeclarationStatementAfterReturnType_2': new MethodTrampoline(2,
+  'parseFunctionDeclarationStatementAfterReturnType_2': new MethodTrampoline(
+      2,
       (Parser target, arg0, arg1) =>
           target._parseFunctionDeclarationStatementAfterReturnType(arg0, arg1)),
-  'parseFunctionTypeAlias_2': new MethodTrampoline(2, (Parser target, arg0,
-      arg1) => target._parseFunctionTypeAlias(arg0, arg1)),
-  'parseGetter_4': new MethodTrampoline(4, (Parser target, arg0, arg1, arg2,
-      arg3) => target._parseGetter(arg0, arg1, arg2, arg3)),
+  'parseFunctionTypeAlias_2': new MethodTrampoline(
+      2,
+      (Parser target, arg0, arg1) =>
+          target._parseFunctionTypeAlias(arg0, arg1)),
+  'parseGetter_4': new MethodTrampoline(
+      4,
+      (Parser target, arg0, arg1, arg2, arg3) =>
+          target._parseGetter(arg0, arg1, arg2, arg3)),
   'parseIdentifierList_0':
       new MethodTrampoline(0, (Parser target) => target._parseIdentifierList()),
   'parseIfStatement_0':
       new MethodTrampoline(0, (Parser target) => target._parseIfStatement()),
   'parseImportDirective_1': new MethodTrampoline(
       1, (Parser target, arg0) => target._parseImportDirective(arg0)),
-  'parseInitializedIdentifierList_4': new MethodTrampoline(4,
+  'parseInitializedIdentifierList_4': new MethodTrampoline(
+      4,
       (Parser target, arg0, arg1, arg2, arg3) =>
           target._parseInitializedIdentifierList(arg0, arg1, arg2, arg3)),
   'parseInstanceCreationExpression_1': new MethodTrampoline(1,
@@ -260,11 +283,13 @@ Map<String, MethodTrampoline> methodTable_Parser = <String, MethodTrampoline>{
       0, (Parser target) => target._parseLogicalAndExpression()),
   'parseMapLiteral_2': new MethodTrampoline(
       2, (Parser target, arg0, arg1) => target._parseMapLiteral(arg0, arg1)),
-  'parseMethodDeclarationAfterParameters_7': new MethodTrampoline(7,
-      (Parser target, arg0, arg1, arg2, arg3, arg4, arg5, arg6) => target
-          ._parseMethodDeclarationAfterParameters(
+  'parseMethodDeclarationAfterParameters_7': new MethodTrampoline(
+      7,
+      (Parser target, arg0, arg1, arg2, arg3, arg4, arg5, arg6) =>
+          target._parseMethodDeclarationAfterParameters(
               arg0, arg1, arg2, arg3, arg4, arg5, arg6)),
-  'parseMethodDeclarationAfterReturnType_4': new MethodTrampoline(4,
+  'parseMethodDeclarationAfterReturnType_4': new MethodTrampoline(
+      4,
       (Parser target, arg0, arg1, arg2, arg3) => target
           ._parseMethodDeclarationAfterReturnType(arg0, arg1, arg2, arg3)),
   'parseModifiers_0':
@@ -277,8 +302,10 @@ Map<String, MethodTrampoline> methodTable_Parser = <String, MethodTrampoline>{
       new MethodTrampoline(0, (Parser target) => target._parseNewExpression()),
   'parseNonLabeledStatement_0': new MethodTrampoline(
       0, (Parser target) => target._parseNonLabeledStatement()),
-  'parseOperator_3': new MethodTrampoline(3, (Parser target, arg0, arg1,
-      arg2) => target._parseOperator(arg0, arg1, arg2)),
+  'parseOperator_3': new MethodTrampoline(
+      3,
+      (Parser target, arg0, arg1, arg2) =>
+          target._parseOperator(arg0, arg1, arg2)),
   'parseOptionalReturnType_0': new MethodTrampoline(
       0, (Parser target) => target._parseOptionalReturnType()),
   'parsePartDirective_1': new MethodTrampoline(
@@ -295,8 +322,10 @@ Map<String, MethodTrampoline> methodTable_Parser = <String, MethodTrampoline>{
       0, (Parser target) => target._parseRethrowExpression()),
   'parseReturnStatement_0': new MethodTrampoline(
       0, (Parser target) => target._parseReturnStatement()),
-  'parseSetter_4': new MethodTrampoline(4, (Parser target, arg0, arg1, arg2,
-      arg3) => target._parseSetter(arg0, arg1, arg2, arg3)),
+  'parseSetter_4': new MethodTrampoline(
+      4,
+      (Parser target, arg0, arg1, arg2, arg3) =>
+          target._parseSetter(arg0, arg1, arg2, arg3)),
   'parseShiftExpression_0': new MethodTrampoline(
       0, (Parser target) => target._parseShiftExpression()),
   'parseStatementList_0':
@@ -321,16 +350,20 @@ Map<String, MethodTrampoline> methodTable_Parser = <String, MethodTrampoline>{
       0, (Parser target) => target._parseUnaryExpression()),
   'parseVariableDeclaration_0': new MethodTrampoline(
       0, (Parser target) => target._parseVariableDeclaration()),
-  'parseVariableDeclarationListAfterMetadata_1': new MethodTrampoline(1,
+  'parseVariableDeclarationListAfterMetadata_1': new MethodTrampoline(
+      1,
       (Parser target, arg0) =>
           target._parseVariableDeclarationListAfterMetadata(arg0)),
-  'parseVariableDeclarationListAfterType_3': new MethodTrampoline(3,
+  'parseVariableDeclarationListAfterType_3': new MethodTrampoline(
+      3,
       (Parser target, arg0, arg1, arg2) =>
           target._parseVariableDeclarationListAfterType(arg0, arg1, arg2)),
-  'parseVariableDeclarationStatementAfterMetadata_1': new MethodTrampoline(1,
+  'parseVariableDeclarationStatementAfterMetadata_1': new MethodTrampoline(
+      1,
       (Parser target, arg0) =>
           target._parseVariableDeclarationStatementAfterMetadata(arg0)),
-  'parseVariableDeclarationStatementAfterType_3': new MethodTrampoline(3,
+  'parseVariableDeclarationStatementAfterType_3': new MethodTrampoline(
+      3,
       (Parser target, arg0, arg1, arg2) =>
           target._parseVariableDeclarationStatementAfterType(arg0, arg1, arg2)),
   'parseWhileStatement_0':
@@ -342,12 +375,18 @@ Map<String, MethodTrampoline> methodTable_Parser = <String, MethodTrampoline>{
       new MethodTrampoline(1, (Parser target, arg0) => target._peekAt(arg0)),
   'reportError_1': new MethodTrampoline(
       1, (Parser target, arg0) => target._reportError(arg0)),
-  'reportErrorForCurrentToken_2': new MethodTrampoline(2, (Parser target, arg0,
-      arg1) => target._reportErrorForCurrentToken(arg0, arg1)),
-  'reportErrorForNode_3': new MethodTrampoline(3, (Parser target, arg0, arg1,
-      arg2) => target._reportErrorForNode(arg0, arg1, arg2)),
-  'reportErrorForToken_3': new MethodTrampoline(3, (Parser target, arg0, arg1,
-      arg2) => target._reportErrorForToken(arg0, arg1, arg2)),
+  'reportErrorForCurrentToken_2': new MethodTrampoline(
+      2,
+      (Parser target, arg0, arg1) =>
+          target._reportErrorForCurrentToken(arg0, arg1)),
+  'reportErrorForNode_3': new MethodTrampoline(
+      3,
+      (Parser target, arg0, arg1, arg2) =>
+          target._reportErrorForNode(arg0, arg1, arg2)),
+  'reportErrorForToken_3': new MethodTrampoline(
+      3,
+      (Parser target, arg0, arg1, arg2) =>
+          target._reportErrorForToken(arg0, arg1, arg2)),
   'skipBlock_0':
       new MethodTrampoline(0, (Parser target) => target._skipBlock()),
   'skipFinalConstVarOrType_1': new MethodTrampoline(
@@ -380,8 +419,10 @@ Map<String, MethodTrampoline> methodTable_Parser = <String, MethodTrampoline>{
       (Parser target, arg0, arg1) => target._tokenMatchesKeyword(arg0, arg1)),
   'tokenMatchesString_2': new MethodTrampoline(
       2, (Parser target, arg0, arg1) => target._tokenMatchesString(arg0, arg1)),
-  'translateCharacter_3': new MethodTrampoline(3, (Parser target, arg0, arg1,
-      arg2) => target._translateCharacter(arg0, arg1, arg2)),
+  'translateCharacter_3': new MethodTrampoline(
+      3,
+      (Parser target, arg0, arg1, arg2) =>
+          target._translateCharacter(arg0, arg1, arg2)),
   'unlockErrorListener_0':
       new MethodTrampoline(0, (Parser target) => target._unlockErrorListener()),
   'validateFormalParameterList_1': new MethodTrampoline(
@@ -394,21 +435,26 @@ Map<String, MethodTrampoline> methodTable_Parser = <String, MethodTrampoline>{
       1, (Parser target, arg0) => target._validateModifiersForEnum(arg0)),
   'validateModifiersForField_1': new MethodTrampoline(
       1, (Parser target, arg0) => target._validateModifiersForField(arg0)),
-  'validateModifiersForFunctionDeclarationStatement_1': new MethodTrampoline(1,
+  'validateModifiersForFunctionDeclarationStatement_1': new MethodTrampoline(
+      1,
       (Parser target, arg0) =>
           target._validateModifiersForFunctionDeclarationStatement(arg0)),
-  'validateModifiersForGetterOrSetterOrMethod_1': new MethodTrampoline(1,
+  'validateModifiersForGetterOrSetterOrMethod_1': new MethodTrampoline(
+      1,
       (Parser target, arg0) =>
           target._validateModifiersForGetterOrSetterOrMethod(arg0)),
   'validateModifiersForOperator_1': new MethodTrampoline(
       1, (Parser target, arg0) => target._validateModifiersForOperator(arg0)),
-  'validateModifiersForTopLevelDeclaration_1': new MethodTrampoline(1,
+  'validateModifiersForTopLevelDeclaration_1': new MethodTrampoline(
+      1,
       (Parser target, arg0) =>
           target._validateModifiersForTopLevelDeclaration(arg0)),
-  'validateModifiersForTopLevelFunction_1': new MethodTrampoline(1,
+  'validateModifiersForTopLevelFunction_1': new MethodTrampoline(
+      1,
       (Parser target, arg0) =>
           target._validateModifiersForTopLevelFunction(arg0)),
-  'validateModifiersForTopLevelVariable_1': new MethodTrampoline(1,
+  'validateModifiersForTopLevelVariable_1': new MethodTrampoline(
+      1,
       (Parser target, arg0) =>
           target._validateModifiersForTopLevelVariable(arg0)),
   'validateModifiersForTypedef_1': new MethodTrampoline(
@@ -531,6 +577,9 @@ class IncrementalParseDispatcher implements AstVisitor<AstNode> {
   @override
   AstNode visitAssertStatement(AssertStatement node) {
     if (identical(_oldNode, node.condition)) {
+      return _parser.parseExpression2();
+    }
+    if (identical(_oldNode, node.message)) {
       return _parser.parseExpression2();
     }
     return _notAChild(node);
@@ -704,6 +753,18 @@ class IncrementalParseDispatcher implements AstVisitor<AstNode> {
   }
 
   @override
+  AstNode visitConfiguration(Configuration node) {
+    if (identical(_oldNode, node.name)) {
+      throw new InsufficientContextException();
+    } else if (identical(_oldNode, node.value)) {
+      return _parser.parseStringLiteral();
+    } else if (identical(_oldNode, node.libraryUri)) {
+      return _parser.parseStringLiteral();
+    }
+    return _notAChild(node);
+  }
+
+  @override
   AstNode visitConstructorDeclaration(ConstructorDeclaration node) {
     if (identical(_oldNode, node.documentationComment)) {
       throw new InsufficientContextException();
@@ -783,6 +844,14 @@ class IncrementalParseDispatcher implements AstVisitor<AstNode> {
       return _parser.parseStatement2();
     } else if (identical(_oldNode, node.condition)) {
       return _parser.parseExpression2();
+    }
+    return _notAChild(node);
+  }
+
+  @override
+  AstNode visitDottedName(DottedName node) {
+    if (node.components.contains(_oldNode)) {
+      throw new InsufficientContextException();
     }
     return _notAChild(node);
   }
@@ -2039,6 +2108,11 @@ class Parser {
   int _errorListenerLock = 0;
 
   /**
+   * A flag indicating whether the parser is to parse the async support.
+   */
+  bool _parseAsync = true;
+
+  /**
    * A flag indicating whether parser is to parse function bodies.
    */
   bool _parseFunctionBodies = true;
@@ -2077,9 +2151,21 @@ class Parser {
   bool _inInitializer = false;
 
   /**
+   * A flag indicating whether the parser is to parse conditional directives
+   * syntax.
+   */
+  bool parseConditionalDirectives = false;
+
+  /**
    * A flag indicating whether the parser is to parse generic method syntax.
    */
   bool parseGenericMethods = false;
+
+  /**
+   * A flag indicating whether to parse generic method comments, of the form
+   * `/*=T*/` and `/*<T>*/`.
+   */
+  bool parseGenericMethodComments = false;
 
   /**
    * Initialize a newly created parser to parse the content of the given
@@ -2109,25 +2195,8 @@ class Parser {
   /**
    * Set whether the parser is to parse the async support.
    */
-  @deprecated
   void set parseAsync(bool parseAsync) {
-    // Async support cannot be disabled
-  }
-
-  /**
-   * Set whether the parser is to parse deferred libraries.
-   */
-  @deprecated
-  void set parseDeferredLibraries(bool parseDeferredLibraries) {
-    // Deferred libraries support cannot be disabled
-  }
-
-  /**
-   * Set whether the parser is to parse enum declarations.
-   */
-  @deprecated
-  void set parseEnum(bool parseEnum) {
-    // Enum support cannot be disabled
+    this._parseAsync = parseAsync;
   }
 
   /**
@@ -2328,11 +2397,11 @@ class Parser {
             commentAndMetadata, modifiers.externalKeyword, returnType);
       } else if (_matchesIdentifier() &&
           _peek().matchesAny([
-        TokenType.OPEN_PAREN,
-        TokenType.OPEN_CURLY_BRACKET,
-        TokenType.FUNCTION,
-        TokenType.LT
-      ])) {
+            TokenType.OPEN_PAREN,
+            TokenType.OPEN_CURLY_BRACKET,
+            TokenType.FUNCTION,
+            TokenType.LT
+          ])) {
         _validateModifiersForGetterOrSetterOrMethod(modifiers);
         return _parseMethodDeclarationAfterReturnType(commentAndMetadata,
             modifiers.externalKeyword, modifiers.staticKeyword, returnType);
@@ -2347,8 +2416,10 @@ class Parser {
             // We appear to have a variable declaration with a type of "void".
             //
             _reportErrorForNode(ParserErrorCode.VOID_VARIABLE, returnType);
-            return _parseInitializedIdentifierList(commentAndMetadata,
-                modifiers.staticKeyword, _validateModifiersForField(modifiers),
+            return _parseInitializedIdentifierList(
+                commentAndMetadata,
+                modifiers.staticKeyword,
+                _validateModifiersForField(modifiers),
                 returnType);
           }
         }
@@ -2426,8 +2497,10 @@ class Parser {
         List<VariableDeclaration> variables = new List<VariableDeclaration>();
         variables.add(
             new VariableDeclaration(_createSyntheticIdentifier(), null, null));
-        return new FieldDeclaration(commentAndMetadata.comment,
-            commentAndMetadata.metadata, null,
+        return new FieldDeclaration(
+            commentAndMetadata.comment,
+            commentAndMetadata.metadata,
+            null,
             new VariableDeclarationList(null, null, keyword, null, variables),
             _expectSemicolon());
       }
@@ -2441,9 +2514,17 @@ class Parser {
         // to loose, so we'll treat it as a method declaration with a missing
         // name, parameters and empty body.
         //
-        return new MethodDeclaration(commentAndMetadata.comment,
-            commentAndMetadata.metadata, null, null, null, null, null,
-            _createSyntheticIdentifier(), null, new FormalParameterList(
+        return new MethodDeclaration(
+            commentAndMetadata.comment,
+            commentAndMetadata.metadata,
+            null,
+            null,
+            null,
+            null,
+            null,
+            _createSyntheticIdentifier(),
+            null,
+            new FormalParameterList(
                 null, new List<FormalParameter>(), null, null, null),
             new EmptyFunctionBody(_createSyntheticToken(TokenType.SEMICOLON)));
       }
@@ -2451,25 +2532,43 @@ class Parser {
     } else if (_tokenMatches(_peek(), TokenType.PERIOD) &&
         _tokenMatchesIdentifier(_peekAt(2)) &&
         _tokenMatches(_peekAt(3), TokenType.OPEN_PAREN)) {
-      return _parseConstructor(commentAndMetadata, modifiers.externalKeyword,
-          _validateModifiersForConstructor(modifiers), modifiers.factoryKeyword,
-          parseSimpleIdentifier(), getAndAdvance(), parseSimpleIdentifier(),
+      return _parseConstructor(
+          commentAndMetadata,
+          modifiers.externalKeyword,
+          _validateModifiersForConstructor(modifiers),
+          modifiers.factoryKeyword,
+          parseSimpleIdentifier(),
+          getAndAdvance(),
+          parseSimpleIdentifier(),
           parseFormalParameterList());
     } else if (_tokenMatches(_peek(), TokenType.OPEN_PAREN)) {
+      TypeName returnType = _parseOptionalTypeNameComment();
       SimpleIdentifier methodName = parseSimpleIdentifier();
+      TypeParameterList typeParameters = _parseGenericCommentTypeParameters();
       FormalParameterList parameters = parseFormalParameterList();
       if (_matches(TokenType.COLON) ||
           modifiers.factoryKeyword != null ||
           methodName.name == className) {
-        return _parseConstructor(commentAndMetadata, modifiers.externalKeyword,
+        return _parseConstructor(
+            commentAndMetadata,
+            modifiers.externalKeyword,
             _validateModifiersForConstructor(modifiers),
-            modifiers.factoryKeyword, methodName, null, null, parameters);
+            modifiers.factoryKeyword,
+            methodName,
+            null,
+            null,
+            parameters);
       }
       _validateModifiersForGetterOrSetterOrMethod(modifiers);
       _validateFormalParameterList(parameters);
-      return _parseMethodDeclarationAfterParameters(commentAndMetadata,
-          modifiers.externalKeyword, modifiers.staticKeyword, null, methodName,
-          null, parameters);
+      return _parseMethodDeclarationAfterParameters(
+          commentAndMetadata,
+          modifiers.externalKeyword,
+          modifiers.staticKeyword,
+          returnType,
+          methodName,
+          typeParameters,
+          parameters);
     } else if (_peek()
         .matchesAny([TokenType.EQ, TokenType.COMMA, TokenType.SEMICOLON])) {
       if (modifiers.constKeyword == null &&
@@ -2514,8 +2613,10 @@ class Parser {
         // class. At this point it consists of a type name, so we'll treat it as
         // a field declaration with a missing field name and semicolon.
         //
-        return _parseInitializedIdentifierList(commentAndMetadata,
-            modifiers.staticKeyword, _validateModifiersForField(modifiers),
+        return _parseInitializedIdentifierList(
+            commentAndMetadata,
+            modifiers.staticKeyword,
+            _validateModifiersForField(modifiers),
             type);
       }
       if (_isOperator(_currentToken)) {
@@ -2536,26 +2637,40 @@ class Parser {
           ParserErrorCode.EXPECTED_CLASS_MEMBER, _currentToken);
       try {
         _lockErrorListener();
-        return _parseInitializedIdentifierList(commentAndMetadata,
-            modifiers.staticKeyword, _validateModifiersForField(modifiers),
+        return _parseInitializedIdentifierList(
+            commentAndMetadata,
+            modifiers.staticKeyword,
+            _validateModifiersForField(modifiers),
             type);
       } finally {
         _unlockErrorListener();
       }
     } else if (_tokenMatches(_peek(), TokenType.OPEN_PAREN)) {
       SimpleIdentifier methodName = parseSimpleIdentifier();
+      TypeParameterList typeParameters = _parseGenericCommentTypeParameters();
       FormalParameterList parameters = parseFormalParameterList();
       if (methodName.name == className) {
         _reportErrorForNode(ParserErrorCode.CONSTRUCTOR_WITH_RETURN_TYPE, type);
-        return _parseConstructor(commentAndMetadata, modifiers.externalKeyword,
+        return _parseConstructor(
+            commentAndMetadata,
+            modifiers.externalKeyword,
             _validateModifiersForConstructor(modifiers),
-            modifiers.factoryKeyword, methodName, null, null, parameters);
+            modifiers.factoryKeyword,
+            methodName,
+            null,
+            null,
+            parameters);
       }
       _validateModifiersForGetterOrSetterOrMethod(modifiers);
       _validateFormalParameterList(parameters);
-      return _parseMethodDeclarationAfterParameters(commentAndMetadata,
-          modifiers.externalKeyword, modifiers.staticKeyword, type, methodName,
-          null, parameters);
+      return _parseMethodDeclarationAfterParameters(
+          commentAndMetadata,
+          modifiers.externalKeyword,
+          modifiers.staticKeyword,
+          type,
+          methodName,
+          typeParameters,
+          parameters);
     } else if (parseGenericMethods && _tokenMatches(_peek(), TokenType.LT)) {
       return _parseMethodDeclarationAfterReturnType(commentAndMetadata,
           modifiers.externalKeyword, modifiers.staticKeyword, type);
@@ -3051,10 +3166,7 @@ class Parser {
    *         typeParameters? formalParameterList functionExpressionBody
    */
   FunctionExpression parseFunctionExpression() {
-    TypeParameterList typeParameters = null;
-    if (parseGenericMethods && _matches(TokenType.LT)) {
-      typeParameters = parseTypeParameterList();
-    }
+    TypeParameterList typeParameters = _parseGenericMethodTypeParameters();
     FormalParameterList parameters = parseFormalParameterList();
     _validateFormalParameterList(parameters);
     FunctionBody body =
@@ -3181,10 +3293,7 @@ class Parser {
       period = _expect(TokenType.PERIOD);
     }
     SimpleIdentifier identifier = parseSimpleIdentifier();
-    TypeParameterList typeParameters = null;
-    if (parseGenericMethods && _matches(TokenType.LT)) {
-      typeParameters = parseTypeParameterList();
-    }
+    TypeParameterList typeParameters = _parseGenericMethodTypeParameters();
     if (_matches(TokenType.OPEN_PAREN)) {
       FormalParameterList parameters = parseFormalParameterList();
       if (thisKeyword == null) {
@@ -3192,13 +3301,24 @@ class Parser {
           _reportErrorForToken(
               ParserErrorCode.FUNCTION_TYPED_PARAMETER_VAR, holder.keyword);
         }
-        return new FunctionTypedFormalParameter(commentAndMetadata.comment,
-            commentAndMetadata.metadata, holder.type, identifier,
-            typeParameters, parameters);
+        return new FunctionTypedFormalParameter(
+            commentAndMetadata.comment,
+            commentAndMetadata.metadata,
+            holder.type,
+            identifier,
+            typeParameters,
+            parameters);
       } else {
-        return new FieldFormalParameter(commentAndMetadata.comment,
-            commentAndMetadata.metadata, holder.keyword, holder.type,
-            thisKeyword, period, identifier, typeParameters, parameters);
+        return new FieldFormalParameter(
+            commentAndMetadata.comment,
+            commentAndMetadata.metadata,
+            holder.keyword,
+            holder.type,
+            thisKeyword,
+            period,
+            identifier,
+            typeParameters,
+            parameters);
       }
     } else if (typeParameters != null) {
       // TODO(brianwilkerson) Report an error. It looks like a function-typed
@@ -3219,9 +3339,16 @@ class Parser {
       // TODO(brianwilkerson) If there are type parameters but no parameters,
       // should we create a synthetic empty parameter list here so we can
       // capture the type parameters?
-      return new FieldFormalParameter(commentAndMetadata.comment,
-          commentAndMetadata.metadata, holder.keyword, holder.type, thisKeyword,
-          period, identifier, null, null);
+      return new FieldFormalParameter(
+          commentAndMetadata.comment,
+          commentAndMetadata.metadata,
+          holder.keyword,
+          holder.type,
+          thisKeyword,
+          period,
+          identifier,
+          null,
+          null);
     }
     return new SimpleFormalParameter(commentAndMetadata.comment,
         commentAndMetadata.metadata, holder.keyword, holder.type, identifier);
@@ -3374,21 +3501,13 @@ class Parser {
    *         qualified typeArguments?
    */
   TypeName parseTypeName() {
-    Identifier typeName;
-    if (_matchesKeyword(Keyword.VAR)) {
-      _reportErrorForCurrentToken(ParserErrorCode.VAR_AS_TYPE_NAME);
-      typeName = new SimpleIdentifier(getAndAdvance());
-    } else if (_matchesIdentifier()) {
-      typeName = parsePrefixedIdentifier();
-    } else {
-      typeName = _createSyntheticIdentifier();
-      _reportErrorForCurrentToken(ParserErrorCode.EXPECTED_TYPE_NAME);
-    }
-    TypeArgumentList typeArguments = null;
-    if (_matches(TokenType.LT)) {
-      typeArguments = parseTypeArgumentList();
-    }
-    return new TypeName(typeName, typeArguments);
+    TypeName realType = _parseTypeName();
+    // If this is followed by a generic method type comment, allow the comment
+    // type to replace the real type name.
+    // TODO(jmesserly): this feels like a big hammer. Can we restrict it to
+    // only work inside generic methods?
+    TypeName typeComment = _parseOptionalTypeNameComment();
+    return typeComment ?? realType;
   }
 
   /**
@@ -3508,9 +3627,14 @@ class Parser {
    * captures the components of the given method declaration).
    */
   FunctionDeclaration _convertToFunctionDeclaration(MethodDeclaration method) =>
-      new FunctionDeclaration(method.documentationComment, method.metadata,
-          method.externalKeyword, method.returnType, method.propertyKeyword,
-          method.name, new FunctionExpression(
+      new FunctionDeclaration(
+          method.documentationComment,
+          method.metadata,
+          method.externalKeyword,
+          method.returnType,
+          method.propertyKeyword,
+          method.name,
+          new FunctionExpression(
               method.typeParameters, method.parameters, method.body));
 
   /**
@@ -3755,6 +3879,16 @@ class Parser {
         index = 3;
       }
     }
+    if (StringUtilities.startsWith4(comment, index, 0x20, 0x20, 0x20, 0x20)) {
+      int end = index + 4;
+      while (end < length &&
+          comment.codeUnitAt(end) != 0xD &&
+          comment.codeUnitAt(end) != 0xA) {
+        end = end + 1;
+      }
+      ranges.add(<int>[index, end]);
+      index = end;
+    }
     while (index < length) {
       int currentChar = comment.codeUnitAt(index);
       if (currentChar == 0xD || currentChar == 0xA) {
@@ -3802,6 +3936,46 @@ class Parser {
     return null;
   }
 
+  bool _injectGenericComment(TokenType type, int prefixLen) {
+    if (parseGenericMethodComments) {
+      CommentToken t = _currentToken.precedingComments;
+      for (; t != null; t = t.next) {
+        if (t.type == type) {
+          String comment = t.lexeme.substring(prefixLen, t.lexeme.length - 2);
+          Token list = _scanGenericMethodComment(comment, t.offset + prefixLen);
+          if (list != null) {
+            // Insert the tokens into the stream.
+            _injectTokenList(list);
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Matches a generic comment type substitution and injects it into the token
+   * stream. Returns true if a match was injected, otherwise false.
+   *
+   * These comments are of the form `/*=T*/`, in other words, a [TypeName]
+   * inside a slash-star comment, preceded by equals sign.
+   */
+  bool _injectGenericCommentTypeAssign() {
+    return _injectGenericComment(TokenType.GENERIC_METHOD_TYPE_ASSIGN, 3);
+  }
+
+  /**
+   * Matches a generic comment type parameters and injects them into the token
+   * stream. Returns true if a match was injected, otherwise false.
+   *
+   * These comments are of the form `/*<K, V>*/`, in other words, a
+   * [TypeParameterList] or [TypeArgumentList] inside a slash-star comment.
+   */
+  bool _injectGenericCommentTypeList() {
+    return _injectGenericComment(TokenType.GENERIC_METHOD_TYPE_LIST, 2);
+  }
+
   /**
    * Inject the given [token] into the token stream immediately before the
    * current token.
@@ -3811,6 +3985,19 @@ class Parser {
     token.setNext(_currentToken);
     previous.setNext(token);
     return token;
+  }
+
+  void _injectTokenList(Token firstToken) {
+    // Scanner creates a cyclic EOF token.
+    Token lastToken = firstToken;
+    while (lastToken.next.type != TokenType.EOF) {
+      lastToken = lastToken.next;
+    }
+    // Inject these new tokens into the stream.
+    Token previous = _currentToken.previous;
+    lastToken.setNext(_currentToken);
+    previous.setNext(firstToken);
+    _currentToken = firstToken;
   }
 
   /**
@@ -3887,7 +4074,8 @@ class Parser {
   /**
    * Return `true` if the given [character] is a valid hexadecimal digit.
    */
-  bool _isHexDigit(int character) => (0x30 <= character && character <= 0x39) ||
+  bool _isHexDigit(int character) =>
+      (0x30 <= character && character <= 0x39) ||
       (0x41 <= character && character <= 0x46) ||
       (0x61 <= character && character <= 0x66);
 
@@ -3931,22 +4119,52 @@ class Parser {
         TokenType.INDEX
       ]);
     }
+    bool allowAdditionalTokens = true;
     // We know that we have an identifier, and need to see whether it might be
     // a type name.
+    if (_currentToken.type != TokenType.IDENTIFIER) {
+      allowAdditionalTokens = false;
+    }
     Token token = _skipTypeName(_currentToken);
     if (token == null) {
       // There was no type name, so this can't be a declaration.
       return false;
+    }
+    if (token.type != TokenType.IDENTIFIER) {
+      allowAdditionalTokens = false;
     }
     token = _skipSimpleIdentifier(token);
     if (token == null) {
       return false;
     }
     TokenType type = token.type;
-    return type == TokenType.EQ ||
+    // Usual cases in valid code:
+    //     String v = '';
+    //     String v, v2;
+    //     String v;
+    //     for (String item in items) {}
+    if (type == TokenType.EQ ||
         type == TokenType.COMMA ||
         type == TokenType.SEMICOLON ||
-        _tokenMatchesKeyword(token, Keyword.IN);
+        _tokenMatchesKeyword(token, Keyword.IN)) {
+      return true;
+    }
+    // It is OK to parse as a variable declaration in these cases:
+    //     String v }
+    //     String v if (true) print('OK');
+    //     String v { print(42); }
+    // ...but not in these cases:
+    //     get getterName {
+    //     String get getterName
+    if (allowAdditionalTokens) {
+      if (type == TokenType.CLOSE_CURLY_BRACKET ||
+          type == TokenType.KEYWORD ||
+          type == TokenType.IDENTIFIER ||
+          type == TokenType.OPEN_CURLY_BRACKET) {
+        return true;
+      }
+    }
+    return false;
   }
 
   bool _isLikelyParameterList() {
@@ -4011,6 +4229,14 @@ class Parser {
     }
     // Formal parameter list is expect now.
     return _tokenMatches(token, TokenType.OPEN_PAREN);
+  }
+
+  bool _isPeekGenericTypeParametersAndOpenParen() {
+    if (!parseGenericMethods) {
+      return false;
+    }
+    Token token = _skipTypeArgumentList(_peek());
+    return token != null && _tokenMatches(token, TokenType.OPEN_PAREN);
   }
 
   /**
@@ -4131,7 +4357,7 @@ class Parser {
    */
   bool _matchesString(String identifier) =>
       _currentToken.type == TokenType.IDENTIFIER &&
-          _currentToken.lexeme == identifier;
+      _currentToken.lexeme == identifier;
 
   /**
    * If the current token has the given [type], then advance to the next token
@@ -4193,10 +4419,16 @@ class Parser {
       _reportErrorForNode(
           ParserErrorCode.ASSERT_DOES_NOT_TAKE_RETHROW, expression);
     }
+    Token comma;
+    Expression message;
+    if (_matches(TokenType.COMMA)) {
+      comma = getAndAdvance();
+      message = parseExpression2();
+    }
     Token rightParen = _expect(TokenType.CLOSE_PAREN);
     Token semicolon = _expect(TokenType.SEMICOLON);
     return new AssertStatement(
-        keyword, leftParen, expression, rightParen, semicolon);
+        keyword, leftParen, expression, comma, message, rightParen, semicolon);
   }
 
   /**
@@ -4212,7 +4444,8 @@ class Parser {
   Expression _parseAssignableExpression(bool primaryAllowed) {
     if (_matchesKeyword(Keyword.SUPER)) {
       return _parseAssignableSelector(
-          new SuperExpression(getAndAdvance()), false, allowConditional: false);
+          new SuperExpression(getAndAdvance()), false,
+          allowConditional: false);
     }
     //
     // A primary expression can start with an identifier. We resolve the
@@ -4223,18 +4456,18 @@ class Parser {
     bool isOptional = primaryAllowed || expression is SimpleIdentifier;
     while (true) {
       while (_isLikelyParameterList()) {
-        TypeArgumentList typeArguments = null;
-        if (_matches(TokenType.LT)) {
-          typeArguments = parseTypeArgumentList();
-        }
+        TypeArgumentList typeArguments = _parseOptionalTypeArguments();
         ArgumentList argumentList = parseArgumentList();
         if (expression is SimpleIdentifier) {
           expression = new MethodInvocation(null, null,
               expression as SimpleIdentifier, typeArguments, argumentList);
         } else if (expression is PrefixedIdentifier) {
           PrefixedIdentifier identifier = expression as PrefixedIdentifier;
-          expression = new MethodInvocation(identifier.prefix,
-              identifier.period, identifier.identifier, typeArguments,
+          expression = new MethodInvocation(
+              identifier.prefix,
+              identifier.period,
+              identifier.identifier,
+              typeArguments,
               argumentList);
         } else if (expression is PropertyAccess) {
           PropertyAccess access = expression as PropertyAccess;
@@ -4432,10 +4665,7 @@ class Parser {
         (expression != null && functionName == null));
     if (_isLikelyParameterList()) {
       while (_isLikelyParameterList()) {
-        TypeArgumentList typeArguments = null;
-        if (_matches(TokenType.LT)) {
-          typeArguments = parseTypeArgumentList();
-        }
+        TypeArgumentList typeArguments = _parseOptionalTypeArguments();
         if (functionName != null) {
           expression = new MethodInvocation(expression, period, functionName,
               typeArguments, parseArgumentList());
@@ -4463,15 +4693,15 @@ class Parser {
         expression = selector;
         progress = true;
         while (_isLikelyParameterList()) {
-          TypeArgumentList typeArguments = null;
-          if (_matches(TokenType.LT)) {
-            typeArguments = parseTypeArgumentList();
-          }
+          TypeArgumentList typeArguments = _parseOptionalTypeArguments();
           if (expression is PropertyAccess) {
             PropertyAccess propertyAccess = expression as PropertyAccess;
-            expression = new MethodInvocation(propertyAccess.target,
-                propertyAccess.operator, propertyAccess.propertyName,
-                typeArguments, parseArgumentList());
+            expression = new MethodInvocation(
+                propertyAccess.target,
+                propertyAccess.operator,
+                propertyAccess.propertyName,
+                typeArguments,
+                parseArgumentList());
           } else {
             expression = new FunctionExpressionInvocation(
                 expression, typeArguments, parseArgumentList());
@@ -4600,9 +4830,18 @@ class Parser {
       _reportErrorForCurrentToken(ParserErrorCode.MISSING_CLASS_BODY);
     }
     ClassDeclaration classDeclaration = new ClassDeclaration(
-        commentAndMetadata.comment, commentAndMetadata.metadata,
-        abstractKeyword, keyword, name, typeParameters, extendsClause,
-        withClause, implementsClause, leftBracket, members, rightBracket);
+        commentAndMetadata.comment,
+        commentAndMetadata.metadata,
+        abstractKeyword,
+        keyword,
+        name,
+        typeParameters,
+        extendsClause,
+        withClause,
+        implementsClause,
+        leftBracket,
+        members,
+        rightBracket);
     classDeclaration.nativeClause = nativeClause;
     return classDeclaration;
   }
@@ -4692,9 +4931,17 @@ class Parser {
       }
       semicolon = _createSyntheticToken(TokenType.SEMICOLON);
     }
-    return new ClassTypeAlias(commentAndMetadata.comment,
-        commentAndMetadata.metadata, classKeyword, className, typeParameters,
-        equals, abstractKeyword, superclass, withClause, implementsClause,
+    return new ClassTypeAlias(
+        commentAndMetadata.comment,
+        commentAndMetadata.metadata,
+        classKeyword,
+        className,
+        typeParameters,
+        equals,
+        abstractKeyword,
+        superclass,
+        withClause,
+        implementsClause,
         semicolon);
   }
 
@@ -4826,6 +5073,7 @@ class Parser {
     List<CommentReference> references = new List<CommentReference>();
     for (DocumentationCommentToken token in tokens) {
       String comment = token.lexeme;
+      comment = _removeCodeBlocksGitHub(comment);
       int length = comment.length;
       List<List<int>> codeBlockRanges = _getCodeBlockRanges(comment);
       int leftIndex = comment.indexOf('[');
@@ -4924,10 +5172,11 @@ class Parser {
             commentAndMetadata, modifiers.externalKeyword, returnType));
       } else if (_matchesIdentifier() &&
           _peek().matchesAny([
-        TokenType.OPEN_PAREN,
-        TokenType.OPEN_CURLY_BRACKET,
-        TokenType.FUNCTION
-      ])) {
+            TokenType.OPEN_PAREN,
+            TokenType.OPEN_CURLY_BRACKET,
+            TokenType.FUNCTION,
+            TokenType.LT
+          ])) {
         _validateModifiersForTopLevelFunction(modifiers);
         return _parseFunctionDeclaration(
             commentAndMetadata, modifiers.externalKeyword, returnType);
@@ -4942,7 +5191,8 @@ class Parser {
             // We appear to have a variable declaration with a type of "void".
             //
             _reportErrorForNode(ParserErrorCode.VOID_VARIABLE, returnType);
-            return new TopLevelVariableDeclaration(commentAndMetadata.comment,
+            return new TopLevelVariableDeclaration(
+                commentAndMetadata.comment,
                 commentAndMetadata.metadata,
                 _parseVariableDeclarationListAfterType(null,
                     _validateModifiersForTopLevelVariable(modifiers), null),
@@ -4978,17 +5228,22 @@ class Parser {
         List<VariableDeclaration> variables = new List<VariableDeclaration>();
         variables.add(
             new VariableDeclaration(_createSyntheticIdentifier(), null, null));
-        return new TopLevelVariableDeclaration(commentAndMetadata.comment,
+        return new TopLevelVariableDeclaration(
+            commentAndMetadata.comment,
             commentAndMetadata.metadata,
             new VariableDeclarationList(null, null, keyword, null, variables),
             _expectSemicolon());
       }
       _reportErrorForToken(ParserErrorCode.EXPECTED_EXECUTABLE, _currentToken);
       return null;
-    } else if (_tokenMatches(_peek(), TokenType.OPEN_PAREN)) {
-      _validateModifiersForTopLevelFunction(modifiers);
+    } else if (_isPeekGenericTypeParametersAndOpenParen()) {
       return _parseFunctionDeclaration(
           commentAndMetadata, modifiers.externalKeyword, null);
+    } else if (_tokenMatches(_peek(), TokenType.OPEN_PAREN)) {
+      TypeName returnType = _parseOptionalTypeNameComment();
+      _validateModifiersForTopLevelFunction(modifiers);
+      return _parseFunctionDeclaration(
+          commentAndMetadata, modifiers.externalKeyword, returnType);
     } else if (_peek()
         .matchesAny([TokenType.EQ, TokenType.COMMA, TokenType.SEMICOLON])) {
       if (modifiers.constKeyword == null &&
@@ -4997,8 +5252,10 @@ class Parser {
         _reportErrorForCurrentToken(
             ParserErrorCode.MISSING_CONST_FINAL_VAR_OR_TYPE);
       }
-      return new TopLevelVariableDeclaration(commentAndMetadata.comment,
-          commentAndMetadata.metadata, _parseVariableDeclarationListAfterType(
+      return new TopLevelVariableDeclaration(
+          commentAndMetadata.comment,
+          commentAndMetadata.metadata,
+          _parseVariableDeclarationListAfterType(
               null, _validateModifiersForTopLevelVariable(modifiers), null),
           _expect(TokenType.SEMICOLON));
     }
@@ -5013,10 +5270,12 @@ class Parser {
       return _convertToFunctionDeclaration(_parseOperator(
           commentAndMetadata, modifiers.externalKeyword, returnType));
     } else if (_matches(TokenType.AT)) {
-      return new TopLevelVariableDeclaration(commentAndMetadata.comment,
-          commentAndMetadata.metadata, _parseVariableDeclarationListAfterType(
-              null, _validateModifiersForTopLevelVariable(modifiers),
-              returnType), _expect(TokenType.SEMICOLON));
+      return new TopLevelVariableDeclaration(
+          commentAndMetadata.comment,
+          commentAndMetadata.metadata,
+          _parseVariableDeclarationListAfterType(null,
+              _validateModifiersForTopLevelVariable(modifiers), returnType),
+          _expect(TokenType.SEMICOLON));
     } else if (!_matchesIdentifier()) {
       // TODO(brianwilkerson) Generalize this error. We could also be parsing a
       // top-level variable at this point.
@@ -5030,7 +5289,8 @@ class Parser {
       List<VariableDeclaration> variables = new List<VariableDeclaration>();
       variables.add(
           new VariableDeclaration(_createSyntheticIdentifier(), null, null));
-      return new TopLevelVariableDeclaration(commentAndMetadata.comment,
+      return new TopLevelVariableDeclaration(
+          commentAndMetadata.comment,
           commentAndMetadata.metadata,
           new VariableDeclarationList(null, null, null, returnType, variables),
           semicolon);
@@ -5038,16 +5298,65 @@ class Parser {
     if (_peek().matchesAny([
       TokenType.OPEN_PAREN,
       TokenType.FUNCTION,
-      TokenType.OPEN_CURLY_BRACKET
+      TokenType.OPEN_CURLY_BRACKET,
+      TokenType.LT
     ])) {
       _validateModifiersForTopLevelFunction(modifiers);
       return _parseFunctionDeclaration(
           commentAndMetadata, modifiers.externalKeyword, returnType);
     }
-    return new TopLevelVariableDeclaration(commentAndMetadata.comment,
-        commentAndMetadata.metadata, _parseVariableDeclarationListAfterType(
+    return new TopLevelVariableDeclaration(
+        commentAndMetadata.comment,
+        commentAndMetadata.metadata,
+        _parseVariableDeclarationListAfterType(
             null, _validateModifiersForTopLevelVariable(modifiers), returnType),
         _expect(TokenType.SEMICOLON));
+  }
+
+  /**
+   * Parse a configuration in either an import or export directive.
+   *
+   *     configuration ::=
+   *         'if' '(' test ')' uri
+   *
+   *     test ::=
+   *         dottedName ('==' stringLiteral)?
+   *
+   *     dottedName ::=
+   *         identifier ('.' identifier)*
+   */
+  Configuration _parseConfiguration() {
+    Token ifKeyword = _expectKeyword(Keyword.IF);
+    Token leftParenthesis = _expect(TokenType.OPEN_PAREN);
+    DottedName name = _parseDottedName();
+    Token equalToken = null;
+    StringLiteral value = null;
+    if (_matches(TokenType.EQ_EQ)) {
+      equalToken = getAndAdvance();
+      value = parseStringLiteral();
+      if (value is StringInterpolation) {
+        _reportErrorForNode(
+            ParserErrorCode.INVALID_LITERAL_IN_CONFIGURATION, value);
+      }
+    }
+    Token rightParenthesis = _expect(TokenType.CLOSE_PAREN);
+    StringLiteral libraryUri = _parseUri();
+    return new Configuration(ifKeyword, leftParenthesis, name, equalToken,
+        value, rightParenthesis, libraryUri);
+  }
+
+  /**
+   * Parse a list of configurations. If conditional directives are not
+   * supported, return an empty list without attempting to parse anything.
+   */
+  List<Configuration> _parseConfigurations() {
+    List<Configuration> configurations = <Configuration>[];
+    if (parseConditionalDirectives) {
+      while (_matchesKeyword(Keyword.IF)) {
+        configurations.add(_parseConfiguration());
+      }
+    }
+    return configurations;
   }
 
   /**
@@ -5060,20 +5369,25 @@ class Parser {
    */
   Expression _parseConstExpression() {
     Token keyword = _expectKeyword(Keyword.CONST);
-    if (_matches(TokenType.OPEN_SQUARE_BRACKET) || _matches(TokenType.INDEX)) {
+    if (_matches(TokenType.LT) || _injectGenericCommentTypeList()) {
+      return _parseListOrMapLiteral(keyword);
+    } else if (_matches(TokenType.OPEN_SQUARE_BRACKET) || _matches(TokenType.INDEX)) {
       return _parseListLiteral(keyword, null);
     } else if (_matches(TokenType.OPEN_CURLY_BRACKET)) {
       return _parseMapLiteral(keyword, null);
-    } else if (_matches(TokenType.LT)) {
-      return _parseListOrMapLiteral(keyword);
     }
     return _parseInstanceCreationExpression(keyword);
   }
 
   ConstructorDeclaration _parseConstructor(
-      CommentAndMetadata commentAndMetadata, Token externalKeyword,
-      Token constKeyword, Token factoryKeyword, SimpleIdentifier returnType,
-      Token period, SimpleIdentifier name, FormalParameterList parameters) {
+      CommentAndMetadata commentAndMetadata,
+      Token externalKeyword,
+      Token constKeyword,
+      Token factoryKeyword,
+      SimpleIdentifier returnType,
+      Token period,
+      SimpleIdentifier name,
+      FormalParameterList parameters) {
     bool bodyAllowed = externalKeyword == null;
     Token separator = null;
     List<ConstructorInitializer> initializers = null;
@@ -5141,10 +5455,20 @@ class Parser {
         }
       }
     }
-    return new ConstructorDeclaration(commentAndMetadata.comment,
-        commentAndMetadata.metadata, externalKeyword, constKeyword,
-        factoryKeyword, returnType, period, name, parameters, separator,
-        initializers, redirectedConstructor, body);
+    return new ConstructorDeclaration(
+        commentAndMetadata.comment,
+        commentAndMetadata.metadata,
+        externalKeyword,
+        constKeyword,
+        factoryKeyword,
+        returnType,
+        period,
+        name,
+        parameters,
+        separator,
+        initializers,
+        redirectedConstructor,
+        body);
   }
 
   /**
@@ -5351,6 +5675,22 @@ class Parser {
   }
 
   /**
+   * Parse a dotted name. Return the dotted name that was parsed.
+   *
+   *     dottedName ::=
+   *         identifier ('.' identifier)*
+   */
+  DottedName _parseDottedName() {
+    List<SimpleIdentifier> components = new List<SimpleIdentifier>();
+    components.add(parseSimpleIdentifier());
+    while (_matches(TokenType.PERIOD)) {
+      _advance();
+      components.add(parseSimpleIdentifier());
+    }
+    return new DottedName(components);
+  }
+
+  /**
    * Parse an empty statement. Return the empty statement that was parsed.
    *
    *     emptyStatement ::=
@@ -5412,8 +5752,13 @@ class Parser {
       rightBracket = _createSyntheticToken(TokenType.CLOSE_CURLY_BRACKET);
       _reportErrorForCurrentToken(ParserErrorCode.MISSING_ENUM_BODY);
     }
-    return new EnumDeclaration(commentAndMetadata.comment,
-        commentAndMetadata.metadata, keyword, name, leftBracket, constants,
+    return new EnumDeclaration(
+        commentAndMetadata.comment,
+        commentAndMetadata.metadata,
+        keyword,
+        name,
+        leftBracket,
+        constants,
         rightBracket);
   }
 
@@ -5452,15 +5797,21 @@ class Parser {
    * associated with the directive. Return the export directive that was parsed.
    *
    *     exportDirective ::=
-   *         metadata 'export' stringLiteral combinator*';'
+   *         metadata 'export' stringLiteral configuration* combinator*';'
    */
   ExportDirective _parseExportDirective(CommentAndMetadata commentAndMetadata) {
     Token exportKeyword = _expectKeyword(Keyword.EXPORT);
     StringLiteral libraryUri = _parseUri();
+    List<Configuration> configurations = _parseConfigurations();
     List<Combinator> combinators = _parseCombinators();
     Token semicolon = _expectSemicolon();
-    return new ExportDirective(commentAndMetadata.comment,
-        commentAndMetadata.metadata, exportKeyword, libraryUri, combinators,
+    return new ExportDirective(
+        commentAndMetadata.comment,
+        commentAndMetadata.metadata,
+        exportKeyword,
+        libraryUri,
+        configurations,
+        combinators,
         semicolon);
   }
 
@@ -5497,16 +5848,27 @@ class Parser {
       keyword = getAndAdvance();
       if (_isTypedIdentifier(_currentToken)) {
         type = parseTypeName();
+      } else {
+        // Support `final/*=T*/ x;`
+        type = _parseOptionalTypeNameComment();
       }
     } else if (_matchesKeyword(Keyword.VAR)) {
       keyword = getAndAdvance();
-    } else {
-      if (_isTypedIdentifier(_currentToken)) {
-        type = parseReturnType();
-      } else if (!optional) {
-        _reportErrorForCurrentToken(
-            ParserErrorCode.MISSING_CONST_FINAL_VAR_OR_TYPE);
+      // Support `var/*=T*/ x;`
+      type = _parseOptionalTypeNameComment();
+      if (type != null) {
+        // Clear the keyword to prevent an error.
+        keyword = null;
       }
+    } else if (_isTypedIdentifier(_currentToken)) {
+      type = parseReturnType();
+    } else if (!optional) {
+      _reportErrorForCurrentToken(
+          ParserErrorCode.MISSING_CONST_FINAL_VAR_OR_TYPE);
+    } else {
+      // Support parameters such as `(/*=K*/ key, /*=V*/ value)`
+      // This is not supported if the type is required.
+      type = _parseOptionalTypeNameComment();
     }
     return new FinalConstVarOrType(keyword, type);
   }
@@ -5640,34 +6002,54 @@ class Parser {
           Token rightParenthesis = _expect(TokenType.CLOSE_PAREN);
           Statement body = parseStatement2();
           if (loopVariable == null) {
-            return new ForEachStatement.withReference(awaitKeyword, forKeyword,
-                leftParenthesis, identifier, inKeyword, iterator,
-                rightParenthesis, body);
+            return new ForEachStatement.withReference(
+                awaitKeyword,
+                forKeyword,
+                leftParenthesis,
+                identifier,
+                inKeyword,
+                iterator,
+                rightParenthesis,
+                body);
           }
-          return new ForEachStatement.withDeclaration(awaitKeyword, forKeyword,
-              leftParenthesis, loopVariable, inKeyword, iterator,
-              rightParenthesis, body);
+          return new ForEachStatement.withDeclaration(
+              awaitKeyword,
+              forKeyword,
+              leftParenthesis,
+              loopVariable,
+              inKeyword,
+              iterator,
+              rightParenthesis,
+              body);
         }
       }
       if (awaitKeyword != null) {
         _reportErrorForToken(
             ParserErrorCode.INVALID_AWAIT_IN_FOR, awaitKeyword);
       }
-      Token leftSeparator = _expect(TokenType.SEMICOLON);
+      Token leftSeparator = _expectSemicolon();
       Expression condition = null;
       if (!_matches(TokenType.SEMICOLON)) {
         condition = parseExpression2();
       }
-      Token rightSeparator = _expect(TokenType.SEMICOLON);
+      Token rightSeparator = _expectSemicolon();
       List<Expression> updaters = null;
       if (!_matches(TokenType.CLOSE_PAREN)) {
         updaters = _parseExpressionList();
       }
       Token rightParenthesis = _expect(TokenType.CLOSE_PAREN);
       Statement body = parseStatement2();
-      return new ForStatement(forKeyword, leftParenthesis, variableList,
-          initialization, leftSeparator, condition, rightSeparator, updaters,
-          rightParenthesis, body);
+      return new ForStatement(
+          forKeyword,
+          leftParenthesis,
+          variableList,
+          initialization,
+          leftSeparator,
+          condition,
+          rightSeparator,
+          updaters,
+          rightParenthesis,
+          body);
     } finally {
       _inLoop = wasInLoop;
     }
@@ -5717,6 +6099,9 @@ class Parser {
       Token star = null;
       if (_matchesString(ASYNC)) {
         keyword = getAndAdvance();
+        if (!_parseAsync) {
+          _reportErrorForToken(ParserErrorCode.ASYNC_NOT_SUPPORTED, keyword);
+        }
         if (_matches(TokenType.STAR)) {
           star = getAndAdvance();
           _inGenerator = true;
@@ -5724,6 +6109,9 @@ class Parser {
         _inAsync = true;
       } else if (_matchesString(SYNC)) {
         keyword = getAndAdvance();
+        if (!_parseAsync) {
+          _reportErrorForToken(ParserErrorCode.ASYNC_NOT_SUPPORTED, keyword);
+        }
         if (_matches(TokenType.STAR)) {
           star = getAndAdvance();
           _inGenerator = true;
@@ -5797,7 +6185,8 @@ class Parser {
    *       | returnType? getOrSet identifier formalParameterList functionBody
    */
   FunctionDeclaration _parseFunctionDeclaration(
-      CommentAndMetadata commentAndMetadata, Token externalKeyword,
+      CommentAndMetadata commentAndMetadata,
+      Token externalKeyword,
       TypeName returnType) {
     Token keyword = null;
     bool isGetter = false;
@@ -5810,10 +6199,7 @@ class Parser {
       keyword = getAndAdvance();
     }
     SimpleIdentifier name = parseSimpleIdentifier();
-    TypeParameterList typeParameters = null;
-    if (parseGenericMethods && _matches(TokenType.LT)) {
-      typeParameters = parseTypeParameterList();
-    }
+    TypeParameterList typeParameters = _parseGenericMethodTypeParameters();
     FormalParameterList parameters = null;
     if (!isGetter) {
       if (_matches(TokenType.OPEN_PAREN)) {
@@ -5823,7 +6209,10 @@ class Parser {
         _reportErrorForCurrentToken(
             ParserErrorCode.MISSING_FUNCTION_PARAMETERS);
         parameters = new FormalParameterList(
-            _createSyntheticToken(TokenType.OPEN_PAREN), null, null, null,
+            _createSyntheticToken(TokenType.OPEN_PAREN),
+            null,
+            null,
+            null,
             _createSyntheticToken(TokenType.CLOSE_PAREN));
       }
     } else if (_matches(TokenType.OPEN_PAREN)) {
@@ -5842,8 +6231,13 @@ class Parser {
 //          reportError(ParserErrorCode.UNEXPECTED_TOKEN, currentToken.getLexeme());
 //          advance();
 //        }
-    return new FunctionDeclaration(commentAndMetadata.comment,
-        commentAndMetadata.metadata, externalKeyword, returnType, keyword, name,
+    return new FunctionDeclaration(
+        commentAndMetadata.comment,
+        commentAndMetadata.metadata,
+        externalKeyword,
+        returnType,
+        keyword,
+        name,
         new FunctionExpression(typeParameters, parameters, body));
   }
 
@@ -5912,31 +6306,81 @@ class Parser {
     if (_matches(TokenType.SEMICOLON) || _matches(TokenType.EOF)) {
       _reportErrorForCurrentToken(ParserErrorCode.MISSING_TYPEDEF_PARAMETERS);
       FormalParameterList parameters = new FormalParameterList(
-          _createSyntheticToken(TokenType.OPEN_PAREN), null, null, null,
+          _createSyntheticToken(TokenType.OPEN_PAREN),
+          null,
+          null,
+          null,
           _createSyntheticToken(TokenType.CLOSE_PAREN));
       Token semicolon = _expect(TokenType.SEMICOLON);
-      return new FunctionTypeAlias(commentAndMetadata.comment,
-          commentAndMetadata.metadata, keyword, returnType, name,
-          typeParameters, parameters, semicolon);
+      return new FunctionTypeAlias(
+          commentAndMetadata.comment,
+          commentAndMetadata.metadata,
+          keyword,
+          returnType,
+          name,
+          typeParameters,
+          parameters,
+          semicolon);
     } else if (!_matches(TokenType.OPEN_PAREN)) {
       _reportErrorForCurrentToken(ParserErrorCode.MISSING_TYPEDEF_PARAMETERS);
       // TODO(brianwilkerson) Recover from this error. At the very least we
       // should skip to the start of the next valid compilation unit member,
       // allowing for the possibility of finding the typedef parameters before
       // that point.
-      return new FunctionTypeAlias(commentAndMetadata.comment,
-          commentAndMetadata.metadata, keyword, returnType, name,
-          typeParameters, new FormalParameterList(
-              _createSyntheticToken(TokenType.OPEN_PAREN), null, null, null,
-              _createSyntheticToken(TokenType.CLOSE_PAREN)),
+      return new FunctionTypeAlias(
+          commentAndMetadata.comment,
+          commentAndMetadata.metadata,
+          keyword,
+          returnType,
+          name,
+          typeParameters,
+          new FormalParameterList(_createSyntheticToken(TokenType.OPEN_PAREN),
+              null, null, null, _createSyntheticToken(TokenType.CLOSE_PAREN)),
           _createSyntheticToken(TokenType.SEMICOLON));
     }
     FormalParameterList parameters = parseFormalParameterList();
     _validateFormalParameterList(parameters);
     Token semicolon = _expect(TokenType.SEMICOLON);
-    return new FunctionTypeAlias(commentAndMetadata.comment,
-        commentAndMetadata.metadata, keyword, returnType, name, typeParameters,
-        parameters, semicolon);
+    return new FunctionTypeAlias(
+        commentAndMetadata.comment,
+        commentAndMetadata.metadata,
+        keyword,
+        returnType,
+        name,
+        typeParameters,
+        parameters,
+        semicolon);
+  }
+
+  /**
+   * Parses generic type parameters from a comment.
+   *
+   * Normally this is handled by [_parseGenericMethodTypeParameters], but if the
+   * code already handles the normal generic type parameters, the comment
+   * matcher can be called directly. For example, we may have already tried
+   * matching `<` (less than sign) in a method declaration, and be currently
+   * on the `(` (open paren) because we didn't find it. In that case, this
+   * function will parse the preceding comment such as `/*<T, R>*/`.
+   */
+  TypeParameterList _parseGenericCommentTypeParameters() {
+    if (_injectGenericCommentTypeList()) {
+      return parseTypeParameterList();
+    }
+    return null;
+  }
+
+  /**
+   * Parse the generic method or function's type parameters.
+   *
+   * For backwards compatibility this can optionally use comments.
+   * See [parseGenericMethodComments].
+   */
+  TypeParameterList _parseGenericMethodTypeParameters() {
+    if (parseGenericMethods && _matches(TokenType.LT) ||
+        _injectGenericCommentTypeList()) {
+      return parseTypeParameterList();
+    }
+    return null;
   }
 
   /**
@@ -5965,13 +6409,23 @@ class Parser {
     }
     FunctionBody body = _parseFunctionBody(
         externalKeyword != null || staticKeyword == null,
-        ParserErrorCode.STATIC_GETTER_WITHOUT_BODY, false);
+        ParserErrorCode.STATIC_GETTER_WITHOUT_BODY,
+        false);
     if (externalKeyword != null && body is! EmptyFunctionBody) {
       _reportErrorForCurrentToken(ParserErrorCode.EXTERNAL_GETTER_WITH_BODY);
     }
-    return new MethodDeclaration(commentAndMetadata.comment,
-        commentAndMetadata.metadata, externalKeyword, staticKeyword, returnType,
-        propertyKeyword, null, name, null, null, body);
+    return new MethodDeclaration(
+        commentAndMetadata.comment,
+        commentAndMetadata.metadata,
+        externalKeyword,
+        staticKeyword,
+        returnType,
+        propertyKeyword,
+        null,
+        name,
+        null,
+        null,
+        body);
   }
 
   /**
@@ -6018,11 +6472,12 @@ class Parser {
    * associated with the directive. Return the import directive that was parsed.
    *
    *     importDirective ::=
-   *         metadata 'import' stringLiteral (deferred)? ('as' identifier)? combinator*';'
+   *         metadata 'import' stringLiteral configuration* (deferred)? ('as' identifier)? combinator*';'
    */
   ImportDirective _parseImportDirective(CommentAndMetadata commentAndMetadata) {
     Token importKeyword = _expectKeyword(Keyword.IMPORT);
     StringLiteral libraryUri = _parseUri();
+    List<Configuration> configurations = _parseConfigurations();
     Token deferredToken = null;
     Token asToken = null;
     SimpleIdentifier prefix = null;
@@ -6053,9 +6508,17 @@ class Parser {
     }
     List<Combinator> combinators = _parseCombinators();
     Token semicolon = _expectSemicolon();
-    return new ImportDirective(commentAndMetadata.comment,
-        commentAndMetadata.metadata, importKeyword, libraryUri, deferredToken,
-        asToken, prefix, combinators, semicolon);
+    return new ImportDirective(
+        commentAndMetadata.comment,
+        commentAndMetadata.metadata,
+        importKeyword,
+        libraryUri,
+        configurations,
+        deferredToken,
+        asToken,
+        prefix,
+        combinators,
+        semicolon);
   }
 
   /**
@@ -6078,12 +6541,17 @@ class Parser {
    *         identifier ('=' expression)?
    */
   FieldDeclaration _parseInitializedIdentifierList(
-      CommentAndMetadata commentAndMetadata, Token staticKeyword, Token keyword,
+      CommentAndMetadata commentAndMetadata,
+      Token staticKeyword,
+      Token keyword,
       TypeName type) {
     VariableDeclarationList fieldList =
         _parseVariableDeclarationListAfterType(null, keyword, type);
-    return new FieldDeclaration(commentAndMetadata.comment,
-        commentAndMetadata.metadata, staticKeyword, fieldList,
+    return new FieldDeclaration(
+        commentAndMetadata.comment,
+        commentAndMetadata.metadata,
+        staticKeyword,
+        fieldList,
         _expect(TokenType.SEMICOLON));
   }
 
@@ -6161,7 +6629,8 @@ class Parser {
     // may be empty list literal
     if (_matches(TokenType.INDEX)) {
       BeginToken leftBracket = _createToken(
-          _currentToken, TokenType.OPEN_SQUARE_BRACKET, isBegin: true);
+          _currentToken, TokenType.OPEN_SQUARE_BRACKET,
+          isBegin: true);
       Token rightBracket =
           new Token(TokenType.CLOSE_SQUARE_BRACKET, _currentToken.offset + 1);
       leftBracket.endToken = rightBracket;
@@ -6208,10 +6677,7 @@ class Parser {
    *       | mapLiteral
    */
   TypedLiteral _parseListOrMapLiteral(Token modifier) {
-    TypeArgumentList typeArguments = null;
-    if (_matches(TokenType.LT)) {
-      typeArguments = parseTypeArgumentList();
-    }
+    TypeArgumentList typeArguments = _parseOptionalTypeArguments();
     if (_matches(TokenType.OPEN_CURLY_BRACKET)) {
       return _parseMapLiteral(modifier, typeArguments);
     } else if (_matches(TokenType.OPEN_SQUARE_BRACKET) ||
@@ -6219,8 +6685,11 @@ class Parser {
       return _parseListLiteral(modifier, typeArguments);
     }
     _reportErrorForCurrentToken(ParserErrorCode.EXPECTED_LIST_OR_MAP_LITERAL);
-    return new ListLiteral(modifier, typeArguments,
-        _createSyntheticToken(TokenType.OPEN_SQUARE_BRACKET), null,
+    return new ListLiteral(
+        modifier,
+        typeArguments,
+        _createSyntheticToken(TokenType.OPEN_SQUARE_BRACKET),
+        null,
         _createSyntheticToken(TokenType.CLOSE_SQUARE_BRACKET));
   }
 
@@ -6290,12 +6759,17 @@ class Parser {
    *       | 'external'? functionSignature ';'
    */
   MethodDeclaration _parseMethodDeclarationAfterParameters(
-      CommentAndMetadata commentAndMetadata, Token externalKeyword,
-      Token staticKeyword, TypeName returnType, SimpleIdentifier name,
-      TypeParameterList typeParameters, FormalParameterList parameters) {
+      CommentAndMetadata commentAndMetadata,
+      Token externalKeyword,
+      Token staticKeyword,
+      TypeName returnType,
+      SimpleIdentifier name,
+      TypeParameterList typeParameters,
+      FormalParameterList parameters) {
     FunctionBody body = _parseFunctionBody(
         externalKeyword != null || staticKeyword == null,
-        ParserErrorCode.MISSING_FUNCTION_BODY, false);
+        ParserErrorCode.MISSING_FUNCTION_BODY,
+        false);
     if (externalKeyword != null) {
       if (body is! EmptyFunctionBody) {
         _reportErrorForNode(ParserErrorCode.EXTERNAL_METHOD_WITH_BODY, body);
@@ -6305,9 +6779,18 @@ class Parser {
         _reportErrorForNode(ParserErrorCode.ABSTRACT_STATIC_METHOD, body);
       }
     }
-    return new MethodDeclaration(commentAndMetadata.comment,
-        commentAndMetadata.metadata, externalKeyword, staticKeyword, returnType,
-        null, null, name, typeParameters, parameters, body);
+    return new MethodDeclaration(
+        commentAndMetadata.comment,
+        commentAndMetadata.metadata,
+        externalKeyword,
+        staticKeyword,
+        returnType,
+        null,
+        null,
+        name,
+        typeParameters,
+        parameters,
+        body);
   }
 
   /**
@@ -6323,13 +6806,12 @@ class Parser {
    *       | 'external'? functionSignature ';'
    */
   MethodDeclaration _parseMethodDeclarationAfterReturnType(
-      CommentAndMetadata commentAndMetadata, Token externalKeyword,
-      Token staticKeyword, TypeName returnType) {
+      CommentAndMetadata commentAndMetadata,
+      Token externalKeyword,
+      Token staticKeyword,
+      TypeName returnType) {
     SimpleIdentifier methodName = parseSimpleIdentifier();
-    TypeParameterList typeParameters = null;
-    if (parseGenericMethods && _matches(TokenType.LT)) {
-      typeParameters = parseTypeParameterList();
-    }
+    TypeParameterList typeParameters = _parseGenericMethodTypeParameters();
     FormalParameterList parameters;
     if (!_matches(TokenType.OPEN_PAREN) &&
         (_matches(TokenType.OPEN_CURLY_BRACKET) ||
@@ -6337,14 +6819,22 @@ class Parser {
       _reportErrorForToken(
           ParserErrorCode.MISSING_METHOD_PARAMETERS, _currentToken.previous);
       parameters = new FormalParameterList(
-          _createSyntheticToken(TokenType.OPEN_PAREN), null, null, null,
+          _createSyntheticToken(TokenType.OPEN_PAREN),
+          null,
+          null,
+          null,
           _createSyntheticToken(TokenType.CLOSE_PAREN));
     } else {
       parameters = parseFormalParameterList();
     }
     _validateFormalParameterList(parameters);
-    return _parseMethodDeclarationAfterParameters(commentAndMetadata,
-        externalKeyword, staticKeyword, returnType, methodName, typeParameters,
+    return _parseMethodDeclarationAfterParameters(
+        commentAndMetadata,
+        externalKeyword,
+        staticKeyword,
+        returnType,
+        methodName,
+        typeParameters,
         parameters);
   }
 
@@ -6552,10 +7042,10 @@ class Parser {
         TypeName returnType = parseReturnType();
         if (_matchesIdentifier() &&
             _peek().matchesAny([
-          TokenType.OPEN_PAREN,
-          TokenType.OPEN_CURLY_BRACKET,
-          TokenType.FUNCTION
-        ])) {
+              TokenType.OPEN_PAREN,
+              TokenType.OPEN_CURLY_BRACKET,
+              TokenType.FUNCTION
+            ])) {
           return _parseFunctionDeclarationStatementAfterReturnType(
               commentAndMetadata, returnType);
         } else {
@@ -6699,9 +7189,18 @@ class Parser {
     if (externalKeyword != null && body is! EmptyFunctionBody) {
       _reportErrorForCurrentToken(ParserErrorCode.EXTERNAL_OPERATOR_WITH_BODY);
     }
-    return new MethodDeclaration(commentAndMetadata.comment,
-        commentAndMetadata.metadata, externalKeyword, null, returnType, null,
-        operatorKeyword, name, null, parameters, body);
+    return new MethodDeclaration(
+        commentAndMetadata.comment,
+        commentAndMetadata.metadata,
+        externalKeyword,
+        null,
+        returnType,
+        null,
+        operatorKeyword,
+        name,
+        null,
+        parameters,
+        body);
   }
 
   /**
@@ -6709,7 +7208,10 @@ class Parser {
    * advancing. Return the return type that was parsed.
    */
   TypeName _parseOptionalReturnType() {
-    if (_matchesKeyword(Keyword.VOID)) {
+    TypeName typeComment = _parseOptionalTypeNameComment();
+    if (typeComment != null) {
+      return typeComment;
+    } else if (_matchesKeyword(Keyword.VOID)) {
       return parseReturnType();
     } else if (_matchesIdentifier() &&
         !_matchesKeyword(Keyword.GET) &&
@@ -6724,6 +7226,24 @@ class Parser {
         (_tokenMatchesIdentifier(_peekAt(3)) ||
             _tokenMatches(_peekAt(3), TokenType.LT))) {
       return parseReturnType();
+    }
+    return null;
+  }
+
+  /**
+   * Parse a [TypeArgumentList] if present, otherwise return null.
+   * This also supports the comment form, if enabled: `/*<T>*/`
+   */
+  TypeArgumentList _parseOptionalTypeArguments() {
+    if (_matches(TokenType.LT) || _injectGenericCommentTypeList()) {
+      return parseTypeArgumentList();
+    }
+    return null;
+  }
+
+  TypeName _parseOptionalTypeNameComment() {
+    if (_injectGenericCommentTypeAssign()) {
+      return _parseTypeName();
     }
     return null;
   }
@@ -6746,8 +7266,12 @@ class Parser {
       LibraryIdentifier libraryName = _parseLibraryName(
           ParserErrorCode.MISSING_NAME_IN_PART_OF_DIRECTIVE, ofKeyword);
       Token semicolon = _expect(TokenType.SEMICOLON);
-      return new PartOfDirective(commentAndMetadata.comment,
-          commentAndMetadata.metadata, partKeyword, ofKeyword, libraryName,
+      return new PartOfDirective(
+          commentAndMetadata.comment,
+          commentAndMetadata.metadata,
+          partKeyword,
+          ofKeyword,
+          libraryName,
           semicolon);
     }
     StringLiteral partUri = _parseUri();
@@ -6776,10 +7300,7 @@ class Parser {
         (parseGenericMethods && _matches(TokenType.LT))) {
       do {
         if (_isLikelyParameterList()) {
-          TypeArgumentList typeArguments = null;
-          if (_matches(TokenType.LT)) {
-            typeArguments = parseTypeArgumentList();
-          }
+          TypeArgumentList typeArguments = _parseOptionalTypeArguments();
           ArgumentList argumentList = parseArgumentList();
           if (operand is PropertyAccess) {
             PropertyAccess access = operand as PropertyAccess;
@@ -6836,7 +7357,8 @@ class Parser {
       // TODO(paulberry): verify with Gilad that "super" must be followed by
       // unconditionalAssignableSelector in this case.
       return _parseAssignableSelector(
-          new SuperExpression(getAndAdvance()), false, allowConditional: false);
+          new SuperExpression(getAndAdvance()), false,
+          allowConditional: false);
     } else if (_matchesKeyword(Keyword.NULL)) {
       return new NullLiteral(getAndAdvance());
     } else if (_matchesKeyword(Keyword.FALSE)) {
@@ -6872,11 +7394,6 @@ class Parser {
       return new IntegerLiteral(token, value);
     } else if (_matches(TokenType.STRING)) {
       return parseStringLiteral();
-    } else if (_matches(TokenType.OPEN_CURLY_BRACKET)) {
-      return _parseMapLiteral(null, null);
-    } else if (_matches(TokenType.OPEN_SQUARE_BRACKET) ||
-        _matches(TokenType.INDEX)) {
-      return _parseListLiteral(null, null);
     } else if (_matchesIdentifier()) {
       // TODO(brianwilkerson) The code below was an attempt to recover from an
       // error case, but it needs to be applied as a recovery only after we
@@ -6909,8 +7426,13 @@ class Parser {
       } finally {
         _inInitializer = wasInInitializer;
       }
-    } else if (_matches(TokenType.LT)) {
+    } else if (_matches(TokenType.LT) || _injectGenericCommentTypeList()) {
       return _parseListOrMapLiteral(null);
+    } else if (_matches(TokenType.OPEN_CURLY_BRACKET)) {
+      return _parseMapLiteral(null, null);
+    } else if (_matches(TokenType.OPEN_SQUARE_BRACKET) ||
+        _matches(TokenType.INDEX)) {
+      return _parseListLiteral(null, null);
     } else if (_matches(TokenType.QUESTION) &&
         _tokenMatches(_peek(), TokenType.IDENTIFIER)) {
       _reportErrorForCurrentToken(
@@ -7039,13 +7561,23 @@ class Parser {
     _validateFormalParameterList(parameters);
     FunctionBody body = _parseFunctionBody(
         externalKeyword != null || staticKeyword == null,
-        ParserErrorCode.STATIC_SETTER_WITHOUT_BODY, false);
+        ParserErrorCode.STATIC_SETTER_WITHOUT_BODY,
+        false);
     if (externalKeyword != null && body is! EmptyFunctionBody) {
       _reportErrorForCurrentToken(ParserErrorCode.EXTERNAL_SETTER_WITH_BODY);
     }
-    return new MethodDeclaration(commentAndMetadata.comment,
-        commentAndMetadata.metadata, externalKeyword, staticKeyword, returnType,
-        propertyKeyword, null, name, null, parameters, body);
+    return new MethodDeclaration(
+        commentAndMetadata.comment,
+        commentAndMetadata.metadata,
+        externalKeyword,
+        staticKeyword,
+        returnType,
+        propertyKeyword,
+        null,
+        name,
+        null,
+        parameters,
+        body);
   }
 
   /**
@@ -7195,7 +7727,8 @@ class Parser {
           if (definedLabels.contains(label)) {
             _reportErrorForToken(
                 ParserErrorCode.DUPLICATE_LABEL_IN_SWITCH_STATEMENT,
-                identifier.token, [label]);
+                identifier.token,
+                [label]);
           } else {
             definedLabels.add(label);
           }
@@ -7353,9 +7886,16 @@ class Parser {
         rightParenthesis = _expect(TokenType.CLOSE_PAREN);
       }
       Block catchBody = parseBlock();
-      catchClauses.add(new CatchClause(onKeyword, exceptionType, catchKeyword,
-          leftParenthesis, exceptionParameter, comma, stackTraceParameter,
-          rightParenthesis, catchBody));
+      catchClauses.add(new CatchClause(
+          onKeyword,
+          exceptionType,
+          catchKeyword,
+          leftParenthesis,
+          exceptionParameter,
+          comma,
+          stackTraceParameter,
+          rightParenthesis,
+          catchBody));
     }
     Token finallyKeyword = null;
     if (_matchesKeyword(Keyword.FINALLY)) {
@@ -7417,6 +7957,21 @@ class Parser {
     return _parseFunctionTypeAlias(commentAndMetadata, keyword);
   }
 
+  TypeName _parseTypeName() {
+    Identifier typeName;
+    if (_matchesKeyword(Keyword.VAR)) {
+      _reportErrorForCurrentToken(ParserErrorCode.VAR_AS_TYPE_NAME);
+      typeName = new SimpleIdentifier(getAndAdvance());
+    } else if (_matchesIdentifier()) {
+      typeName = parsePrefixedIdentifier();
+    } else {
+      typeName = _createSyntheticIdentifier();
+      _reportErrorForCurrentToken(ParserErrorCode.EXPECTED_TYPE_NAME);
+    }
+    TypeArgumentList typeArguments = _parseOptionalTypeArguments();
+    return new TypeName(typeName, typeArguments);
+  }
+
   /**
    * Parse a unary expression. Return the unary expression that was parsed.
    *
@@ -7468,8 +8023,10 @@ class Parser {
           secondOperator.setNext(_currentToken);
           firstOperator.setNext(secondOperator);
           operator.previous.setNext(firstOperator);
-          return new PrefixExpression(firstOperator, new PrefixExpression(
-              secondOperator, new SuperExpression(getAndAdvance())));
+          return new PrefixExpression(
+              firstOperator,
+              new PrefixExpression(
+                  secondOperator, new SuperExpression(getAndAdvance())));
         } else {
           // Invalid operator before 'super'
           _reportErrorForCurrentToken(
@@ -7493,7 +8050,8 @@ class Parser {
    * was parsed.
    */
   StringLiteral _parseUri() {
-    bool iskeywordAfterUri(Token token) => token.lexeme == Keyword.AS.syntax ||
+    bool iskeywordAfterUri(Token token) =>
+        token.lexeme == Keyword.AS.syntax ||
         token.lexeme == _HIDE ||
         token.lexeme == _SHOW;
     if (!_matches(TokenType.STRING) &&
@@ -7608,7 +8166,9 @@ class Parser {
     return new VariableDeclarationList(
         commentAndMetadata != null ? commentAndMetadata.comment : null,
         commentAndMetadata != null ? commentAndMetadata.metadata : null,
-        keyword, type, variables);
+        keyword,
+        type,
+        variables);
   }
 
   /**
@@ -7713,6 +8273,25 @@ class Parser {
     return token;
   }
 
+  String _removeCodeBlocksGitHub(String comment) {
+    int index = 0;
+    while (true) {
+      int beginIndex = comment.indexOf('`', index);
+      if (beginIndex == -1) {
+        break;
+      }
+      int endIndex = comment.indexOf('`', beginIndex + 1);
+      if (endIndex == -1) {
+        break;
+      }
+      comment = comment.substring(0, beginIndex + 1) +
+          ' ' * (endIndex - beginIndex - 1) +
+          comment.substring(endIndex);
+      index = endIndex + 1;
+    }
+    return comment;
+  }
+
   /**
    * Report the given [error].
    */
@@ -7753,6 +8332,22 @@ class Parser {
     }
     _reportError(new AnalysisError(_source, token.offset,
         math.max(token.length, 1), errorCode, arguments));
+  }
+
+  /**
+   * Scans the generic method comment, and returns the tokens, otherwise
+   * returns null.
+   */
+  Token _scanGenericMethodComment(String code, int offset) {
+    BooleanErrorListener listener = new BooleanErrorListener();
+    Scanner scanner =
+        new Scanner(null, new SubSequenceReader(code, offset), listener);
+    scanner.setSourceStart(1, 1);
+    Token firstToken = scanner.tokenize();
+    if (listener.errorReported) {
+      return null;
+    }
+    return firstToken;
   }
 
   /**
@@ -7867,10 +8462,10 @@ class Parser {
     // that should only occur at the beginning of a parameter list.
     //
     if (next.matchesAny([
-      TokenType.AT,
-      TokenType.OPEN_SQUARE_BRACKET,
-      TokenType.OPEN_CURLY_BRACKET
-    ]) ||
+          TokenType.AT,
+          TokenType.OPEN_SQUARE_BRACKET,
+          TokenType.OPEN_CURLY_BRACKET
+        ]) ||
         _tokenMatchesKeyword(next, Keyword.VOID) ||
         (_tokenMatchesIdentifier(next) &&
             (next.next.matchesAny([TokenType.COMMA, TokenType.CLOSE_PAREN])))) {
@@ -7983,8 +8578,7 @@ class Parser {
    */
   Token _skipSimpleIdentifier(Token startToken) {
     if (_tokenMatches(startToken, TokenType.IDENTIFIER) ||
-        (_tokenMatches(startToken, TokenType.KEYWORD) &&
-            (startToken as KeywordToken).keyword.isPseudoKeyword)) {
+        _tokenMatchesPseudoKeyword(startToken)) {
       return startToken.next;
     }
     return null;
@@ -8093,7 +8687,8 @@ class Parser {
    */
   Token _skipTypeArgumentList(Token startToken) {
     Token token = startToken;
-    if (!_tokenMatches(token, TokenType.LT)) {
+    if (!_tokenMatches(token, TokenType.LT) &&
+        !_injectGenericCommentTypeList()) {
       return null;
     }
     token = _skipTypeName(token.next);
@@ -8208,15 +8803,21 @@ class Parser {
    */
   bool _tokenMatchesIdentifier(Token token) =>
       _tokenMatches(token, TokenType.IDENTIFIER) ||
-          (_tokenMatches(token, TokenType.KEYWORD) &&
-              (token as KeywordToken).keyword.isPseudoKeyword);
+      _tokenMatchesPseudoKeyword(token);
 
   /**
    * Return `true` if the given [token] matches the given [keyword].
    */
   bool _tokenMatchesKeyword(Token token, Keyword keyword) =>
       token.type == TokenType.KEYWORD &&
-          (token as KeywordToken).keyword == keyword;
+      (token as KeywordToken).keyword == keyword;
+
+  /**
+   * Return `true` if the given [token] matches a pseudo keyword.
+   */
+  bool _tokenMatchesPseudoKeyword(Token token) =>
+      _tokenMatches(token, TokenType.KEYWORD) &&
+      (token as KeywordToken).keyword.isPseudoKeyword;
 
   /**
    * Return `true` if the given [token] matches the given [identifier].
@@ -8350,20 +8951,15 @@ class Parser {
         } else {
           _appendScalarValue(
               buffer,
-              lexeme
-                  .substring(
-                      index,
-                      currentIndex + 1),
+              lexeme.substring(index, currentIndex + 1),
               (((((Character.digit(firstDigit, 16) << 4) +
                                   Character.digit(secondDigit, 16)) <<
                               4) +
                           Character.digit(thirdDigit, 16)) <<
                       4) +
-                  Character
-                      .digit(fourthDigit, 16),
+                  Character.digit(fourthDigit, 16),
               index,
-              currentIndex +
-                  3);
+              currentIndex + 3);
         }
         return currentIndex + 4;
       }
@@ -8705,6 +9301,7 @@ class Parser {
     }
   }
 }
+
 /**
  * A synthetic keyword token.
  */
@@ -8780,6 +9377,13 @@ class ParserErrorCode extends ErrorCode {
   static const ParserErrorCode ASYNC_KEYWORD_USED_AS_IDENTIFIER =
       const ParserErrorCode('ASYNC_KEYWORD_USED_AS_IDENTIFIER',
           "The keywords 'async', 'await', and 'yield' may not be used as identifiers in an asynchronous or generator function.");
+
+  /**
+   * Some environments, such as Fletch, do not support async.
+   */
+  static const ParserErrorCode ASYNC_NOT_SUPPORTED =
+      const ParserErrorCode('ASYNC_NOT_SUPPORTED',
+          "Async and sync are not supported in this environment.");
 
   static const ParserErrorCode BREAK_OUTSIDE_OF_LOOP = const ParserErrorCode(
       'BREAK_OUTSIDE_OF_LOOP',
@@ -8933,7 +9537,8 @@ class ParserErrorCode extends ErrorCode {
           "Top-level declarations cannot be declared to be 'factory'");
 
   static const ParserErrorCode FACTORY_WITH_INITIALIZERS =
-      const ParserErrorCode('FACTORY_WITH_INITIALIZERS',
+      const ParserErrorCode(
+          'FACTORY_WITH_INITIALIZERS',
           "A 'factory' constructor cannot have initializers",
           "Either remove the 'factory' keyword to make this a generative "
           "constructor or remove the initializers.");
@@ -9014,6 +9619,10 @@ class ParserErrorCode extends ErrorCode {
   static const ParserErrorCode INVALID_HEX_ESCAPE = const ParserErrorCode(
       'INVALID_HEX_ESCAPE',
       "An escape sequence starting with '\\x' must be followed by 2 hexidecimal digits");
+
+  static const ParserErrorCode INVALID_LITERAL_IN_CONFIGURATION =
+      const ParserErrorCode('INVALID_LITERAL_IN_CONFIGURATION',
+          "The literal in a configuration cannot contain interpolation");
 
   static const ParserErrorCode INVALID_OPERATOR = const ParserErrorCode(
       'INVALID_OPERATOR', "The string '{0}' is not a valid operator");
@@ -9202,7 +9811,8 @@ class ParserErrorCode extends ErrorCode {
           "The part-of directive must be the only directive in a part");
 
   static const ParserErrorCode NON_STRING_LITERAL_AS_URI =
-      const ParserErrorCode('NON_STRING_LITERAL_AS_URI',
+      const ParserErrorCode(
+          'NON_STRING_LITERAL_AS_URI',
           "The URI must be a string literal",
           "Enclose the URI in either single or double quotes.");
 
@@ -9365,7 +9975,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitAnnotation(Annotation node) {
     Annotation toNode = this._toNode as Annotation;
-    if (_and(_isEqualTokens(node.atSign, toNode.atSign),
+    if (_and(
+        _isEqualTokens(node.atSign, toNode.atSign),
         _isEqualNodes(node.name, toNode.name),
         _isEqualTokens(node.period, toNode.period),
         _isEqualNodes(node.constructorName, toNode.constructorName),
@@ -9379,7 +9990,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitArgumentList(ArgumentList node) {
     ArgumentList toNode = this._toNode as ArgumentList;
-    return _and(_isEqualTokens(node.leftParenthesis, toNode.leftParenthesis),
+    return _and(
+        _isEqualTokens(node.leftParenthesis, toNode.leftParenthesis),
         _isEqualNodeLists(node.arguments, toNode.arguments),
         _isEqualTokens(node.rightParenthesis, toNode.rightParenthesis));
   }
@@ -9387,7 +9999,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitAsExpression(AsExpression node) {
     AsExpression toNode = this._toNode as AsExpression;
-    if (_and(_isEqualNodes(node.expression, toNode.expression),
+    if (_and(
+        _isEqualNodes(node.expression, toNode.expression),
         _isEqualTokens(node.asOperator, toNode.asOperator),
         _isEqualNodes(node.type, toNode.type))) {
       toNode.propagatedType = node.propagatedType;
@@ -9400,9 +10013,12 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitAssertStatement(AssertStatement node) {
     AssertStatement toNode = this._toNode as AssertStatement;
-    return _and(_isEqualTokens(node.assertKeyword, toNode.assertKeyword),
+    return _and(
+        _isEqualTokens(node.assertKeyword, toNode.assertKeyword),
         _isEqualTokens(node.leftParenthesis, toNode.leftParenthesis),
         _isEqualNodes(node.condition, toNode.condition),
+        _isEqualTokens(node.comma, toNode.comma),
+        _isEqualNodes(node.message, toNode.message),
         _isEqualTokens(node.rightParenthesis, toNode.rightParenthesis),
         _isEqualTokens(node.semicolon, toNode.semicolon));
   }
@@ -9410,7 +10026,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitAssignmentExpression(AssignmentExpression node) {
     AssignmentExpression toNode = this._toNode as AssignmentExpression;
-    if (_and(_isEqualNodes(node.leftHandSide, toNode.leftHandSide),
+    if (_and(
+        _isEqualNodes(node.leftHandSide, toNode.leftHandSide),
         _isEqualTokens(node.operator, toNode.operator),
         _isEqualNodes(node.rightHandSide, toNode.rightHandSide))) {
       toNode.propagatedElement = node.propagatedElement;
@@ -9437,7 +10054,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitBinaryExpression(BinaryExpression node) {
     BinaryExpression toNode = this._toNode as BinaryExpression;
-    if (_and(_isEqualNodes(node.leftOperand, toNode.leftOperand),
+    if (_and(
+        _isEqualNodes(node.leftOperand, toNode.leftOperand),
         _isEqualTokens(node.operator, toNode.operator),
         _isEqualNodes(node.rightOperand, toNode.rightOperand))) {
       toNode.propagatedElement = node.propagatedElement;
@@ -9452,7 +10070,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitBlock(Block node) {
     Block toNode = this._toNode as Block;
-    return _and(_isEqualTokens(node.leftBracket, toNode.leftBracket),
+    return _and(
+        _isEqualTokens(node.leftBracket, toNode.leftBracket),
         _isEqualNodeLists(node.statements, toNode.statements),
         _isEqualTokens(node.rightBracket, toNode.rightBracket));
   }
@@ -9478,7 +10097,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitBreakStatement(BreakStatement node) {
     BreakStatement toNode = this._toNode as BreakStatement;
-    if (_and(_isEqualTokens(node.breakKeyword, toNode.breakKeyword),
+    if (_and(
+        _isEqualTokens(node.breakKeyword, toNode.breakKeyword),
         _isEqualNodes(node.label, toNode.label),
         _isEqualTokens(node.semicolon, toNode.semicolon))) {
       // TODO(paulberry): map node.target to toNode.target.
@@ -9502,7 +10122,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitCatchClause(CatchClause node) {
     CatchClause toNode = this._toNode as CatchClause;
-    return _and(_isEqualTokens(node.onKeyword, toNode.onKeyword),
+    return _and(
+        _isEqualTokens(node.onKeyword, toNode.onKeyword),
         _isEqualNodes(node.exceptionType, toNode.exceptionType),
         _isEqualTokens(node.catchKeyword, toNode.catchKeyword),
         _isEqualTokens(node.leftParenthesis, toNode.leftParenthesis),
@@ -9564,7 +10185,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitCompilationUnit(CompilationUnit node) {
     CompilationUnit toNode = this._toNode as CompilationUnit;
-    if (_and(_isEqualTokens(node.beginToken, toNode.beginToken),
+    if (_and(
+        _isEqualTokens(node.beginToken, toNode.beginToken),
         _isEqualNodes(node.scriptTag, toNode.scriptTag),
         _isEqualNodeLists(node.directives, toNode.directives),
         _isEqualNodeLists(node.declarations, toNode.declarations),
@@ -9578,13 +10200,30 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitConditionalExpression(ConditionalExpression node) {
     ConditionalExpression toNode = this._toNode as ConditionalExpression;
-    if (_and(_isEqualNodes(node.condition, toNode.condition),
+    if (_and(
+        _isEqualNodes(node.condition, toNode.condition),
         _isEqualTokens(node.question, toNode.question),
         _isEqualNodes(node.thenExpression, toNode.thenExpression),
         _isEqualTokens(node.colon, toNode.colon),
         _isEqualNodes(node.elseExpression, toNode.elseExpression))) {
       toNode.propagatedType = node.propagatedType;
       toNode.staticType = node.staticType;
+      return true;
+    }
+    return false;
+  }
+
+  @override
+  bool visitConfiguration(Configuration node) {
+    Configuration toNode = this._toNode as Configuration;
+    if (_and(
+        _isEqualTokens(node.ifKeyword, toNode.ifKeyword),
+        _isEqualTokens(node.leftParenthesis, toNode.leftParenthesis),
+        _isEqualNodes(node.name, toNode.name),
+        _isEqualTokens(node.equalToken, toNode.equalToken),
+        _isEqualNodes(node.value, toNode.value),
+        _isEqualTokens(node.rightParenthesis, toNode.rightParenthesis),
+        _isEqualNodes(node.libraryUri, toNode.libraryUri))) {
       return true;
     }
     return false;
@@ -9617,7 +10256,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   bool visitConstructorFieldInitializer(ConstructorFieldInitializer node) {
     ConstructorFieldInitializer toNode =
         this._toNode as ConstructorFieldInitializer;
-    return _and(_isEqualTokens(node.thisKeyword, toNode.thisKeyword),
+    return _and(
+        _isEqualTokens(node.thisKeyword, toNode.thisKeyword),
         _isEqualTokens(node.period, toNode.period),
         _isEqualNodes(node.fieldName, toNode.fieldName),
         _isEqualTokens(node.equals, toNode.equals),
@@ -9627,7 +10267,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitConstructorName(ConstructorName node) {
     ConstructorName toNode = this._toNode as ConstructorName;
-    if (_and(_isEqualNodes(node.type, toNode.type),
+    if (_and(
+        _isEqualNodes(node.type, toNode.type),
         _isEqualTokens(node.period, toNode.period),
         _isEqualNodes(node.name, toNode.name))) {
       toNode.staticElement = node.staticElement;
@@ -9639,7 +10280,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitContinueStatement(ContinueStatement node) {
     ContinueStatement toNode = this._toNode as ContinueStatement;
-    if (_and(_isEqualTokens(node.continueKeyword, toNode.continueKeyword),
+    if (_and(
+        _isEqualTokens(node.continueKeyword, toNode.continueKeyword),
         _isEqualNodes(node.label, toNode.label),
         _isEqualTokens(node.semicolon, toNode.semicolon))) {
       // TODO(paulberry): map node.target to toNode.target.
@@ -9662,7 +10304,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitDefaultFormalParameter(DefaultFormalParameter node) {
     DefaultFormalParameter toNode = this._toNode as DefaultFormalParameter;
-    return _and(_isEqualNodes(node.parameter, toNode.parameter),
+    return _and(
+        _isEqualNodes(node.parameter, toNode.parameter),
         node.kind == toNode.kind,
         _isEqualTokens(node.separator, toNode.separator),
         _isEqualNodes(node.defaultValue, toNode.defaultValue));
@@ -9671,13 +10314,20 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitDoStatement(DoStatement node) {
     DoStatement toNode = this._toNode as DoStatement;
-    return _and(_isEqualTokens(node.doKeyword, toNode.doKeyword),
+    return _and(
+        _isEqualTokens(node.doKeyword, toNode.doKeyword),
         _isEqualNodes(node.body, toNode.body),
         _isEqualTokens(node.whileKeyword, toNode.whileKeyword),
         _isEqualTokens(node.leftParenthesis, toNode.leftParenthesis),
         _isEqualNodes(node.condition, toNode.condition),
         _isEqualTokens(node.rightParenthesis, toNode.rightParenthesis),
         _isEqualTokens(node.semicolon, toNode.semicolon));
+  }
+
+  @override
+  bool visitDottedName(DottedName node) {
+    DottedName toNode = this._toNode as DottedName;
+    return _isEqualNodeLists(node.components, toNode.components);
   }
 
   @override
@@ -9792,7 +10442,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitForEachStatement(ForEachStatement node) {
     ForEachStatement toNode = this._toNode as ForEachStatement;
-    return _and(_isEqualTokens(node.forKeyword, toNode.forKeyword),
+    return _and(
+        _isEqualTokens(node.forKeyword, toNode.forKeyword),
         _isEqualTokens(node.leftParenthesis, toNode.leftParenthesis),
         _isEqualNodes(node.loopVariable, toNode.loopVariable),
         _isEqualTokens(node.inKeyword, toNode.inKeyword),
@@ -9804,7 +10455,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitFormalParameterList(FormalParameterList node) {
     FormalParameterList toNode = this._toNode as FormalParameterList;
-    return _and(_isEqualTokens(node.leftParenthesis, toNode.leftParenthesis),
+    return _and(
+        _isEqualTokens(node.leftParenthesis, toNode.leftParenthesis),
         _isEqualNodeLists(node.parameters, toNode.parameters),
         _isEqualTokens(node.leftDelimiter, toNode.leftDelimiter),
         _isEqualTokens(node.rightDelimiter, toNode.rightDelimiter),
@@ -9814,7 +10466,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitForStatement(ForStatement node) {
     ForStatement toNode = this._toNode as ForStatement;
-    return _and(_isEqualTokens(node.forKeyword, toNode.forKeyword),
+    return _and(
+        _isEqualTokens(node.forKeyword, toNode.forKeyword),
         _isEqualTokens(node.leftParenthesis, toNode.leftParenthesis),
         _isEqualNodes(node.variables, toNode.variables),
         _isEqualNodes(node.initialization, toNode.initialization),
@@ -9910,7 +10563,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitIfStatement(IfStatement node) {
     IfStatement toNode = this._toNode as IfStatement;
-    return _and(_isEqualTokens(node.ifKeyword, toNode.ifKeyword),
+    return _and(
+        _isEqualTokens(node.ifKeyword, toNode.ifKeyword),
         _isEqualTokens(node.leftParenthesis, toNode.leftParenthesis),
         _isEqualNodes(node.condition, toNode.condition),
         _isEqualTokens(node.rightParenthesis, toNode.rightParenthesis),
@@ -9948,7 +10602,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitIndexExpression(IndexExpression node) {
     IndexExpression toNode = this._toNode as IndexExpression;
-    if (_and(_isEqualNodes(node.target, toNode.target),
+    if (_and(
+        _isEqualNodes(node.target, toNode.target),
         _isEqualTokens(node.leftBracket, toNode.leftBracket),
         _isEqualNodes(node.index, toNode.index),
         _isEqualTokens(node.rightBracket, toNode.rightBracket))) {
@@ -9966,7 +10621,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   bool visitInstanceCreationExpression(InstanceCreationExpression node) {
     InstanceCreationExpression toNode =
         this._toNode as InstanceCreationExpression;
-    if (_and(_isEqualTokens(node.keyword, toNode.keyword),
+    if (_and(
+        _isEqualTokens(node.keyword, toNode.keyword),
         _isEqualNodes(node.constructorName, toNode.constructorName),
         _isEqualNodes(node.argumentList, toNode.argumentList))) {
       toNode.propagatedType = node.propagatedType;
@@ -9992,7 +10648,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitInterpolationExpression(InterpolationExpression node) {
     InterpolationExpression toNode = this._toNode as InterpolationExpression;
-    return _and(_isEqualTokens(node.leftBracket, toNode.leftBracket),
+    return _and(
+        _isEqualTokens(node.leftBracket, toNode.leftBracket),
         _isEqualNodes(node.expression, toNode.expression),
         _isEqualTokens(node.rightBracket, toNode.rightBracket));
   }
@@ -10007,7 +10664,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitIsExpression(IsExpression node) {
     IsExpression toNode = this._toNode as IsExpression;
-    if (_and(_isEqualNodes(node.expression, toNode.expression),
+    if (_and(
+        _isEqualNodes(node.expression, toNode.expression),
         _isEqualTokens(node.isOperator, toNode.isOperator),
         _isEqualTokens(node.notOperator, toNode.notOperator),
         _isEqualNodes(node.type, toNode.type))) {
@@ -10061,7 +10719,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitListLiteral(ListLiteral node) {
     ListLiteral toNode = this._toNode as ListLiteral;
-    if (_and(_isEqualTokens(node.constKeyword, toNode.constKeyword),
+    if (_and(
+        _isEqualTokens(node.constKeyword, toNode.constKeyword),
         _isEqualNodes(node.typeArguments, toNode.typeArguments),
         _isEqualTokens(node.leftBracket, toNode.leftBracket),
         _isEqualNodeLists(node.elements, toNode.elements),
@@ -10076,7 +10735,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitMapLiteral(MapLiteral node) {
     MapLiteral toNode = this._toNode as MapLiteral;
-    if (_and(_isEqualTokens(node.constKeyword, toNode.constKeyword),
+    if (_and(
+        _isEqualTokens(node.constKeyword, toNode.constKeyword),
         _isEqualNodes(node.typeArguments, toNode.typeArguments),
         _isEqualTokens(node.leftBracket, toNode.leftBracket),
         _isEqualNodeLists(node.entries, toNode.entries),
@@ -10091,7 +10751,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitMapLiteralEntry(MapLiteralEntry node) {
     MapLiteralEntry toNode = this._toNode as MapLiteralEntry;
-    return _and(_isEqualNodes(node.key, toNode.key),
+    return _and(
+        _isEqualNodes(node.key, toNode.key),
         _isEqualTokens(node.separator, toNode.separator),
         _isEqualNodes(node.value, toNode.value));
   }
@@ -10115,7 +10776,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitMethodInvocation(MethodInvocation node) {
     MethodInvocation toNode = this._toNode as MethodInvocation;
-    if (_and(_isEqualNodes(node.target, toNode.target),
+    if (_and(
+        _isEqualNodes(node.target, toNode.target),
         _isEqualTokens(node.operator, toNode.operator),
         _isEqualNodes(node.methodName, toNode.methodName),
         _isEqualNodes(node.argumentList, toNode.argumentList))) {
@@ -10148,7 +10810,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitNativeFunctionBody(NativeFunctionBody node) {
     NativeFunctionBody toNode = this._toNode as NativeFunctionBody;
-    return _and(_isEqualTokens(node.nativeKeyword, toNode.nativeKeyword),
+    return _and(
+        _isEqualTokens(node.nativeKeyword, toNode.nativeKeyword),
         _isEqualNodes(node.stringLiteral, toNode.stringLiteral),
         _isEqualTokens(node.semicolon, toNode.semicolon));
   }
@@ -10167,7 +10830,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitParenthesizedExpression(ParenthesizedExpression node) {
     ParenthesizedExpression toNode = this._toNode as ParenthesizedExpression;
-    if (_and(_isEqualTokens(node.leftParenthesis, toNode.leftParenthesis),
+    if (_and(
+        _isEqualTokens(node.leftParenthesis, toNode.leftParenthesis),
         _isEqualNodes(node.expression, toNode.expression),
         _isEqualTokens(node.rightParenthesis, toNode.rightParenthesis))) {
       toNode.propagatedType = node.propagatedType;
@@ -10225,7 +10889,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitPrefixedIdentifier(PrefixedIdentifier node) {
     PrefixedIdentifier toNode = this._toNode as PrefixedIdentifier;
-    if (_and(_isEqualNodes(node.prefix, toNode.prefix),
+    if (_and(
+        _isEqualNodes(node.prefix, toNode.prefix),
         _isEqualTokens(node.period, toNode.period),
         _isEqualNodes(node.identifier, toNode.identifier))) {
       toNode.propagatedType = node.propagatedType;
@@ -10252,7 +10917,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitPropertyAccess(PropertyAccess node) {
     PropertyAccess toNode = this._toNode as PropertyAccess;
-    if (_and(_isEqualNodes(node.target, toNode.target),
+    if (_and(
+        _isEqualNodes(node.target, toNode.target),
         _isEqualTokens(node.operator, toNode.operator),
         _isEqualNodes(node.propertyName, toNode.propertyName))) {
       toNode.propagatedType = node.propagatedType;
@@ -10267,7 +10933,8 @@ class ResolutionCopier implements AstVisitor<bool> {
       RedirectingConstructorInvocation node) {
     RedirectingConstructorInvocation toNode =
         this._toNode as RedirectingConstructorInvocation;
-    if (_and(_isEqualTokens(node.thisKeyword, toNode.thisKeyword),
+    if (_and(
+        _isEqualTokens(node.thisKeyword, toNode.thisKeyword),
         _isEqualTokens(node.period, toNode.period),
         _isEqualNodes(node.constructorName, toNode.constructorName),
         _isEqualNodes(node.argumentList, toNode.argumentList))) {
@@ -10291,7 +10958,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitReturnStatement(ReturnStatement node) {
     ReturnStatement toNode = this._toNode as ReturnStatement;
-    return _and(_isEqualTokens(node.returnKeyword, toNode.returnKeyword),
+    return _and(
+        _isEqualTokens(node.returnKeyword, toNode.returnKeyword),
         _isEqualNodes(node.expression, toNode.expression),
         _isEqualTokens(node.semicolon, toNode.semicolon));
   }
@@ -10361,7 +11029,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   bool visitSuperConstructorInvocation(SuperConstructorInvocation node) {
     SuperConstructorInvocation toNode =
         this._toNode as SuperConstructorInvocation;
-    if (_and(_isEqualTokens(node.superKeyword, toNode.superKeyword),
+    if (_and(
+        _isEqualTokens(node.superKeyword, toNode.superKeyword),
         _isEqualTokens(node.period, toNode.period),
         _isEqualNodes(node.constructorName, toNode.constructorName),
         _isEqualNodes(node.argumentList, toNode.argumentList))) {
@@ -10385,7 +11054,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitSwitchCase(SwitchCase node) {
     SwitchCase toNode = this._toNode as SwitchCase;
-    return _and(_isEqualNodeLists(node.labels, toNode.labels),
+    return _and(
+        _isEqualNodeLists(node.labels, toNode.labels),
         _isEqualTokens(node.keyword, toNode.keyword),
         _isEqualNodes(node.expression, toNode.expression),
         _isEqualTokens(node.colon, toNode.colon),
@@ -10395,7 +11065,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitSwitchDefault(SwitchDefault node) {
     SwitchDefault toNode = this._toNode as SwitchDefault;
-    return _and(_isEqualNodeLists(node.labels, toNode.labels),
+    return _and(
+        _isEqualNodeLists(node.labels, toNode.labels),
         _isEqualTokens(node.keyword, toNode.keyword),
         _isEqualTokens(node.colon, toNode.colon),
         _isEqualNodeLists(node.statements, toNode.statements));
@@ -10404,7 +11075,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitSwitchStatement(SwitchStatement node) {
     SwitchStatement toNode = this._toNode as SwitchStatement;
-    return _and(_isEqualTokens(node.switchKeyword, toNode.switchKeyword),
+    return _and(
+        _isEqualTokens(node.switchKeyword, toNode.switchKeyword),
         _isEqualTokens(node.leftParenthesis, toNode.leftParenthesis),
         _isEqualNodes(node.expression, toNode.expression),
         _isEqualTokens(node.rightParenthesis, toNode.rightParenthesis),
@@ -10462,7 +11134,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitTryStatement(TryStatement node) {
     TryStatement toNode = this._toNode as TryStatement;
-    return _and(_isEqualTokens(node.tryKeyword, toNode.tryKeyword),
+    return _and(
+        _isEqualTokens(node.tryKeyword, toNode.tryKeyword),
         _isEqualNodes(node.body, toNode.body),
         _isEqualNodeLists(node.catchClauses, toNode.catchClauses),
         _isEqualTokens(node.finallyKeyword, toNode.finallyKeyword),
@@ -10472,7 +11145,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitTypeArgumentList(TypeArgumentList node) {
     TypeArgumentList toNode = this._toNode as TypeArgumentList;
-    return _and(_isEqualTokens(node.leftBracket, toNode.leftBracket),
+    return _and(
+        _isEqualTokens(node.leftBracket, toNode.leftBracket),
         _isEqualNodeLists(node.arguments, toNode.arguments),
         _isEqualTokens(node.rightBracket, toNode.rightBracket));
   }
@@ -10502,7 +11176,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitTypeParameterList(TypeParameterList node) {
     TypeParameterList toNode = this._toNode as TypeParameterList;
-    return _and(_isEqualTokens(node.leftBracket, toNode.leftBracket),
+    return _and(
+        _isEqualTokens(node.leftBracket, toNode.leftBracket),
         _isEqualNodeLists(node.typeParameters, toNode.typeParameters),
         _isEqualTokens(node.rightBracket, toNode.rightBracket));
   }
@@ -10540,7 +11215,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitWhileStatement(WhileStatement node) {
     WhileStatement toNode = this._toNode as WhileStatement;
-    return _and(_isEqualTokens(node.whileKeyword, toNode.whileKeyword),
+    return _and(
+        _isEqualTokens(node.whileKeyword, toNode.whileKeyword),
         _isEqualTokens(node.leftParenthesis, toNode.leftParenthesis),
         _isEqualNodes(node.condition, toNode.condition),
         _isEqualTokens(node.rightParenthesis, toNode.rightParenthesis),
@@ -10557,7 +11233,8 @@ class ResolutionCopier implements AstVisitor<bool> {
   @override
   bool visitYieldStatement(YieldStatement node) {
     YieldStatement toNode = this._toNode as YieldStatement;
-    return _and(_isEqualTokens(node.yieldKeyword, toNode.yieldKeyword),
+    return _and(
+        _isEqualTokens(node.yieldKeyword, toNode.yieldKeyword),
         _isEqualNodes(node.expression, toNode.expression),
         _isEqualTokens(node.semicolon, toNode.semicolon));
   }
@@ -10565,9 +11242,18 @@ class ResolutionCopier implements AstVisitor<bool> {
   /**
    * Return `true` if all of the parameters are `true`.
    */
-  bool _and(bool b1, bool b2, [bool b3 = true, bool b4 = true, bool b5 = true,
-      bool b6 = true, bool b7 = true, bool b8 = true, bool b9 = true,
-      bool b10 = true, bool b11 = true, bool b12 = true, bool b13 = true]) {
+  bool _and(bool b1, bool b2,
+      [bool b3 = true,
+      bool b4 = true,
+      bool b5 = true,
+      bool b6 = true,
+      bool b7 = true,
+      bool b8 = true,
+      bool b9 = true,
+      bool b10 = true,
+      bool b11 = true,
+      bool b12 = true,
+      bool b13 = true]) {
     // TODO(brianwilkerson) Inline this method.
     return b1 &&
         b2 &&

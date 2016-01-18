@@ -9,25 +9,19 @@ library codegenInttestMethods;
 
 import 'dart:convert';
 
+import 'package:analyzer/src/codegen/tools.dart';
+
 import 'api.dart';
 import 'codegen_dart.dart';
-import 'codegen_tools.dart';
 import 'from_html.dart';
 import 'to_html.dart';
 
 final GeneratedFile target = new GeneratedFile(
-    '../../test/integration/integration_test_methods.dart', () {
+    'test/integration/integration_test_methods.dart', (String pkgPath) {
   CodegenInttestMethodsVisitor visitor =
-      new CodegenInttestMethodsVisitor(readApi());
+      new CodegenInttestMethodsVisitor(readApi(pkgPath));
   return visitor.collectCode(visitor.visitApi);
 });
-
-/**
- * Translate spec_input.html into protocol_matchers.dart.
- */
-main() {
-  target.generate();
-}
 
 /**
  * Visitor that generates the code for integration_test_methods.dart
@@ -107,7 +101,9 @@ class CodegenInttestMethodsVisitor extends DartCodegenVisitor
     writeln();
     writeln("import 'dart:async';");
     writeln();
-    writeln("import 'package:analysis_server/src/protocol.dart';");
+    writeln("import 'package:analysis_server/plugin/protocol/protocol.dart';");
+    writeln(
+        "import 'package:analysis_server/src/protocol/protocol_internal.dart';");
     writeln("import 'package:unittest/unittest.dart';");
     writeln();
     writeln("import 'integration_tests.dart';");
@@ -160,11 +156,9 @@ class CodegenInttestMethodsVisitor extends DartCodegenVisitor
   visitNotification(Notification notification) {
     String streamName =
         camelJoin(['on', notification.domainName, notification.event]);
-    String className = camelJoin([
-      notification.domainName,
-      notification.event,
-      'params'
-    ], doCapitalize: true);
+    String className = camelJoin(
+        [notification.domainName, notification.event, 'params'],
+        doCapitalize: true);
     writeln();
     docComment(toHtmlVisitor.collectHtml(() {
       toHtmlVisitor.translateHtml(notification.html);
@@ -234,7 +228,8 @@ class CodegenInttestMethodsVisitor extends DartCodegenVisitor
     writeln('$futureClass $methodName(${args.join(', ')}) {');
     indent(() {
       String requestClass = camelJoin(
-          [request.domainName, request.method, 'params'], doCapitalize: true);
+          [request.domainName, request.method, 'params'],
+          doCapitalize: true);
       String paramsVar = 'null';
       if (request.params != null) {
         paramsVar = 'params';

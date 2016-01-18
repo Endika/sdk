@@ -85,7 +85,7 @@ class CheckTreeIntegrity extends RecursiveVisitor {
     label2declaration[label] = target;
     labelUses[label] = 0;
     visitStatement(target.body);
-    label2declaration.remove(target);
+    label2declaration.remove(label);
 
     if (labelUses[label] != label.useCount) {
       error('Label $label has ${labelUses[label]} uses '
@@ -127,10 +127,6 @@ class CheckTreeIntegrity extends RecursiveVisitor {
       error('Continue to non-loop statement ${label2declaration[node.target]}');
     }
     labelUses[node.target]++;
-  }
-
-  visitInnerFunction(FunctionDefinition node) {
-    checkBody(node);
   }
 
   void checkBody(FunctionDefinition node) {

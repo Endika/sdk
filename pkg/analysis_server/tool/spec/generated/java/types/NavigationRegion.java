@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014, the Dart project authors.
+ * Copyright (c) 2015, the Dart project authors.
  *
  * Licensed under the Eclipse Public License v1.0 (the "License"); you may not use this file except
  * in compliance with the License. You may obtain a copy of the License at
@@ -55,7 +55,8 @@ public class NavigationRegion {
 
   /**
    * The indexes of the targets (in the enclosing navigation response) to which the given region is
-   * bound. By opening the target, clients can implement one form of navigation.
+   * bound. By opening the target, clients can implement one form of navigation. This list cannot be
+   * empty.
    */
   private final int[] targets;
 
@@ -125,7 +126,8 @@ public class NavigationRegion {
 
   /**
    * The indexes of the targets (in the enclosing navigation response) to which the given region is
-   * bound. By opening the target, clients can implement one form of navigation.
+   * bound. By opening the target, clients can implement one form of navigation. This list cannot be
+   * empty.
    */
   public int[] getTargets() {
     return targets;

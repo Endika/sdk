@@ -107,6 +107,7 @@ enum MessageKind {
   CANNOT_EXTEND_ENUM,
   CANNOT_EXTEND_MALFORMED,
   CANNOT_FIND_CONSTRUCTOR,
+  CANNOT_FIND_UNNAMED_CONSTRUCTOR,
   CANNOT_IMPLEMENT,
   CANNOT_IMPLEMENT_ENUM,
   CANNOT_IMPLEMENT_MALFORMED,
@@ -145,6 +146,7 @@ enum MessageKind {
   CONST_CONSTRUCTOR_WITH_NONFINAL_FIELDS,
   CONST_CONSTRUCTOR_WITH_NONFINAL_FIELDS_CONSTRUCTOR,
   CONST_CONSTRUCTOR_WITH_NONFINAL_FIELDS_FIELD,
+  CONST_LOOP_VARIABLE,
   CONST_MAP_KEY_OVERRIDES_EQUALS,
   CONST_WITHOUT_INITIALIZER,
   CONSTRUCTOR_CALL_EXPECTED,
@@ -166,6 +168,7 @@ enum MessageKind {
   DEFERRED_TYPE_ANNOTATION,
   DEPRECATED_TYPEDEF_MIXIN_SYNTAX,
   DIRECTLY_THROWING_NSM,
+  DISALLOWED_LIBRARY_IMPORT,
   DUPLICATE_DEFINITION,
   DUPLICATE_EXPORT,
   DUPLICATE_EXPORT_CONT,
@@ -183,10 +186,13 @@ enum MessageKind {
   DUPLICATED_RESOURCE,
   EMPTY_CATCH_DECLARATION,
   EMPTY_ENUM_DECLARATION,
+  EMPTY_HIDE,
   EQUAL_MAP_ENTRY_KEY,
+  EMPTY_SHOW,
   EXISTING_DEFINITION,
   EXISTING_LABEL,
   EXPECTED_IDENTIFIER_NOT_RESERVED_WORD,
+  EXPERIMENTAL_ASSERT_MESSAGE,
   EXPONENT_MISSING,
   EXPORT_BEFORE_PARTS,
   EXTERNAL_WITH_BODY,
@@ -197,6 +203,7 @@ enum MessageKind {
   FACTORY_REDIRECTION_IN_NON_FACTORY,
   FINAL_FUNCTION_TYPE_PARAMETER,
   FINAL_WITHOUT_INITIALIZER,
+  FORIN_NOT_ASSIGNABLE,
   FORMAL_DECLARED_CONST,
   FORMAL_DECLARED_STATIC,
   FUNCTION_TYPE_FORMAL_WITH_DEFAULT,
@@ -227,11 +234,13 @@ enum MessageKind {
   IMPORT_BEFORE_PARTS,
   IMPORT_EXPERIMENTAL_MIRRORS,
   IMPORT_PART_OF,
+  IMPORT_PART_OF_HERE,
   IMPORTED_HERE,
   INHERIT_GETTER_AND_METHOD,
   INHERITED_EXPLICIT_GETTER,
   INHERITED_IMPLICIT_GETTER,
   INHERITED_METHOD,
+  INJECTED_PUBLIC_MEMBER,
   INIT_STATIC_FIELD,
   INITIALIZING_FORMAL_NOT_ALLOWED,
   INSTANCE_STATIC_SAME_NAME,
@@ -239,7 +248,9 @@ enum MessageKind {
   INTERNAL_LIBRARY,
   INTERNAL_LIBRARY_FROM,
   INVALID_ARGUMENT_AFTER_NAMED,
+  INVALID_AWAIT,
   INVALID_AWAIT_FOR,
+  INVALID_AWAIT_FOR_IN,
   INVALID_BREAK,
   INVALID_CASE_DEFAULT,
   INVALID_CONSTRUCTOR_ARGUMENTS,
@@ -247,6 +258,8 @@ enum MessageKind {
   INVALID_CONTINUE,
   INVALID_FOR_IN,
   INVALID_INITIALIZER,
+  INVALID_METADATA,
+  INVALID_METADATA_GENERIC,
   INVALID_OVERRIDDEN_FIELD,
   INVALID_OVERRIDDEN_GETTER,
   INVALID_OVERRIDDEN_METHOD,
@@ -270,9 +283,17 @@ enum MessageKind {
   INVALID_UNNAMED_CONSTRUCTOR_NAME,
   INVALID_URI,
   INVALID_USE_OF_SUPER,
+  INVALID_YIELD,
+  JS_INTEROP_CLASS_CANNOT_EXTEND_DART_CLASS,
+  JS_INTEROP_CLASS_NON_EXTERNAL_MEMBER,
+  JS_OBJECT_LITERAL_CONSTRUCTOR_WITH_POSITIONAL_ARGUMENTS,
+  JS_INTEROP_METHOD_WITH_NAMED_ARGUMENTS,
+  JS_PLACEHOLDER_CAPTURE,
   LIBRARY_NAME_MISMATCH,
   LIBRARY_NOT_FOUND,
+  LIBRARY_NOT_SUPPORTED,
   LIBRARY_TAG_MUST_BE_FIRST,
+  MAIN_HAS_PART_OF,
   MAIN_NOT_A_FUNCTION,
   MAIN_WITH_EXTRA_PARAMETER,
   MALFORMED_STRING_LITERAL,
@@ -309,6 +330,7 @@ enum MessageKind {
   NATIVE_NOT_SUPPORTED,
   NO_BREAK_TARGET,
   NO_CATCH_NOR_FINALLY,
+  NO_COMMON_SUBTYPES,
   NO_CONTINUE_TARGET,
   NO_INSTANCE_AVAILABLE,
   NO_MATCHING_CONSTRUCTOR,
@@ -391,12 +413,14 @@ enum MessageKind {
   SETTER_NOT_FOUND_IN_SUPER,
   STATIC_FUNCTION_BLOAT,
   STRING_EXPECTED,
+  SUPER_CALL_TO_FACTORY,
   SUPER_INITIALIZER_IN_OBJECT,
   SWITCH_CASE_FORBIDDEN,
   SWITCH_CASE_TYPES_NOT_EQUAL,
   SWITCH_CASE_TYPES_NOT_EQUAL_CASE,
   SWITCH_CASE_VALUE_OVERRIDES_EQUALS,
   TERNARY_OPERATOR_BAD_ARITY,
+  THIS_CALL_TO_FACTORY,
   THIS_IS_THE_DECLARATION,
   THIS_IS_THE_METHOD,
   THIS_IS_THE_PART_OF_TAG,
@@ -491,6 +515,11 @@ class MessageTemplate {
       MessageKind.NOT_ASSIGNABLE:
         const MessageTemplate(MessageKind.NOT_ASSIGNABLE,
           "'#{fromType}' is not assignable to '#{toType}'."),
+
+      MessageKind.FORIN_NOT_ASSIGNABLE:
+        const MessageTemplate(MessageKind.FORIN_NOT_ASSIGNABLE,
+          "The element type '#{currentType}' of '#{expressionType}' "
+          "is not assignable to '#{elementType}'."),
 
       MessageKind.VOID_EXPRESSION:
         const MessageTemplate(MessageKind.VOID_EXPRESSION,
@@ -813,7 +842,7 @@ main() {
       MessageKind.DUPLICATE_EXPORT:
         const MessageTemplate(MessageKind.DUPLICATE_EXPORT,
           "Duplicate export of '#{name}'.",
-          howToFix: "Trying adding 'hide #{name}' to one of the exports.",
+          howToFix: "Try adding 'hide #{name}' to one of the exports.",
           examples: const [const {
 'main.dart': """
 export 'decl1.dart';
@@ -831,6 +860,40 @@ main() {}""",
         const MessageTemplate(MessageKind.DUPLICATE_EXPORT_DECL,
           "The exported '#{name}' from export #{uriString} is defined here."),
 
+      MessageKind.EMPTY_HIDE:
+        const MessageTemplate(MessageKind.EMPTY_HIDE,
+            "Library '#{uri}' doesn't export a '#{name}' declaration.",
+      howToFix: "Try removing '#{name}' the 'hide' clause.",
+      examples: const [
+        const {
+            'main.dart': """
+import 'dart:core' hide Foo;
+
+main() {}"""},
+        const {
+'main.dart': """
+export 'dart:core' hide Foo;
+
+main() {}"""},
+]),
+
+      MessageKind.EMPTY_SHOW:
+        const MessageTemplate(MessageKind.EMPTY_SHOW,
+            "Library '#{uri}' doesn't export a '#{name}' declaration.",
+      howToFix: "Try removing '#{name}' from the 'show' clause.",
+      examples: const [
+        const {
+            'main.dart': """
+import 'dart:core' show Foo;
+
+main() {}"""},
+        const {
+'main.dart': """
+export 'dart:core' show Foo;
+
+main() {}"""},
+]),
+
       MessageKind.NOT_A_TYPE:
         const MessageTemplate(MessageKind.NOT_A_TYPE,
           "'#{node}' is not a type."),
@@ -845,7 +908,13 @@ main() {}""",
 
       MessageKind.CANNOT_FIND_CONSTRUCTOR:
         const MessageTemplate(MessageKind.CANNOT_FIND_CONSTRUCTOR,
-          "Cannot find constructor '#{constructorName}'."),
+          "Cannot find constructor '#{constructorName}' in class "
+          "'#{className}'."),
+
+      MessageKind.CANNOT_FIND_UNNAMED_CONSTRUCTOR:
+        const MessageTemplate(MessageKind.CANNOT_FIND_UNNAMED_CONSTRUCTOR,
+          "Cannot find unnamed constructor in class "
+          "'#{className}'."),
 
       MessageKind.CYCLIC_CLASS_HIERARCHY:
         const MessageTemplate(MessageKind.CYCLIC_CLASS_HIERARCHY,
@@ -926,6 +995,62 @@ main() => new C();"""]),
       MessageKind.DUPLICATE_SUPER_INITIALIZER:
         const MessageTemplate(MessageKind.DUPLICATE_SUPER_INITIALIZER,
           "Cannot have more than one super initializer."),
+
+      MessageKind.SUPER_CALL_TO_FACTORY:
+        const MessageTemplate(MessageKind.SUPER_CALL_TO_FACTORY,
+          "The target of the superinitializer must be a generative "
+          "constructor.",
+          howToFix: "Try calling another constructor on the superclass.",
+          examples: const ["""
+class Super {
+  factory Super() => null;
+}
+class Class extends Super {}
+main() => new Class();
+""", """
+class Super {
+  factory Super() => null;
+}
+class Class extends Super {
+  Class();
+}
+main() => new Class();
+""", """
+class Super {
+  factory Super() => null;
+}
+class Class extends Super {
+  Class() : super();
+}
+main() => new Class();
+""", """
+class Super {
+  factory Super.foo() => null;
+}
+class Class extends Super {
+  Class() : super.foo();
+}
+main() => new Class();
+"""]),
+
+      MessageKind.THIS_CALL_TO_FACTORY:
+        const MessageTemplate(MessageKind.THIS_CALL_TO_FACTORY,
+          "The target of the redirection clause must be a generative "
+          "constructor",
+        howToFix: "Try redirecting to another constructor.",
+        examples: const ["""
+class Class {
+  factory Class() => null;
+  Class.foo() : this();
+}
+main() => new Class.foo();
+""", """
+class Class {
+  factory Class.foo() => null;
+  Class() : this.foo();
+}
+main() => new Class();
+"""]),
 
       MessageKind.INVALID_CONSTRUCTOR_ARGUMENTS:
         const MessageTemplate(MessageKind.INVALID_CONSTRUCTOR_ARGUMENTS,
@@ -1130,6 +1255,40 @@ main() => new C<String>();
       MessageKind.INVALID_ARGUMENT_AFTER_NAMED:
         const MessageTemplate(MessageKind.INVALID_ARGUMENT_AFTER_NAMED,
           "Unnamed argument after named argument."),
+
+      MessageKind.INVALID_AWAIT_FOR_IN:
+        const MessageTemplate(MessageKind.INVALID_AWAIT_FOR_IN,
+          "'await' is only supported in methods with an 'async' or "
+              "'async*' body modifier.",
+          howToFix: "Try adding 'async' or 'async*' to the method body or "
+              "removing the 'await' keyword.",
+          examples: const [
+            """
+main(o) sync* {
+  await for (var e in o) {}
+}"""]),
+
+      MessageKind.INVALID_AWAIT:
+        const MessageTemplate(MessageKind.INVALID_AWAIT,
+          "'await' is only supported in methods with an 'async' or "
+              "'async*' body modifier.",
+          howToFix: "Try adding 'async' or 'async*' to the method body.",
+          examples: const [
+          """
+main(o) sync* {
+  await null;
+}"""]),
+
+      MessageKind.INVALID_YIELD:
+        const MessageTemplate(MessageKind.INVALID_YIELD,
+          "'yield' is only supported in methods with a 'sync*' or "
+              "'async*' body modifier.",
+          howToFix: "Try adding 'sync*' or 'async*' to the method body.",
+          examples: const [
+            """
+main(o) async {
+  yield 0;
+}"""]),
 
       MessageKind.NOT_A_COMPILE_TIME_CONSTANT:
         const MessageTemplate(MessageKind.NOT_A_COMPILE_TIME_CONSTANT,
@@ -1836,6 +1995,22 @@ main() {}
 part of library;
 """}]),
 
+      MessageKind.IMPORT_PART_OF_HERE:
+        const MessageTemplate(MessageKind.IMPORT_PART_OF_HERE,
+          "The library is imported here."),
+
+      MessageKind.MAIN_HAS_PART_OF:
+        const MessageTemplate(MessageKind.MAIN_HAS_PART_OF,
+          "The main application file must not have a 'part-of' directive.",
+          howToFix:  "Try removing the 'part-of' directive or starting "
+              "compilation from another file.",
+          examples: const [const {
+'main.dart': """
+part of library;
+
+main() {}
+"""}]),
+
       MessageKind.LIBRARY_NAME_MISMATCH:
         const MessageTemplate(MessageKind.LIBRARY_NAME_MISMATCH,
           "Expected part of library name '#{libraryName}'.",
@@ -1939,6 +2114,16 @@ void main() {
                     "removing the 'final' modifier.",
           examples: const [
               "class C { static final field; } main() => C.field;"]),
+
+      MessageKind.CONST_LOOP_VARIABLE:
+        const MessageTemplate(MessageKind.CONST_LOOP_VARIABLE,
+          "A loop variable cannot be constant.",
+          howToFix: "Try remove the 'const' modifier or "
+                    "replacing it with a 'final' modifier.",
+          examples: const ["""
+void main() {
+  for (const c in []) {}
+}"""]),
 
       MessageKind.MEMBER_USES_CLASS_NAME:
         const MessageTemplate(MessageKind.MEMBER_USES_CLASS_NAME,
@@ -2084,9 +2269,107 @@ main() => A.A = 1;
         const MessageTemplate(MessageKind.INTERNAL_LIBRARY,
           "Internal library '#{resolvedUri}' is not accessible."),
 
+      MessageKind.JS_INTEROP_CLASS_CANNOT_EXTEND_DART_CLASS:
+        const MessageTemplate(
+          MessageKind.JS_INTEROP_CLASS_CANNOT_EXTEND_DART_CLASS,
+          "Js-interop class '#{cls}' cannot extend from the non js-interop "
+          "class '#{superclass}'.",
+          howToFix: "Annotate the superclass with @JS.",
+          examples: const [
+              """
+              import 'package:js/js.dart';
+
+              class Foo { }
+
+              @JS()
+              class Bar extends Foo { }
+
+              main() {
+                new Bar();
+              }
+              """]),
+
+      MessageKind.JS_INTEROP_CLASS_NON_EXTERNAL_MEMBER:
+        const MessageTemplate(
+          MessageKind.JS_INTEROP_CLASS_NON_EXTERNAL_MEMBER,
+          "Member '#{member}' in js-interop class '#{cls}' is not external.",
+          howToFix: "Mark all interop methods external",
+          examples: const [
+              """
+              import 'package:js/js.dart';
+
+              @JS()
+              class Foo {
+                bar() {}
+              }
+
+              main() {
+                new Foo().bar();
+              }
+              """]),
+
+      MessageKind.JS_INTEROP_METHOD_WITH_NAMED_ARGUMENTS:
+        const MessageTemplate(
+          MessageKind.JS_INTEROP_METHOD_WITH_NAMED_ARGUMENTS,
+          "Js-interop method '#{method}' has named arguments but is not "
+          "a factory constructor of an @anonymous @JS class.",
+          howToFix: "Remove all named arguments from js-interop method or "
+                    "in the case of a factory constructor annotate the class "
+                    "as @anonymous.",
+          examples: const [
+              """
+              import 'package:js/js.dart';
+
+              @JS()
+              class Foo {
+                external bar(foo, {baz});
+              }
+
+              main() {
+                new Foo().bar(4, baz: 5);
+              }
+              """]),
+
+      MessageKind.JS_OBJECT_LITERAL_CONSTRUCTOR_WITH_POSITIONAL_ARGUMENTS:
+        const MessageTemplate(
+          MessageKind.JS_OBJECT_LITERAL_CONSTRUCTOR_WITH_POSITIONAL_ARGUMENTS,
+          "Parameter '#{parameter}' in anonymous js-interop class '#{cls}' "
+          "object literal constructor is positional instead of named."
+          ".",
+          howToFix: "Make all arguments in external factory object literal "
+                    "constructors named.",
+          examples: const [
+              """
+              import 'package:js/js.dart';
+
+              @anonymous
+              @JS()
+              class Foo {
+                external factory Foo(foo, {baz});
+              }
+
+              main() {
+                new Foo(5, baz: 5);
+              }
+              """]),
+
       MessageKind.LIBRARY_NOT_FOUND:
         const MessageTemplate(MessageKind.LIBRARY_NOT_FOUND,
           "Library not found '#{resolvedUri}'."),
+
+      MessageKind.LIBRARY_NOT_SUPPORTED:
+        const MessageTemplate(MessageKind.LIBRARY_NOT_SUPPORTED,
+          "Library not supported '#{resolvedUri}'.",
+          howToFix: "Try removing the dependency or enabling support using "
+                    "the '--categories' option.",
+          examples: const [/*
+              """
+              import 'dart:io';
+              main() {}
+              """
+          */]),
+          // TODO(johnniwinther): Enable example when message_kind_test.dart
+          // supports library loader callbacks.
 
       MessageKind.UNSUPPORTED_EQ_EQ_EQ:
         const MessageTemplate(MessageKind.UNSUPPORTED_EQ_EQ_EQ,
@@ -2353,6 +2636,14 @@ main() {}
           howToFix:
               "Try adding '@MirrorsUsed(...)' as described at "
               "https://goo.gl/Akrrog."),
+
+      MessageKind.JS_PLACEHOLDER_CAPTURE:
+        const MessageTemplate(
+            MessageKind.JS_PLACEHOLDER_CAPTURE,
+            "JS code must not use '#' placeholders inside functions.",
+            howToFix:
+            "Use an immediately called JavaScript function to capture the"
+            " the placeholder values as JavaScript function parameters."),
 
       MessageKind.WRONG_ARGUMENT_FOR_JS_INTERCEPTOR_CONSTANT:
         const MessageTemplate(
@@ -2627,6 +2918,31 @@ main() => new C();
           "The getter '#{name}' is implicitly declared by this field "
           "in class '#{class}'."),
 
+      MessageKind.INVALID_METADATA:
+        const MessageTemplate(MessageKind.INVALID_METADATA,
+          "A metadata annotation must be either a reference to a compile-time "
+          "constant variable or a call to a constant constructor.",
+          howToFix:
+            "Try using a different constant value or referencing it through a "
+            "constant variable.",
+          examples: const [
+'@Object main() {}',
+'@print main() {}']),
+
+      MessageKind.INVALID_METADATA_GENERIC:
+        const MessageTemplate(MessageKind.INVALID_METADATA_GENERIC,
+          "A metadata annotation using a constant constructor cannot use type "
+          "arguments.",
+          howToFix:
+            "Try removing the type arguments or referencing the constant "
+            "through a constant variable.",
+          examples: const ['''
+class C<T> {
+  const C();
+}
+@C<int>() main() {}
+''']),
+
       MessageKind.EQUAL_MAP_ENTRY_KEY:
         const MessageTemplate(MessageKind.EQUAL_MAP_ENTRY_KEY,
           "An entry with the same key already exists in the map.",
@@ -2894,6 +3210,10 @@ Please include the following information:
           howToFix:
             "Try replacing '#{shownType}' with '#{shownTypeSuggestion}'."),
 
+      MessageKind.NO_COMMON_SUBTYPES:
+        const MessageTemplate(MessageKind.NO_COMMON_SUBTYPES,
+           "Types '#{left}' and '#{right}' have no common subtypes."),
+
       MessageKind.HIDDEN_WARNINGS_HINTS:
         const MessageTemplate(MessageKind.HIDDEN_WARNINGS_HINTS,
           "#{warnings} warning(s) and #{hints} hint(s) suppressed in #{uri}."),
@@ -2915,7 +3235,6 @@ Please include the following information:
       MessageKind.INVALID_SYNC_MODIFIER:
         const MessageTemplate(MessageKind.INVALID_SYNC_MODIFIER,
           "Invalid modifier 'sync'.",
-          options: const ['--enable-async'],
           howToFix: "Try replacing 'sync' with 'sync*'.",
           examples: const [
             "main() sync {}"
@@ -2924,7 +3243,6 @@ Please include the following information:
       MessageKind.INVALID_AWAIT_FOR:
         const MessageTemplate(MessageKind.INVALID_AWAIT_FOR,
           "'await' is only supported on for-in loops.",
-          options: const ['--enable-async'],
           howToFix: "Try rewriting the loop as a for-in loop or removing the "
                     "'await' keyword.",
           examples: const ["""
@@ -3224,6 +3542,10 @@ part of test.main;
           "Cannot patch non-function with function patch "
           "'#{functionName}'."),
 
+      MessageKind.INJECTED_PUBLIC_MEMBER:
+        const MessageTemplate(MessageKind.INJECTED_PUBLIC_MEMBER,
+            "Non-patch members in patch libraries must be private."),
+
       MessageKind.EXTERNAL_WITH_BODY:
         const MessageTemplate(MessageKind.EXTERNAL_WITH_BODY,
           "External function '#{functionName}' cannot have a function body.",
@@ -3241,6 +3563,19 @@ main() => foo();
   //////////////////////////////////////////////////////////////////////////////
   // Patch errors end.
   //////////////////////////////////////////////////////////////////////////////
+
+      MessageKind.EXPERIMENTAL_ASSERT_MESSAGE:
+        const MessageTemplate(MessageKind.EXPERIMENTAL_ASSERT_MESSAGE,
+          "Experimental language feature 'assertion with message'"
+          " is not supported.",
+          howToFix:
+            "Use option '--assert-message' to use assertions with messages.",
+          examples: const [r'''
+main() {
+  int n = -7;
+  assert(n > 0, 'must be positive: $n');
+}
+''']),
 
       MessageKind.IMPORT_EXPERIMENTAL_MIRRORS:
         const MessageTemplate(MessageKind.IMPORT_EXPERIMENTAL_MIRRORS, r'''
@@ -3263,11 +3598,23 @@ $IMPORT_EXPERIMENTAL_MIRRORS_PADDING#{importChain}
 ****************************************************************
 '''),
 
+      MessageKind.DISALLOWED_LIBRARY_IMPORT:
+        const MessageTemplate(MessageKind.DISALLOWED_LIBRARY_IMPORT, '''
+Your app imports the unsupported library '#{uri}' via:
+''''''
+$DISALLOWED_LIBRARY_IMPORT_PADDING#{importChain}
+
+Use the --categories option to support import of '#{uri}'.
+'''),
 
       MessageKind.MIRRORS_LIBRARY_NOT_SUPPORT_BY_BACKEND:
         const MessageTemplate(
           MessageKind.MIRRORS_LIBRARY_NOT_SUPPORT_BY_BACKEND,
-          "dart:mirrors library is not supported when using this backend."),
+          """
+dart:mirrors library is not supported when using this backend.
+
+Your app imports dart:mirrors via:""""""
+$MIRRORS_NOT_SUPPORTED_BY_BACKEND_PADDING#{importChain}"""),
 
       MessageKind.CALL_NOT_SUPPORTED_ON_NATIVE_CLASS:
         const MessageTemplate(MessageKind.CALL_NOT_SUPPORTED_ON_NATIVE_CLASS,
@@ -3303,7 +3650,17 @@ $IMPORT_EXPERIMENTAL_MIRRORS_PADDING#{importChain}
 
   }; // End of TEMPLATES.
 
+  /// Padding used before and between import chains in the message for
+  /// [MessageKind.IMPORT_EXPERIMENTAL_MIRRORS].
   static const String IMPORT_EXPERIMENTAL_MIRRORS_PADDING = '\n*   ';
+
+  /// Padding used before and between import chains in the message for
+  /// [MessageKind.MIRRORS_LIBRARY_NOT_SUPPORT_BY_BACKEND].
+  static const String MIRRORS_NOT_SUPPORTED_BY_BACKEND_PADDING = '\n   ';
+
+  /// Padding used before and between import chains in the message for
+  /// [MessageKind.DISALLOWED_LIBRARY_IMPORT].
+  static const String DISALLOWED_LIBRARY_IMPORT_PADDING = '\n  ';
 
   toString() => template;
 

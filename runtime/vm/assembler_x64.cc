@@ -17,8 +17,11 @@
 
 namespace dart {
 
-DEFINE_FLAG(bool, print_stop_message, true, "Print stop message.");
+DECLARE_FLAG(bool, allow_absolute_addresses);
+DECLARE_FLAG(bool, check_code_pointer);
 DECLARE_FLAG(bool, inline_alloc);
+
+DEFINE_FLAG(bool, print_stop_message, true, "Print stop message.");
 
 
 Assembler::Assembler(bool use_far_branches)
@@ -61,11 +64,11 @@ void Assembler::call(Label* label) {
 }
 
 
-void Assembler::LoadExternalLabel(Register dst,
-                                  const ExternalLabel* label,
-                                  Patchability patchable) {
+void Assembler::LoadNativeEntry(Register dst,
+                                const ExternalLabel* label,
+                                Patchability patchable) {
   const int32_t offset = ObjectPool::element_offset(
-      object_pool_wrapper_.FindExternalLabel(label, patchable));
+      object_pool_wrapper_.FindNativeEntry(label, patchable));
   LoadWordFromPoolOffset(dst, offset - kHeapObjectTag);
 }
 
@@ -83,20 +86,25 @@ void Assembler::call(const ExternalLabel* label) {
 
 void Assembler::CallPatchable(const StubEntry& stub_entry) {
   ASSERT(constant_pool_allowed());
+  const Code& target = Code::Handle(stub_entry.code());
   intptr_t call_start = buffer_.GetPosition();
   const int32_t offset = ObjectPool::element_offset(
-      object_pool_wrapper_.FindExternalLabel(&stub_entry.label(), kPatchable));
-  call(Address::AddressBaseImm32(PP, offset - kHeapObjectTag));
+      object_pool_wrapper_.FindObject(target, kPatchable));
+  LoadWordFromPoolOffset(CODE_REG, offset - kHeapObjectTag);
+  movq(TMP, FieldAddress(CODE_REG, Code::entry_point_offset()));
+  call(TMP);
   ASSERT((buffer_.GetPosition() - call_start) == kCallExternalLabelSize);
 }
 
 
 void Assembler::Call(const StubEntry& stub_entry) {
   ASSERT(constant_pool_allowed());
+  const Code& target = Code::Handle(stub_entry.code());
   const int32_t offset = ObjectPool::element_offset(
-      object_pool_wrapper_.FindExternalLabel(&stub_entry.label(),
-                                             kNotPatchable));
-  call(Address::AddressBaseImm32(PP, offset - kHeapObjectTag));
+      object_pool_wrapper_.FindObject(target, kNotPatchable));
+  LoadWordFromPoolOffset(CODE_REG, offset - kHeapObjectTag);
+  movq(TMP, FieldAddress(CODE_REG, Code::entry_point_offset()));
+  call(TMP);
 }
 
 
@@ -116,7 +124,11 @@ void Assembler::pushq(const Address& address) {
 
 
 void Assembler::pushq(const Immediate& imm) {
-  if (imm.is_int32()) {
+  if (imm.is_int8()) {
+    AssemblerBuffer::EnsureCapacity ensured(&buffer_);
+    EmitUint8(0x6A);
+    EmitUint8(imm.value() & 0xFF);
+  } else if (imm.is_int32()) {
     AssemblerBuffer::EnsureCapacity ensured(&buffer_);
     EmitUint8(0x68);
     EmitImmediate(imm);
@@ -775,57 +787,29 @@ void Assembler::orps(XmmRegister dst, XmmRegister src) {
 }
 
 void Assembler::notps(XmmRegister dst) {
-  static const struct ALIGN16 {
-    uint32_t a;
-    uint32_t b;
-    uint32_t c;
-    uint32_t d;
-  } float_not_constant =
-      { 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF };
-  LoadImmediate(
-      TMP, Immediate(reinterpret_cast<intptr_t>(&float_not_constant)));
+  // { 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF };
+  movq(TMP, Address(THR, Thread::float_not_address_offset()));
   xorps(dst, Address(TMP, 0));
 }
 
 
 void Assembler::negateps(XmmRegister dst) {
-  static const struct ALIGN16 {
-    uint32_t a;
-    uint32_t b;
-    uint32_t c;
-    uint32_t d;
-  } float_negate_constant =
-      { 0x80000000, 0x80000000, 0x80000000, 0x80000000 };
-  LoadImmediate(
-      TMP, Immediate(reinterpret_cast<intptr_t>(&float_negate_constant)));
+  // { 0x80000000, 0x80000000, 0x80000000, 0x80000000 }
+  movq(TMP, Address(THR, Thread::float_negate_address_offset()));
   xorps(dst, Address(TMP, 0));
 }
 
 
 void Assembler::absps(XmmRegister dst) {
-  static const struct ALIGN16 {
-    uint32_t a;
-    uint32_t b;
-    uint32_t c;
-    uint32_t d;
-  } float_absolute_constant =
-      { 0x7FFFFFFF, 0x7FFFFFFF, 0x7FFFFFFF, 0x7FFFFFFF };
-  LoadImmediate(
-      TMP, Immediate(reinterpret_cast<intptr_t>(&float_absolute_constant)));
+  // { 0x7FFFFFFF, 0x7FFFFFFF, 0x7FFFFFFF, 0x7FFFFFFF }
+  movq(TMP, Address(THR, Thread::float_absolute_address_offset()));
   andps(dst, Address(TMP, 0));
 }
 
 
 void Assembler::zerowps(XmmRegister dst) {
-  static const struct ALIGN16 {
-    uint32_t a;
-    uint32_t b;
-    uint32_t c;
-    uint32_t d;
-  } float_zerow_constant =
-      { 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0x00000000 };
-  LoadImmediate(
-      TMP, Immediate(reinterpret_cast<intptr_t>(&float_zerow_constant)));
+  // { 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0x00000000 }
+  movq(TMP, Address(THR, Thread::float_zerow_address_offset()));
   andps(dst, Address(TMP, 0));
 }
 
@@ -1007,13 +991,8 @@ void Assembler::addpd(XmmRegister dst, XmmRegister src) {
 
 
 void Assembler::negatepd(XmmRegister dst) {
-  static const struct ALIGN16 {
-    uint64_t a;
-    uint64_t b;
-  } double_negate_constant =
-      { 0x8000000000000000LL, 0x8000000000000000LL };
-  LoadImmediate(
-      TMP, Immediate(reinterpret_cast<intptr_t>(&double_negate_constant)));
+  // { 0x8000000000000000LL, 0x8000000000000000LL }
+  movq(TMP, Address(THR, Thread::double_negate_address_offset()));
   xorpd(dst, Address(TMP, 0));
 }
 
@@ -1055,13 +1034,8 @@ void Assembler::divpd(XmmRegister dst, XmmRegister src) {
 
 
 void Assembler::abspd(XmmRegister dst) {
-  static const struct ALIGN16 {
-    uint64_t a;
-    uint64_t b;
-  } double_absolute_const =
-      { 0x7FFFFFFFFFFFFFFFLL, 0x7FFFFFFFFFFFFFFFLL };
-  LoadImmediate(
-      TMP, Immediate(reinterpret_cast<intptr_t>(&double_absolute_const)));
+  // { 0x7FFFFFFFFFFFFFFFLL, 0x7FFFFFFFFFFFFFFFLL }
+  movq(TMP, Address(THR, Thread::double_abs_address_offset()));
   andpd(dst, Address(TMP, 0));
 }
 
@@ -1330,13 +1304,6 @@ void Assembler::fstpl(const Address& dst) {
   AssemblerBuffer::EnsureCapacity ensured(&buffer_);
   EmitUint8(0xDD);
   EmitOperand(3, dst);
-}
-
-
-void Assembler::fildl(const Address& src) {
-  AssemblerBuffer::EnsureCapacity ensured(&buffer_);
-  EmitUint8(0xDF);
-  EmitOperand(5, src);
 }
 
 
@@ -2533,11 +2500,12 @@ void Assembler::j(Condition condition, Label* label, bool near) {
 }
 
 
-void Assembler::J(Condition condition, const StubEntry& stub_entry,
+void Assembler::J(Condition condition,
+                  const StubEntry& stub_entry,
                   Register pp) {
   Label no_jump;
   // Negate condition.
-  j(static_cast<Condition>(condition ^ 1), &no_jump, Assembler::kNearJump);
+  j(static_cast<Condition>(condition ^ 1), &no_jump, kNearJump);
   Jmp(stub_entry, pp);
   Bind(&no_jump);
 }
@@ -2598,28 +2566,25 @@ void Assembler::jmp(const ExternalLabel* label) {
 }
 
 
-void Assembler::jmp(const StubEntry& stub_entry) {
-  jmp(&stub_entry.label());
-}
-
-
 void Assembler::JmpPatchable(const StubEntry& stub_entry, Register pp) {
   ASSERT((pp != PP) || constant_pool_allowed());
-  intptr_t call_start = buffer_.GetPosition();
+  const Code& target = Code::Handle(stub_entry.code());
   const int32_t offset = ObjectPool::element_offset(
-      object_pool_wrapper_.FindExternalLabel(&stub_entry.label(), kPatchable));
-  // Patchable jumps always use a 32-bit immediate encoding.
-  jmp(Address::AddressBaseImm32(pp, offset - kHeapObjectTag));
-  ASSERT((buffer_.GetPosition() - call_start) == JumpPattern::kLengthInBytes);
+      object_pool_wrapper_.FindObject(target, kPatchable));
+  movq(CODE_REG, Address::AddressBaseImm32(pp, offset - kHeapObjectTag));
+  movq(TMP, FieldAddress(CODE_REG, Code::entry_point_offset()));
+  jmp(TMP);
 }
 
 
 void Assembler::Jmp(const StubEntry& stub_entry, Register pp) {
   ASSERT((pp != PP) || constant_pool_allowed());
+  const Code& target = Code::Handle(stub_entry.code());
   const int32_t offset = ObjectPool::element_offset(
-      object_pool_wrapper_.FindExternalLabel(&stub_entry.label(),
-                                             kNotPatchable));
-  jmp(Address(pp, offset - kHeapObjectTag));
+      object_pool_wrapper_.FindObject(target, kNotPatchable));
+  movq(CODE_REG, FieldAddress(pp, offset));
+  movq(TMP, FieldAddress(CODE_REG, Code::entry_point_offset()));
+  jmp(TMP);
 }
 
 
@@ -2774,6 +2739,7 @@ void Assembler::Drop(intptr_t stack_elements, Register tmp) {
 
 
 bool Assembler::CanLoadFromObjectPool(const Object& object) const {
+  ASSERT(!object.IsICData() || ICData::Cast(object).IsOriginal());
   ASSERT(!Thread::CanLoadFromThread(object));
   if (!constant_pool_allowed()) {
     return false;
@@ -2809,6 +2775,7 @@ void Assembler::LoadIsolate(Register dst) {
 void Assembler::LoadObjectHelper(Register dst,
                                  const Object& object,
                                  bool is_unique) {
+  ASSERT(!object.IsICData() || ICData::Cast(object).IsOriginal());
   if (Thread::CanLoadFromThread(object)) {
     movq(dst, Address(THR, Thread::OffsetFromThread(object)));
   } else if (CanLoadFromObjectPool(object)) {
@@ -2818,6 +2785,7 @@ void Assembler::LoadObjectHelper(Register dst,
     LoadWordFromPoolOffset(dst, offset - kHeapObjectTag);
   } else {
     ASSERT(object.IsSmi() || object.InVMHeap());
+    ASSERT(object.IsSmi() || FLAG_allow_absolute_addresses);
     LoadImmediate(dst, Immediate(reinterpret_cast<int64_t>(object.raw())));
   }
 }
@@ -2845,6 +2813,7 @@ void Assembler::LoadUniqueObject(Register dst, const Object& object) {
 
 
 void Assembler::StoreObject(const Address& dst, const Object& object) {
+  ASSERT(!object.IsICData() || ICData::Cast(object).IsOriginal());
   if (Thread::CanLoadFromThread(object)) {
     movq(TMP, Address(THR, Thread::OffsetFromThread(object)));
     movq(dst, TMP);
@@ -2852,24 +2821,28 @@ void Assembler::StoreObject(const Address& dst, const Object& object) {
     LoadObject(TMP, object);
     movq(dst, TMP);
   } else {
+    ASSERT(object.IsSmi() || FLAG_allow_absolute_addresses);
     MoveImmediate(dst, Immediate(reinterpret_cast<int64_t>(object.raw())));
   }
 }
 
 
 void Assembler::PushObject(const Object& object) {
+  ASSERT(!object.IsICData() || ICData::Cast(object).IsOriginal());
   if (Thread::CanLoadFromThread(object)) {
     pushq(Address(THR, Thread::OffsetFromThread(object)));
   } else if (CanLoadFromObjectPool(object)) {
     LoadObject(TMP, object);
     pushq(TMP);
   } else {
+    ASSERT(object.IsSmi() || FLAG_allow_absolute_addresses);
     PushImmediate(Immediate(reinterpret_cast<int64_t>(object.raw())));
   }
 }
 
 
 void Assembler::CompareObject(Register reg, const Object& object) {
+  ASSERT(!object.IsICData() || ICData::Cast(object).IsOriginal());
   if (Thread::CanLoadFromThread(object)) {
     cmpq(reg, Address(THR, Thread::OffsetFromThread(object)));
   } else if (CanLoadFromObjectPool(object)) {
@@ -2877,6 +2850,7 @@ void Assembler::CompareObject(Register reg, const Object& object) {
         ObjectPool::element_offset(object_pool_wrapper_.FindObject(object));
     cmpq(reg, Address(PP, offset-kHeapObjectTag));
   } else {
+    ASSERT(object.IsSmi() || FLAG_allow_absolute_addresses);
     CompareImmediate(
         reg, Immediate(reinterpret_cast<int64_t>(object.raw())));
   }
@@ -3026,7 +3000,8 @@ void Assembler::VerifyUninitialized(const Address& dest) {
 #else
 #error Only supported in DEBUG mode
 #endif
-  cmpq(dest, Immediate(reinterpret_cast<uint64_t>(Object::null())));
+  LoadObject(TMP, Object::null_object());
+  cmpq(dest, TMP);
   j(EQUAL, &ok, Assembler::kNearJump);
   static const bool kFixedLengthEncoding = true;
   Stop("Expected zapped, Smi or null", kFixedLengthEncoding);
@@ -3062,8 +3037,12 @@ void Assembler::StoreIntoObject(Register object,
   if (object != RDX) {
     movq(RDX, object);
   }
+  pushq(CODE_REG);
+  movq(CODE_REG, Address(THR, Thread::update_store_buffer_code_offset()));
   movq(TMP, Address(THR, Thread::update_store_buffer_entry_point_offset()));
   call(TMP);
+
+  popq(CODE_REG);
   if (value != RDX) popq(RDX);
   Bind(&done);
 }
@@ -3090,6 +3069,7 @@ void Assembler::StoreIntoObjectNoBarrier(Register object,
                                          const Address& dest,
                                          const Object& value,
                                          FieldContent old_content) {
+  ASSERT(!value.IsICData() || ICData::Cast(value).IsOriginal());
   VerifyHeapWord(dest, old_content);
   if (VerifiedMemory::enabled()) {
     const Register temp = RCX;
@@ -3150,25 +3130,15 @@ void Assembler::IncrementSmiField(const Address& dest, int64_t increment) {
 
 
 void Assembler::DoubleNegate(XmmRegister d) {
-  static const struct ALIGN16 {
-    uint64_t a;
-    uint64_t b;
-  } double_negate_constant =
-      {0x8000000000000000LL, 0x8000000000000000LL};
-  LoadImmediate(
-      TMP, Immediate(reinterpret_cast<intptr_t>(&double_negate_constant)));
+  // {0x8000000000000000LL, 0x8000000000000000LL}
+  movq(TMP, Address(THR, Thread::double_negate_address_offset()));
   xorpd(d, Address(TMP, 0));
 }
 
 
 void Assembler::DoubleAbs(XmmRegister reg) {
-  static const struct ALIGN16 {
-    uint64_t a;
-    uint64_t b;
-  } double_abs_constant =
-      {0x7FFFFFFFFFFFFFFFLL, 0x7FFFFFFFFFFFFFFFLL};
-  LoadImmediate(TMP,
-      Immediate(reinterpret_cast<intptr_t>(&double_abs_constant)));
+  // {0x7FFFFFFFFFFFFFFFLL, 0x7FFFFFFFFFFFFFFFLL}
+  movq(TMP, Address(THR, Thread::double_abs_address_offset()));
   andpd(reg, Address(TMP, 0));
 }
 
@@ -3266,8 +3236,8 @@ void Assembler::PushRegisters(intptr_t cpu_register_set,
     // Store XMM registers with the lowest register number at the lowest
     // address.
     intptr_t offset = 0;
-    for (intptr_t reg_idx = 0; reg_idx < kNumberOfXmmRegisters; ++reg_idx) {
-      XmmRegister xmm_reg = static_cast<XmmRegister>(reg_idx);
+    for (intptr_t i = 0; i < kNumberOfXmmRegisters; ++i) {
+      XmmRegister xmm_reg = static_cast<XmmRegister>(i);
       if (RegisterSet::Contains(xmm_register_set, xmm_reg)) {
         movups(Address(RSP, offset), xmm_reg);
         offset += kFpuRegisterSize;
@@ -3276,11 +3246,10 @@ void Assembler::PushRegisters(intptr_t cpu_register_set,
     ASSERT(offset == (xmm_regs_count * kFpuRegisterSize));
   }
 
-  // Store general purpose registers with the highest register number at the
-  // lowest address. The order in which the registers are pushed must match the
-  // order in which the registers are encoded in the safe point's stack map.
-  for (intptr_t reg_idx = 0; reg_idx < kNumberOfCpuRegisters; ++reg_idx) {
-    Register reg = static_cast<Register>(reg_idx);
+  // The order in which the registers are pushed must match the order
+  // in which the registers are encoded in the safe point's stack map.
+  for (intptr_t i = kNumberOfCpuRegisters - 1; i >= 0; --i) {
+    Register reg = static_cast<Register>(i);
     if (RegisterSet::Contains(cpu_register_set, reg)) {
       pushq(reg);
     }
@@ -3290,10 +3259,8 @@ void Assembler::PushRegisters(intptr_t cpu_register_set,
 
 void Assembler::PopRegisters(intptr_t cpu_register_set,
                              intptr_t xmm_register_set) {
-  // General purpose registers have the highest register number at the
-  // lowest address.
-  for (intptr_t reg_idx = kNumberOfCpuRegisters - 1; reg_idx >= 0; --reg_idx) {
-    Register reg = static_cast<Register>(reg_idx);
+  for (intptr_t i = 0; i < kNumberOfCpuRegisters; ++i) {
+    Register reg = static_cast<Register>(i);
     if (RegisterSet::Contains(cpu_register_set, reg)) {
       popq(reg);
     }
@@ -3303,8 +3270,8 @@ void Assembler::PopRegisters(intptr_t cpu_register_set,
   if (xmm_regs_count > 0) {
     // XMM registers have the lowest register number at the lowest address.
     intptr_t offset = 0;
-    for (intptr_t reg_idx = 0; reg_idx < kNumberOfXmmRegisters; ++reg_idx) {
-      XmmRegister xmm_reg = static_cast<XmmRegister>(reg_idx);
+    for (intptr_t i = 0; i < kNumberOfXmmRegisters; ++i) {
+      XmmRegister xmm_reg = static_cast<XmmRegister>(i);
       if (RegisterSet::Contains(xmm_register_set, xmm_reg)) {
         movups(xmm_reg, Address(RSP, offset));
         offset += kFpuRegisterSize;
@@ -3317,6 +3284,7 @@ void Assembler::PopRegisters(intptr_t cpu_register_set,
 
 
 void Assembler::EnterCallRuntimeFrame(intptr_t frame_space) {
+  Comment("EnterCallRuntimeFrame");
   EnterStubFrame();
 
   // TODO(vegorov): avoid saving FpuTMP, it is used only as scratch.
@@ -3364,27 +3332,29 @@ void Assembler::CallRuntime(const RuntimeEntry& entry,
 }
 
 
+void Assembler::RestoreCodePointer() {
+  movq(CODE_REG, Address(RBP, kPcMarkerSlotFromFp * kWordSize));
+}
+
+
 void Assembler::LoadPoolPointer(Register pp) {
   // Load new pool pointer.
-  const intptr_t kRIPRelativeMovqSize = 7;
-  const intptr_t entry_to_rip_offset = CodeSize() + kRIPRelativeMovqSize;
-  const intptr_t object_pool_pc_dist =
-      Instructions::HeaderSize() - Instructions::object_pool_offset();
-  movq(pp, Address::AddressRIPRelative(
-      -entry_to_rip_offset - object_pool_pc_dist));
-  ASSERT(CodeSize() == entry_to_rip_offset);
+  CheckCodePointer();
+  movq(pp, FieldAddress(CODE_REG, Code::object_pool_offset()));
   set_constant_pool_allowed(pp == PP);
 }
 
 
-void Assembler::EnterDartFrame(intptr_t frame_size,
-                               Register new_pp,
-                               Register pc_marker_override) {
+void Assembler::EnterDartFrame(intptr_t frame_size, Register new_pp) {
   ASSERT(!constant_pool_allowed());
   EnterFrame(0);
-  pushq(pc_marker_override);
+  pushq(CODE_REG);
   pushq(PP);
-  movq(PP, new_pp);
+  if (new_pp == kNoRegister) {
+    LoadPoolPointer(PP);
+  } else {
+    movq(PP, new_pp);
+  }
   set_constant_pool_allowed(true);
   if (frame_size != 0) {
     subq(RSP, Immediate(frame_size));
@@ -3392,11 +3362,44 @@ void Assembler::EnterDartFrame(intptr_t frame_size,
 }
 
 
-void Assembler::LeaveDartFrame() {
-  set_constant_pool_allowed(false);
+void Assembler::LeaveDartFrame(RestorePP restore_pp) {
   // Restore caller's PP register that was pushed in EnterDartFrame.
-  movq(PP, Address(RBP, (kSavedCallerPpSlotFromFp * kWordSize)));
+  if (restore_pp == kRestoreCallerPP) {
+    movq(PP, Address(RBP, (kSavedCallerPpSlotFromFp * kWordSize)));
+    set_constant_pool_allowed(false);
+  }
   LeaveFrame();
+}
+
+
+void Assembler::CheckCodePointer() {
+#ifdef DEBUG
+  if (!FLAG_check_code_pointer) {
+    return;
+  }
+  Comment("CheckCodePointer");
+  Label cid_ok, instructions_ok;
+  pushq(RAX);
+  LoadClassId(RAX, CODE_REG);
+  cmpq(RAX, Immediate(kCodeCid));
+  j(EQUAL, &cid_ok);
+  int3();
+  Bind(&cid_ok);
+  {
+    const intptr_t kRIPRelativeLeaqSize = 7;
+    const intptr_t header_to_entry_offset =
+        (Instructions::HeaderSize() - kHeapObjectTag);
+    const intptr_t header_to_rip_offset =
+        CodeSize() + kRIPRelativeLeaqSize + header_to_entry_offset;
+    leaq(RAX, Address::AddressRIPRelative(-header_to_rip_offset));
+    ASSERT(CodeSize() == (header_to_rip_offset - header_to_entry_offset));
+  }
+  cmpq(RAX, FieldAddress(CODE_REG, Code::saved_instructions_offset()));
+  j(EQUAL, &instructions_ok);
+  int3();
+  Bind(&instructions_ok);
+  popq(RAX);
+#endif
 }
 
 
@@ -3405,17 +3408,15 @@ void Assembler::LeaveDartFrame() {
 // pointer is already set up.  The PC marker is not correct for the
 // optimized function and there may be extra space for spill slots to
 // allocate.
-void Assembler::EnterOsrFrame(intptr_t extra_size,
-                              Register new_pp,
-                              Register pc_marker_override) {
+void Assembler::EnterOsrFrame(intptr_t extra_size) {
   ASSERT(!constant_pool_allowed());
   if (prologue_offset_ == -1) {
     Comment("PrologueOffset = %" Pd "", CodeSize());
     prologue_offset_ = CodeSize();
   }
-  movq(Address(RBP, kPcMarkerSlotFromFp * kWordSize), pc_marker_override);
-  movq(PP, new_pp);
-  set_constant_pool_allowed(true);
+  RestoreCodePointer();
+  LoadPoolPointer();
+
   if (extra_size != 0) {
     subq(RSP, Immediate(extra_size));
   }
@@ -3423,11 +3424,7 @@ void Assembler::EnterOsrFrame(intptr_t extra_size,
 
 
 void Assembler::EnterStubFrame() {
-  set_constant_pool_allowed(false);
-  EnterFrame(0);
-  pushq(Immediate(0));  // Push 0 in the saved PC area for stub frames.
-  pushq(PP);  // Save caller's pool pointer
-  LoadPoolPointer();
+  EnterDartFrame(0, kNoRegister);
 }
 
 
@@ -3444,6 +3441,7 @@ void Assembler::MaybeTraceAllocation(intptr_t cid,
   intptr_t state_offset = ClassTable::StateOffsetFor(cid);
   Register temp_reg = TMP;
   if (inline_isolate) {
+    ASSERT(FLAG_allow_absolute_addresses);
     ClassTable* class_table = Isolate::Current()->class_table();
     ClassHeapStats** table_ptr = class_table->TableAddressFor(cid);
     if (cid < kNumPredefinedCids) {
@@ -3474,6 +3472,7 @@ void Assembler::UpdateAllocationStats(intptr_t cid,
       ClassTable::CounterOffsetFor(cid, space == Heap::kNew);
   Register temp_reg = TMP;
   if (inline_isolate) {
+    ASSERT(FLAG_allow_absolute_addresses);
     ClassTable* class_table = Isolate::Current()->class_table();
     ClassHeapStats** table_ptr = class_table->TableAddressFor(cid);
     if (cid < kNumPredefinedCids) {

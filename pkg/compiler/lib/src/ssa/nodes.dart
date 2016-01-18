@@ -130,6 +130,7 @@ abstract class HInstructionVisitor extends HGraphVisitor {
 }
 
 class HGraph {
+  Element element;  // Used for debug printing.
   HBasicBlock entry;
   HBasicBlock exit;
   HThis thisInstruction;
@@ -137,15 +138,13 @@ class HGraph {
   HParameterValue explicitReceiverParameter;
   bool isRecursiveMethod = false;
   bool calledInLoop = false;
-  final List<HBasicBlock> blocks;
+  final List<HBasicBlock> blocks = <HBasicBlock>[];
 
   // We canonicalize all constants used within a graph so we do not
   // have to worry about them for global value numbering.
-  Map<ConstantValue, HConstant> constants;
+  Map<ConstantValue, HConstant> constants = new Map<ConstantValue, HConstant>();
 
-  HGraph()
-      : blocks = new List<HBasicBlock>(),
-        constants = new Map<ConstantValue, HConstant>() {
+  HGraph() {
     entry = addNewBlock();
     // The exit block will be added later, so it has an id that is
     // after all others in the system.
@@ -262,6 +261,8 @@ class HGraph {
     validator.visitGraph(this);
     return validator.isValid;
   }
+
+  toString() => 'HGraph($element)';
 }
 
 class HBaseVisitor extends HGraphVisitor implements HVisitor {
@@ -875,11 +876,39 @@ abstract class HInstruction implements Spannable {
 
   bool isExact() => instructionType.isExact || isNull();
 
+  bool isValue() => instructionType.isValue;
+
   bool canBeNull() => instructionType.isNullable;
 
   bool isNull() => instructionType.isEmpty && instructionType.isNullable;
   bool isConflicting() {
     return instructionType.isEmpty && !instructionType.isNullable;
+  }
+
+  /// Returns `true` if [typeMask] contains [cls].
+  static bool containsType(
+      TypeMask typeMask,
+      ClassElement cls,
+      ClassWorld classWorld) {
+    return classWorld.isInstantiated(cls) && typeMask.contains(cls, classWorld);
+  }
+
+  /// Returns `true` if [typeMask] contains only [cls].
+  static bool containsOnlyType(
+      TypeMask typeMask,
+      ClassElement cls,
+      ClassWorld classWorld) {
+    return classWorld.isInstantiated(cls) &&
+        typeMask.containsOnly(cls);
+  }
+
+  /// Returns `true` if [typeMask] is an instance of [cls].
+  static bool isInstanceOf(
+      TypeMask typeMask,
+      ClassElement cls,
+      ClassWorld classWorld) {
+    return classWorld.isImplemented(cls) &&
+        typeMask.satisfies(cls, classWorld);
   }
 
   bool canBePrimitive(Compiler compiler) {
@@ -893,68 +922,84 @@ abstract class HInstruction implements Spannable {
   bool canBePrimitiveNumber(Compiler compiler) {
     ClassWorld classWorld = compiler.world;
     JavaScriptBackend backend = compiler.backend;
+    BackendHelpers helpers = backend.helpers;
     // TODO(sra): It should be possible to test only jsDoubleClass and
     // jsUInt31Class, since all others are superclasses of these two.
-    return instructionType.contains(backend.jsNumberClass, classWorld)
-        || instructionType.contains(backend.jsIntClass, classWorld)
-        || instructionType.contains(backend.jsPositiveIntClass, classWorld)
-        || instructionType.contains(backend.jsUInt32Class, classWorld)
-        || instructionType.contains(backend.jsUInt31Class, classWorld)
-        || instructionType.contains(backend.jsDoubleClass, classWorld);
+    return containsType(instructionType, helpers.jsNumberClass, classWorld)
+        || containsType(instructionType, helpers.jsIntClass, classWorld)
+        || containsType(instructionType, helpers.jsPositiveIntClass, classWorld)
+        || containsType(instructionType, helpers.jsUInt32Class, classWorld)
+        || containsType(instructionType, helpers.jsUInt31Class, classWorld)
+        || containsType(instructionType, helpers.jsDoubleClass, classWorld);
   }
 
   bool canBePrimitiveBoolean(Compiler compiler) {
     ClassWorld classWorld = compiler.world;
     JavaScriptBackend backend = compiler.backend;
-    return instructionType.contains(backend.jsBoolClass, classWorld);
+    BackendHelpers helpers = backend.helpers;
+    return containsType(instructionType, helpers.jsBoolClass, classWorld);
   }
 
   bool canBePrimitiveArray(Compiler compiler) {
     ClassWorld classWorld = compiler.world;
     JavaScriptBackend backend = compiler.backend;
-    return instructionType.contains(backend.jsArrayClass, classWorld)
-        || instructionType.contains(backend.jsFixedArrayClass, classWorld)
-        || instructionType.contains(backend.jsExtendableArrayClass, classWorld)
-        || instructionType.contains(
-            backend.jsUnmodifiableArrayClass, classWorld);
+    BackendHelpers helpers = backend.helpers;
+    return containsType(instructionType, helpers.jsArrayClass, classWorld)
+        || containsType(instructionType, helpers.jsFixedArrayClass, classWorld)
+        || containsType(
+            instructionType, helpers.jsExtendableArrayClass, classWorld)
+        || containsType(instructionType,
+            helpers.jsUnmodifiableArrayClass, classWorld);
   }
 
   bool isIndexablePrimitive(Compiler compiler) {
     ClassWorld classWorld = compiler.world;
     JavaScriptBackend backend = compiler.backend;
+    BackendHelpers helpers = backend.helpers;
     return instructionType.containsOnlyString(classWorld)
-        || instructionType.satisfies(backend.jsIndexableClass, classWorld);
+        || isInstanceOf(instructionType, helpers.jsIndexableClass, classWorld);
   }
 
   bool isFixedArray(Compiler compiler) {
+    ClassWorld classWorld = compiler.world;
     JavaScriptBackend backend = compiler.backend;
+    BackendHelpers helpers = backend.helpers;
     // TODO(sra): Recognize the union of these types as well.
-    return instructionType.containsOnly(backend.jsFixedArrayClass)
-        || instructionType.containsOnly(backend.jsUnmodifiableArrayClass);
+    return containsOnlyType(
+            instructionType, helpers.jsFixedArrayClass, classWorld)
+        || containsOnlyType(
+            instructionType, helpers.jsUnmodifiableArrayClass, classWorld);
   }
 
   bool isExtendableArray(Compiler compiler) {
+    ClassWorld classWorld = compiler.world;
     JavaScriptBackend backend = compiler.backend;
-    return instructionType.containsOnly(backend.jsExtendableArrayClass);
+    BackendHelpers helpers = backend.helpers;
+    return containsOnlyType(
+        instructionType, helpers.jsExtendableArrayClass, classWorld);
   }
 
   bool isMutableArray(Compiler compiler) {
     ClassWorld classWorld = compiler.world;
     JavaScriptBackend backend = compiler.backend;
-    return instructionType.satisfies(backend.jsMutableArrayClass, classWorld);
+    BackendHelpers helpers = backend.helpers;
+    return isInstanceOf(
+        instructionType, helpers.jsMutableArrayClass, classWorld);
   }
 
   bool isReadableArray(Compiler compiler) {
     ClassWorld classWorld = compiler.world;
     JavaScriptBackend backend = compiler.backend;
-    return instructionType.satisfies(backend.jsArrayClass, classWorld);
+    BackendHelpers helpers = backend.helpers;
+    return isInstanceOf(instructionType, helpers.jsArrayClass, classWorld);
   }
 
   bool isMutableIndexable(Compiler compiler) {
     ClassWorld classWorld = compiler.world;
     JavaScriptBackend backend = compiler.backend;
-    return instructionType.satisfies(
-        backend.jsMutableIndexableClass, classWorld);
+    BackendHelpers helpers = backend.helpers;
+    return isInstanceOf(instructionType,
+        helpers.jsMutableIndexableClass, classWorld);
   }
 
   bool isArray(Compiler compiler) => isReadableArray(compiler);
@@ -962,7 +1007,8 @@ abstract class HInstruction implements Spannable {
   bool canBePrimitiveString(Compiler compiler) {
     ClassWorld classWorld = compiler.world;
     JavaScriptBackend backend = compiler.backend;
-    return instructionType.contains(backend.jsStringClass, classWorld);
+    BackendHelpers helpers = backend.helpers;
+    return containsType(instructionType, helpers.jsStringClass, classWorld);
   }
 
   bool isInteger(Compiler compiler) {
@@ -974,28 +1020,33 @@ abstract class HInstruction implements Spannable {
   bool isUInt32(Compiler compiler) {
     ClassWorld classWorld = compiler.world;
     JavaScriptBackend backend = compiler.backend;
+    BackendHelpers helpers = backend.helpers;
     return !instructionType.isNullable
-        && instructionType.satisfies(backend.jsUInt32Class, classWorld);
+        && isInstanceOf(instructionType, helpers.jsUInt32Class, classWorld);
   }
 
   bool isUInt31(Compiler compiler) {
     ClassWorld classWorld = compiler.world;
     JavaScriptBackend backend = compiler.backend;
+    BackendHelpers helpers = backend.helpers;
     return !instructionType.isNullable
-        && instructionType.satisfies(backend.jsUInt31Class, classWorld);
+        && isInstanceOf(instructionType, helpers.jsUInt31Class, classWorld);
   }
 
   bool isPositiveInteger(Compiler compiler) {
     ClassWorld classWorld = compiler.world;
     JavaScriptBackend backend = compiler.backend;
-    return !instructionType.isNullable
-        && instructionType.satisfies(backend.jsPositiveIntClass, classWorld);
+    BackendHelpers helpers = backend.helpers;
+    return !instructionType.isNullable &&
+        isInstanceOf(instructionType, helpers.jsPositiveIntClass, classWorld);
   }
 
   bool isPositiveIntegerOrNull(Compiler compiler) {
     ClassWorld classWorld = compiler.world;
     JavaScriptBackend backend = compiler.backend;
-    return instructionType.satisfies(backend.jsPositiveIntClass, classWorld);
+    BackendHelpers helpers = backend.helpers;
+    return isInstanceOf(
+        instructionType, helpers.jsPositiveIntClass, classWorld);
   }
 
   bool isIntegerOrNull(Compiler compiler) {
@@ -1275,16 +1326,16 @@ abstract class HInstruction implements Spannable {
 
   HInstruction convertType(Compiler compiler, DartType type, int kind) {
     if (type == null) return this;
-    type = type.unalias(compiler);
+    type = type.unaliased;
     // Only the builder knows how to create [HTypeConversion]
     // instructions with generics. It has the generic type context
     // available.
     assert(type.kind != TypeKind.TYPE_VARIABLE);
     assert(type.treatAsRaw || type.isFunctionType);
     if (type.isDynamic) return this;
+    if (type.isObject) return this;
     // The type element is either a class or the void element.
     Element element = type.element;
-    if (identical(element, compiler.objectClass)) return this;
     JavaScriptBackend backend = compiler.backend;
     if (type.kind != TypeKind.INTERFACE) {
       return new HTypeConversion(type, kind, backend.dynamicType, this);
@@ -1393,6 +1444,9 @@ class HBoundsCheck extends HCheck {
   HInstruction get length => inputs[1];
   HInstruction get index => inputs[0];
   HInstruction get array => inputs[2];
+  // There can be an additional fourth input which is the index to report to
+  // [ioore]. This is used by the expansion of [JSArray.removeLast].
+  HInstruction get reportedIndex => inputs.length > 3 ? inputs[3] : index;
   bool isControlFlow() => true;
 
   accept(HVisitor visitor) => visitor.visitBoundsCheck(this);
@@ -1846,6 +1900,8 @@ class HForeignNew extends HForeign {
   accept(HVisitor visitor) => visitor.visitForeignNew(this);
 
   bool get isAllocation => true;
+
+  String toString() => 'HForeignNew($element)';
 }
 
 abstract class HInvokeBinary extends HInstruction {

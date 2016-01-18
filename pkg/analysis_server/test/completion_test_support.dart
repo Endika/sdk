@@ -7,7 +7,7 @@ library test.completion.support;
 import 'dart:async';
 import 'dart:collection';
 
-import 'package:analysis_server/src/protocol.dart';
+import 'package:analysis_server/plugin/protocol/protocol.dart';
 import 'package:analyzer/src/generated/java_core.dart';
 import 'package:unittest/unittest.dart';
 
@@ -16,7 +16,7 @@ import 'domain_completion_test.dart';
 /**
  * A base class for classes containing completion tests.
  */
-class CompletionTestCase extends CompletionTest {
+class CompletionTestCase extends CompletionDomainHandlerTest {
   static const String CURSOR_MARKER = '!';
 
   List get suggestedCompletions => suggestions
@@ -190,18 +190,14 @@ class LocationSpec {
       if (!badPoints.isEmpty) {
         err.write("No test location for tests:");
         for (String ch in badPoints) {
-          err
-            ..write(' ')
-            ..write(ch);
+          err..write(' ')..write(ch);
         }
         err.write(' ');
       }
       if (!badResults.isEmpty) {
         err.write("No results for tests:");
         for (String ch in badResults) {
-          err
-            ..write(' ')
-            ..write(ch);
+          err..write(' ')..write(ch);
         }
       }
       throw new IllegalStateException(err.toString());

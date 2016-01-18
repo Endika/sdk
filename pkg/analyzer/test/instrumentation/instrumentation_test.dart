@@ -2,7 +2,9 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-library test.instrumentation;
+library analyzer.test.instrumentation.instrumentation_test;
+
+import 'dart:async';
 
 import 'package:analyzer/instrumentation/instrumentation.dart';
 import 'package:unittest/unittest.dart';
@@ -111,8 +113,10 @@ class InstrumentationServiceTest {
     service.logVersion('myUuid', 'someClientId', 'someClientVersion',
         'aServerVersion', 'anSdkVersion');
     expect(server.normalChannel.toString(), '');
-    expect(server.priorityChannel.toString(), endsWith(
-        ':myUuid:someClientId:someClientVersion:aServerVersion:anSdkVersion\n'));
+    expect(
+        server.priorityChannel.toString(),
+        endsWith(
+            ':myUuid:someClientId:someClientVersion:aServerVersion:anSdkVersion\n'));
   }
 }
 
@@ -172,7 +176,7 @@ class TestInstrumentationServer implements InstrumentationServer {
   }
 
   @override
-  void shutdown() {
+  Future shutdown() async {
     // Ignored
   }
 }

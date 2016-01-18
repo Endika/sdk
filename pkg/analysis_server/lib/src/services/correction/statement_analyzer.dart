@@ -9,8 +9,8 @@ import 'package:analysis_server/src/services/correction/selection_analyzer.dart'
 import 'package:analysis_server/src/services/correction/source_range.dart';
 import 'package:analysis_server/src/services/correction/status.dart';
 import 'package:analysis_server/src/services/correction/util.dart';
+import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/src/generated/ast.dart';
-import 'package:analyzer/src/generated/element.dart';
 import 'package:analyzer/src/generated/scanner.dart';
 import 'package:analyzer/src/generated/source.dart';
 
@@ -190,7 +190,8 @@ class StatementAnalyzer extends SelectionAnalyzer {
       AstNode lastNode = nodes.last;
       SourceRange rangeAfterLastNode = rangeEndEnd(lastNode, selection);
       if (_hasTokens(rangeAfterLastNode)) {
-        invalidSelection("The end of the selection contains characters that "
+        invalidSelection(
+            "The end of the selection contains characters that "
             "do not belong to a statement.",
             newLocation_fromUnit(unit, rangeAfterLastNode));
       }

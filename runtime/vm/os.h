@@ -14,6 +14,7 @@ namespace dart {
 
 // Forward declarations.
 class Isolate;
+class Zone;
 
 // Interface to the underlying OS platform.
 class OS {
@@ -45,6 +46,15 @@ class OS {
   // Returns the current time in microseconds measured
   // from midnight January 1, 1970 UTC.
   static int64_t GetCurrentTimeMicros();
+
+  // Returns the current time used by the tracing infrastructure.
+  static int64_t GetCurrentMonotonicMicros();
+
+  // Returns the raw clock value from the monotonic clock.
+  static int64_t GetCurrentMonotonicTicks();
+
+  // Returns the frequency of the monotonic clock.
+  static int64_t GetCurrentMonotonicFrequency();
 
   // Returns a cleared aligned array of type T with n entries.
   // Alignment must be >= 16 and a power of two.
@@ -119,6 +129,13 @@ class OS {
   static int VSNPrint(char* str, size_t size,
                       const char* format,
                       va_list args);
+
+  // Allocate a string and print formatted output into the buffer.
+  // Uses the zone for allocation if one if provided, and otherwise uses
+  // malloc.
+  static char* SCreate(Zone* zone, const char* format, ...)
+      PRINTF_ATTRIBUTE(2, 3);
+  static char* VSCreate(Zone* zone, const char* format, va_list args);
 
   // Converts a C string which represents a valid dart integer into a 64 bit
   // value.

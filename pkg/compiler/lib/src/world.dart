@@ -6,18 +6,14 @@ library dart2js.world;
 
 import 'closure.dart' show
     SynthesizedCallMethodElementX;
+import 'common.dart';
 import 'common/backend_api.dart' show
     Backend;
-import 'common/registry.dart' show
-    Registry;
 import 'compiler.dart' show
-    invariant,
-    Backend,
-    Compiler,
-    Registry;
+    Compiler;
+import 'core_types.dart' show
+    CoreClasses;
 import 'dart_types.dart';
-import 'diagnostics/invariant.dart' show
-    invariant;
 import 'elements/elements.dart' show
     ClassElement,
     Element,
@@ -27,11 +23,13 @@ import 'elements/elements.dart' show
     VariableElement;
 import 'ordered_typeset.dart';
 import 'types/types.dart' as ti;
-import 'universe/universe.dart' show
-    FunctionSet,
-    Selector,
-    SideEffects;
 import 'universe/class_set.dart';
+import 'universe/function_set.dart' show
+    FunctionSet;
+import 'universe/selector.dart' show
+    Selector;
+import 'universe/side_effects.dart' show
+    SideEffects;
 import 'util/util.dart' show
     Link;
 
@@ -64,8 +62,18 @@ abstract class ClassWorld {
   /// The [ClassElement] for the [String] class defined in 'dart:core'.
   ClassElement get stringClass;
 
-  /// Returns `true` if [cls] is instantiated.
+  /// Returns `true` if [cls] is either directly or indirectly instantiated.
   bool isInstantiated(ClassElement cls);
+
+  /// Returns `true` if [cls] is directly instantiated.
+  bool isDirectlyInstantiated(ClassElement cls);
+
+  /// Returns `true` if [cls] is indirectly instantiated, that is through a
+  /// subclass.
+  bool isIndirectlyInstantiated(ClassElement cls);
+
+  /// Returns `true` if [cls] is implemented by an instantiated class.
+  bool isImplemented(ClassElement cls);
 
   /// Returns `true` if the class world is closed.
   bool get isClosed;
@@ -85,9 +93,16 @@ abstract class ClassWorld {
   /// including [cls] itself.
   Iterable<ClassElement> strictSubclassesOf(ClassElement cls);
 
+  /// Returns an iterable over the directly instantiated that implement [cls]
+  /// possibly including [cls] itself, if it is live.
+  Iterable<ClassElement> subtypesOf(ClassElement cls);
+
   /// Returns an iterable over the live classes that implement [cls] _not_
   /// including [cls] if it is live.
   Iterable<ClassElement> strictSubtypesOf(ClassElement cls);
+
+  /// Returns `true` if [a] and [b] have any known common subtypes.
+  bool haveAnyCommonSubtypes(ClassElement a, ClassElement b);
 
   /// Returns `true` if any live class other than [cls] extends [cls].
   bool hasAnyStrictSubclass(ClassElement cls);
@@ -97,6 +112,16 @@ abstract class ClassWorld {
 
   /// Returns `true` if all live classes that implement [cls] extend it.
   bool hasOnlySubclasses(ClassElement cls);
+
+  /// Returns the most specific subclass of [cls] (including [cls]) that is
+  /// directly instantiated or a superclass of all directly instantiated
+  /// subclasses. If [cls] is not instantiated, `null` is returned.
+  ClassElement getLubOfInstantiatedSubclasses(ClassElement cls);
+
+  /// Returns the most specific subtype of [cls] (including [cls]) that is
+  /// directly instantiated or a superclass of all directly instantiated
+  /// subtypes. If no subtypes of [cls] are instantiated, `null` is returned.
+  ClassElement getLubOfInstantiatedSubtypes(ClassElement cls);
 
   /// Returns an iterable over the common supertypes of the [classes].
   Iterable<ClassElement> commonSupertypesOf(Iterable<ClassElement> classes);
@@ -121,16 +146,22 @@ abstract class ClassWorld {
   /// Returns `true` if closed-world assumptions can be made, that is,
   /// incremental compilation isn't enabled.
   bool get hasClosedWorldAssumption;
+
+  /// Returns a string representation of the closed world.
+  ///
+  /// If [cls] is provided, the dump will contain only classes related to [cls].
+  String dump([ClassElement cls]);
 }
 
 class World implements ClassWorld {
-  ClassElement get objectClass => compiler.objectClass;
-  ClassElement get functionClass => compiler.functionClass;
-  ClassElement get boolClass => compiler.boolClass;
-  ClassElement get numClass => compiler.numClass;
-  ClassElement get intClass => compiler.intClass;
-  ClassElement get doubleClass => compiler.doubleClass;
-  ClassElement get stringClass => compiler.stringClass;
+  ClassElement get objectClass => coreClasses.objectClass;
+  ClassElement get functionClass => coreClasses.functionClass;
+  ClassElement get boolClass => coreClasses.boolClass;
+  ClassElement get numClass => coreClasses.numClass;
+  ClassElement get intClass => coreClasses.intClass;
+  ClassElement get doubleClass => coreClasses.doubleClass;
+  ClassElement get stringClass => coreClasses.stringClass;
+  ClassElement get nullClass => coreClasses.nullClass;
 
   /// Cache of [ti.FlatTypeMask]s grouped by the 8 possible values of the
   /// [ti.FlatTypeMask.flags] property.
@@ -142,10 +173,11 @@ class World implements ClassWorld {
       invariant(cls, cls.isDeclaration,
                 message: '$cls must be the declaration.') &&
       invariant(cls, cls.isResolved,
-                message: '$cls must be resolved.') &&
+                message: '$cls must be resolved.')/* &&
+      // TODO(johnniwinther): Reinsert this or similar invariant.
       (!mustBeInstantiated ||
        invariant(cls, isInstantiated(cls),
-                 message: '$cls is not instantiated.'));
+                 message: '$cls is not instantiated.'))*/;
  }
 
   /// Returns `true` if [x] is a subtype of [y], that is, if [x] implements an
@@ -175,9 +207,27 @@ class World implements ClassWorld {
     return false;
   }
 
-  /// Returns `true` if [cls] is instantiated.
+  @override
   bool isInstantiated(ClassElement cls) {
-    return compiler.resolverWorld.isInstantiated(cls);
+    ClassHierarchyNode node = _classHierarchyNodes[cls.declaration];
+    return node != null && node.isInstantiated;
+  }
+
+  @override
+  bool isDirectlyInstantiated(ClassElement cls) {
+    ClassHierarchyNode node = _classHierarchyNodes[cls.declaration];
+    return node != null && node.isDirectlyInstantiated;
+  }
+
+  @override
+  bool isIndirectlyInstantiated(ClassElement cls) {
+    ClassHierarchyNode node = _classHierarchyNodes[cls.declaration];
+    return node != null && node.isIndirectlyInstantiated;
+  }
+
+  /// Returns `true` if [cls] is implemented by an instantiated class.
+  bool isImplemented(ClassElement cls) {
+    return compiler.resolverWorld.isImplemented(cls);
   }
 
   /// Returns an iterable over the directly instantiated classes that extend
@@ -185,9 +235,8 @@ class World implements ClassWorld {
   Iterable<ClassElement> subclassesOf(ClassElement cls) {
     ClassHierarchyNode hierarchy = _classHierarchyNodes[cls.declaration];
     if (hierarchy == null) return const <ClassElement>[];
-    assert(invariant(cls, isInstantiated(cls.declaration),
-        message: 'Class $cls has not been instantiated.'));
-    return hierarchy.subclasses();
+    return hierarchy.subclassesByMask(
+        ClassHierarchyNode.DIRECTLY_INSTANTIATED);
   }
 
   /// Returns an iterable over the directly instantiated classes that extend
@@ -195,16 +244,47 @@ class World implements ClassWorld {
   Iterable<ClassElement> strictSubclassesOf(ClassElement cls) {
     ClassHierarchyNode subclasses = _classHierarchyNodes[cls.declaration];
     if (subclasses == null) return const <ClassElement>[];
-    assert(invariant(cls, isInstantiated(cls.declaration),
-        message: 'Class $cls has not been instantiated.'));
-    return subclasses.strictSubclasses();
+    return subclasses.subclassesByMask(
+        ClassHierarchyNode.DIRECTLY_INSTANTIATED, strict: true);
+  }
+
+  /// Returns an iterable over the directly instantiated that implement [cls]
+  /// possibly including [cls] itself, if it is live.
+  Iterable<ClassElement> subtypesOf(ClassElement cls) {
+    ClassSet classSet = _classSets[cls.declaration];
+    if (classSet == null) {
+      return const <ClassElement>[];
+    } else {
+      return classSet.subtypesByMask(ClassHierarchyNode.DIRECTLY_INSTANTIATED);
+    }
   }
 
   /// Returns an iterable over the directly instantiated that implement [cls]
   /// _not_ including [cls].
   Iterable<ClassElement> strictSubtypesOf(ClassElement cls) {
-    Set<ClassElement> subtypes = _subtypes[cls.declaration];
-    return subtypes != null ? subtypes : const <ClassElement>[];
+    ClassSet classSet = _classSets[cls.declaration];
+    if (classSet == null) {
+      return const <ClassElement>[];
+    } else {
+      return classSet.subtypesByMask(
+          ClassHierarchyNode.DIRECTLY_INSTANTIATED,
+          strict: true);
+    }
+  }
+
+  /// Returns `true` if [a] and [b] have any known common subtypes.
+  bool haveAnyCommonSubtypes(ClassElement a, ClassElement b) {
+    ClassSet classSetA = _classSets[a.declaration];
+    ClassSet classSetB = _classSets[b.declaration];
+    if (classSetA == null || classSetB == null) return false;
+    // TODO(johnniwinther): Implement an optimized query on [ClassSet].
+    Set<ClassElement> subtypesOfB = classSetB.subtypes().toSet();
+    for (ClassElement subtypeOfA in classSetA.subtypes()) {
+      if (subtypesOfB.contains(subtypeOfA)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /// Returns `true` if any directly instantiated class other than [cls] extends
@@ -212,8 +292,6 @@ class World implements ClassWorld {
   bool hasAnyStrictSubclass(ClassElement cls) {
     ClassHierarchyNode subclasses = _classHierarchyNodes[cls.declaration];
     if (subclasses == null) return false;
-    assert(invariant(cls, isInstantiated(cls.declaration),
-        message: 'Class $cls has not been instantiated.'));
     return subclasses.isIndirectlyInstantiated;
   }
 
@@ -226,10 +304,26 @@ class World implements ClassWorld {
   /// Returns `true` if all directly instantiated classes that implement [cls]
   /// extend it.
   bool hasOnlySubclasses(ClassElement cls) {
+    // TODO(johnniwinther): move this to ClassSet?
+    if (cls == objectClass) return true;
     Iterable<ClassElement> subtypes = strictSubtypesOf(cls);
     if (subtypes == null) return true;
     Iterable<ClassElement> subclasses = strictSubclassesOf(cls);
     return subclasses != null && (subclasses.length == subtypes.length);
+  }
+
+  @override
+  ClassElement getLubOfInstantiatedSubclasses(ClassElement cls) {
+    ClassHierarchyNode hierarchy = _classHierarchyNodes[cls.declaration];
+    return hierarchy != null
+        ? hierarchy.getLubOfInstantiatedSubclasses() : null;
+  }
+
+  @override
+  ClassElement getLubOfInstantiatedSubtypes(ClassElement cls) {
+    ClassSet classSet = _classSets[cls.declaration];
+    return classSet != null
+        ? classSet.getLubOfInstantiatedSubtypes() : null;
   }
 
   /// Returns an iterable over the common supertypes of the [classes].
@@ -284,9 +378,23 @@ class World implements ClassWorld {
     if (_liveMixinUses == null) {
       _liveMixinUses = new Map<ClassElement, List<MixinApplicationElement>>();
       for (ClassElement mixin in _mixinUses.keys) {
-        Iterable<MixinApplicationElement> uses =
-            _mixinUses[mixin].where(isInstantiated);
-        if (uses.isNotEmpty) _liveMixinUses[mixin] = uses.toList();
+        List<MixinApplicationElement> uses = <MixinApplicationElement>[];
+
+        void addLiveUse(MixinApplicationElement mixinApplication) {
+          if (isInstantiated(mixinApplication)) {
+            uses.add(mixinApplication);
+          } else if (mixinApplication.isNamedMixinApplication) {
+            List<MixinApplicationElement> next = _mixinUses[mixinApplication];
+            if (next != null) {
+              next.forEach(addLiveUse);
+            }
+          }
+        }
+
+        _mixinUses[mixin].forEach(addLiveUse);
+        if (uses.isNotEmpty) {
+          _liveMixinUses[mixin] = uses;
+        }
       }
     }
     Iterable<MixinApplicationElement> uses = _liveMixinUses[cls];
@@ -338,8 +446,8 @@ class World implements ClassWorld {
   // distinct sets to make class hierarchy analysis faster.
   final Map<ClassElement, ClassHierarchyNode> _classHierarchyNodes =
       <ClassElement, ClassHierarchyNode>{};
-  final Map<ClassElement, Set<ClassElement>> _subtypes =
-      new Map<ClassElement, Set<ClassElement>>();
+  final Map<ClassElement, ClassSet> _classSets =
+        <ClassElement, ClassSet>{};
 
   final Set<Element> sideEffectsFreeElements = new Set<Element>();
 
@@ -351,11 +459,6 @@ class World implements ClassWorld {
   final Set<Element> alreadyPopulated;
 
   bool get isClosed => compiler.phase > Compiler.PHASE_RESOLVING;
-
-  // Used by selectors.
-  bool isAssertMethod(Element element) {
-    return compiler.backend.isAssertMethod(element);
-  }
 
   // Used by selectors.
   bool isForeign(Element element) {
@@ -371,39 +474,96 @@ class World implements ClassWorld {
         this.compiler = compiler,
         alreadyPopulated = compiler.cacheStrategy.newSet();
 
-  ClassHierarchyNode classHierarchyNode(ClassElement cls) {
-    return _classHierarchyNodes[cls];
+  CoreClasses get coreClasses => compiler.coreClasses;
+
+  DiagnosticReporter get reporter => compiler.reporter;
+
+  /// Called to add [cls] to the set of known classes.
+  ///
+  /// This ensures that class hierarchy queries can be performed on [cls] and
+  /// classes that extend or implement it.
+  void registerClass(ClassElement cls, {bool isDirectlyInstantiated: false}) {
+    _ensureClassSet(cls);
+    if (isDirectlyInstantiated) {
+      _updateClassHierarchyNodeForClass(cls, directlyInstantiated: true);
+    }
+  }
+
+  /// Returns [ClassHierarchyNode] for [cls] used to model the class hierarchies
+  /// of known classes.
+  ///
+  /// This method is only provided for testing. For queries on classes, use the
+  /// methods defined in [ClassWorld].
+  ClassHierarchyNode getClassHierarchyNode(ClassElement cls) {
+    return _classHierarchyNodes[cls.declaration];
+  }
+
+  ClassHierarchyNode _ensureClassHierarchyNode(ClassElement cls) {
+    cls = cls.declaration;
+    return _classHierarchyNodes.putIfAbsent(cls, () {
+      ClassHierarchyNode node = new ClassHierarchyNode(cls);
+      if (cls.superclass != null) {
+        _ensureClassHierarchyNode(cls.superclass).addDirectSubclass(node);
+      }
+      return node;
+    });
+  }
+
+  /// Returns [ClassSet] for [cls] used to model the extends and implements
+  /// relations of known classes.
+  ///
+  /// This method is only provided for testing. For queries on classes, use the
+  /// methods defined in [ClassWorld].
+  ClassSet getClassSet(ClassElement cls) {
+    return _classSets[cls.declaration];
+  }
+
+  ClassSet _ensureClassSet(ClassElement cls) {
+    cls = cls.declaration;
+    return _classSets.putIfAbsent(cls, () {
+      ClassHierarchyNode node = _ensureClassHierarchyNode(cls);
+      ClassSet classSet = new ClassSet(node);
+
+      for (InterfaceType type in cls.allSupertypes) {
+        // TODO(johnniwinther): Optimization: Avoid adding [cls] to
+        // superclasses.
+        ClassSet subtypeSet = _ensureClassSet(type.element);
+        subtypeSet.addSubtype(node);
+      }
+      return classSet;
+    });
+  }
+
+  void _updateClassHierarchyNodeForClass(
+      ClassElement cls,
+      {bool directlyInstantiated: false,
+       bool indirectlyInstantiated: false}) {
+    ClassHierarchyNode node = getClassHierarchyNode(cls);
+    bool changed = false;
+    if (directlyInstantiated && !node.isDirectlyInstantiated) {
+      node.isDirectlyInstantiated = true;
+      changed = true;
+    }
+    if (indirectlyInstantiated && !node.isIndirectlyInstantiated) {
+      node.isIndirectlyInstantiated = true;
+      changed = true;
+    }
+    if (changed && cls.superclass != null) {
+      _updateClassHierarchyNodeForClass(
+          cls.superclass, indirectlyInstantiated: true);
+    }
+    // Ensure that classes implicitly implementing `Function` are in its
+    // subtype set.
+    if (cls != coreClasses.functionClass &&
+        cls.implementsFunction(compiler)) {
+      ClassSet subtypeSet = _ensureClassSet(coreClasses.functionClass);
+      subtypeSet.addSubtype(node);
+    }
   }
 
   void populate() {
-
-    /// Ensure that a [ClassHierarchyNode] exists for [cls]. Updates the
-    /// `isDirectlyInstantiated` and `isIndirectlyInstantiated` property of the
-    /// node according the provided arguments and returns the node.
-    ClassHierarchyNode createClassHierarchyNodeForClass(
-        ClassElement cls,
-        {bool directlyInstantiated: false,
-         bool indirectlyInstantiated: false}) {
-      assert(isInstantiated(cls));
-
-      ClassHierarchyNode node = _classHierarchyNodes.putIfAbsent(cls, () {
-        ClassHierarchyNode node = new ClassHierarchyNode(cls);
-        if (cls.superclass != null) {
-          createClassHierarchyNodeForClass(cls.superclass,
-              indirectlyInstantiated:
-                directlyInstantiated || indirectlyInstantiated)
-              .addDirectSubclass(node);
-        }
-        return node;
-      });
-      if (directlyInstantiated) {
-        node.isDirectlyInstantiated = true;
-      }
-      if (indirectlyInstantiated) {
-        node.isIndirectlyInstantiated = true;
-      }
-      return node;
-    }
+    /// Updates the `isDirectlyInstantiated` and `isIndirectlyInstantiated`
+    /// properties of the [ClassHierarchyNode] for [cls].
 
     void addSubtypes(ClassElement cls) {
       if (compiler.hasIncrementalSupport && !alreadyPopulated.add(cls)) {
@@ -411,16 +571,10 @@ class World implements ClassWorld {
       }
       assert(cls.isDeclaration);
       if (!cls.isResolved) {
-        compiler.internalError(cls, 'Class "${cls.name}" is not resolved.');
+        reporter.internalError(cls, 'Class "${cls.name}" is not resolved.');
       }
 
-      createClassHierarchyNodeForClass(cls, directlyInstantiated: true);
-
-      for (DartType type in cls.allSupertypes) {
-        Set<Element> subtypesOfSupertype =
-            _subtypes.putIfAbsent(type.element, () => new Set<ClassElement>());
-        subtypesOfSupertype.add(cls);
-      }
+      _updateClassHierarchyNodeForClass(cls, directlyInstantiated: true);
 
       // Walk through the superclasses, and record the types
       // implemented by that type on the superclasses.
@@ -441,6 +595,19 @@ class World implements ClassWorld {
     // they also need RTI, so that a constructor passes the type
     // variables to the super constructor.
     compiler.resolverWorld.directlyInstantiatedClasses.forEach(addSubtypes);
+  }
+
+  @override
+  String dump([ClassElement cls]) {
+    StringBuffer sb = new StringBuffer();
+    if (cls != null) {
+      sb.write("Classes in the closed world related to $cls:\n");
+    } else {
+      sb.write("Instantiated classes in the closed world:\n");
+    }
+    getClassHierarchyNode(coreClasses.objectClass)
+        .printOn(sb, ' ', instantiatedOnly: cls == null, withRespectTo: cls);
+    return sb.toString();
   }
 
   void registerMixinUse(MixinApplicationElement mixinApplication,
@@ -496,7 +663,7 @@ class World implements ClassWorld {
 
   bool fieldNeverChanges(Element element) {
     if (!element.isField) return false;
-    if (element.isNative) {
+    if (backend.isNative(element)) {
       // Some native fields are views of data that may be changed by operations.
       // E.g. node.firstChild depends on parentNode.removeBefore(n1, n2).
       // TODO(sra): Refine the effect classification so that native effects are
@@ -504,10 +671,14 @@ class World implements ClassWorld {
       return false;
     }
 
-    return element.isFinal
-        || element.isConst
-        || (element.isInstanceMember
-            && !compiler.resolverWorld.hasInvokedSetter(element, this));
+    if (element.isFinal || element.isConst) {
+      return true;
+    }
+    if (element.isInstanceMember) {
+      return !compiler.resolverWorld.hasInvokedSetter(element, this) &&
+             !compiler.resolverWorld.fieldSetters.contains(element);
+    }
+    return false;
   }
 
   SideEffects getSideEffectsOfElement(Element element) {
@@ -564,11 +735,6 @@ class World implements ClassWorld {
 
   bool getCannotThrow(Element element) {
     return elementsThatCannotThrow.contains(element);
-  }
-
-  void registerImplicitSuperCall(Registry registry,
-                                 FunctionElement superConstructor) {
-    registry.registerDependency(superConstructor);
   }
 
   void registerMightBePassedToApply(Element element) {

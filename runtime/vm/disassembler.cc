@@ -7,52 +7,63 @@
 #include "vm/assembler.h"
 #include "vm/globals.h"
 #include "vm/il_printer.h"
+#include "vm/instructions.h"
 #include "vm/json_stream.h"
 #include "vm/log.h"
 #include "vm/os.h"
+#include "vm/code_patcher.h"
 
 
 namespace dart {
 
-void DisassembleToStdout::ConsumeInstruction(char* hex_buffer,
+void DisassembleToStdout::ConsumeInstruction(const Code& code,
+                                             char* hex_buffer,
                                              intptr_t hex_size,
                                              char* human_buffer,
                                              intptr_t human_size,
                                              uword pc) {
   static const int kHexColumnWidth = 23;
   uint8_t* pc_ptr = reinterpret_cast<uint8_t*>(pc);
-  ISL_Print("%p    %s", pc_ptr, hex_buffer);
+  THR_Print("%p    %s", pc_ptr, hex_buffer);
   int hex_length = strlen(hex_buffer);
   if (hex_length < kHexColumnWidth) {
     for (int i = kHexColumnWidth - hex_length; i > 0; i--) {
-      ISL_Print(" ");
+      THR_Print(" ");
     }
   }
-  ISL_Print("%s", human_buffer);
-  ISL_Print("\n");
+  THR_Print("%s", human_buffer);
+  THR_Print("\n");
 }
 
 
 void DisassembleToStdout::Print(const char* format, ...) {
   va_list args;
   va_start(args, format);
-  ISL_VPrint(format, args);
+  THR_VPrint(format, args);
   va_end(args);
 }
 
 
-void DisassembleToJSONStream::ConsumeInstruction(char* hex_buffer,
+void DisassembleToJSONStream::ConsumeInstruction(const Code& code,
+                                                 char* hex_buffer,
                                                  intptr_t hex_size,
                                                  char* human_buffer,
                                                  intptr_t human_size,
                                                  uword pc) {
-  // Instructions are represented as three consecutive values in a JSON array.
-  // All three are strings. The first is the address of the instruction,
-  // the second is the hex string of the code, and the final is a human
-  // readable string.
+  // Instructions are represented as four consecutive values in a JSON array.
+  // The first is the address of the instruction, the second is the hex string,
+  // of the code, and the third is a human readable string, and the fourth is
+  // the object loaded by the instruction.
   jsarr_.AddValueF("%" Pp "", pc);
   jsarr_.AddValue(hex_buffer);
   jsarr_.AddValue(human_buffer);
+
+  Object& object = Object::Handle();
+  if (DecodeLoadObjectFromPoolOrThread(pc, code, &object)) {
+    jsarr_.AddValue(object);
+  } else {
+    jsarr_.AddValueNull();  // Not a reference to null.
+  }
 }
 
 
@@ -71,12 +82,12 @@ void DisassembleToJSONStream::Print(const char* format, ...) {
       p[i] = ' ';
     }
   }
-  // Instructions are represented as three consecutive values in a JSON array.
-  // All three are strings. Comments only use the third slot. See above comment
-  // for more information.
-  jsarr_.AddValue("");
-  jsarr_.AddValue("");
+  // Instructions are represented as four consecutive values in a JSON array.
+  // Comments only use the third slot. See above comment for more information.
+  jsarr_.AddValueNull();
+  jsarr_.AddValueNull();
   jsarr_.AddValue(p);
+  jsarr_.AddValueNull();
   free(p);
 }
 
@@ -104,7 +115,8 @@ class FindAddrVisitor : public FindObjectVisitor {
 bool Disassembler::CanFindOldObject(uword addr) {
   FindAddrVisitor visitor(addr);
   NoSafepointScope no_safepoint;
-  return Isolate::Current()->heap()->FindOldObject(&visitor) != Object::null();
+  return Dart::vm_isolate()->heap()->FindOldObject(&visitor) != Object::null()
+      || Isolate::Current()->heap()->FindOldObject(&visitor) != Object::null();
 }
 
 
@@ -157,7 +169,8 @@ void Disassembler::Disassemble(uword start,
                       human_buffer,
                       sizeof(human_buffer),
                       &instruction_length, pc);
-    formatter->ConsumeInstruction(hex_buffer,
+    formatter->ConsumeInstruction(code,
+                                  hex_buffer,
                                   sizeof(hex_buffer),
                                   human_buffer,
                                   sizeof(human_buffer),

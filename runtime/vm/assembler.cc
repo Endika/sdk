@@ -13,15 +13,18 @@
 
 namespace dart {
 
+DECLARE_FLAG(bool, disassemble);
+DECLARE_FLAG(bool, disassemble_optimized);
+
+DEFINE_FLAG(bool, check_code_pointer, false,
+            "Verify instructions offset in code object."
+            "NOTE: This breaks the profiler.");
 DEFINE_FLAG(bool, code_comments, false,
             "Include comments into code and disassembly");
 #if defined(TARGET_ARCH_ARM) || defined(TARGET_ARCH_MIPS)
 DEFINE_FLAG(bool, use_far_branches, false,
             "Enable far branches for ARM and MIPS");
 #endif
-
-DECLARE_FLAG(bool, disassemble);
-DECLARE_FLAG(bool, disassemble_optimized);
 
 static uword NewContents(intptr_t capacity) {
   Zone* zone = Thread::Current()->zone();
@@ -242,8 +245,9 @@ const Code::Comments& Assembler::GetCodeComments() const {
 }
 
 
-intptr_t ObjectPoolWrapper::AddObject(const Object& obj) {
-  return AddObject(ObjectPool::Entry(&obj), kNotPatchable);
+intptr_t ObjectPoolWrapper::AddObject(const Object& obj,
+                                      Patchability patchable) {
+  return AddObject(ObjectPool::Entry(&obj), patchable);
 }
 
 
@@ -264,14 +268,6 @@ intptr_t ObjectPoolWrapper::AddObject(ObjectPool::Entry entry,
 }
 
 
-intptr_t ObjectPoolWrapper::AddExternalLabel(const ExternalLabel* label,
-                                             Patchability patchable) {
-  return AddObject(ObjectPool::Entry(label->address(),
-                                     ObjectPool::kExternalLabel),
-                   patchable);
-}
-
-
 intptr_t ObjectPoolWrapper::FindObject(ObjectPool::Entry entry,
                                        Patchability patchable) {
   // If the object is not patchable, check if we've already got it in the
@@ -287,8 +283,9 @@ intptr_t ObjectPoolWrapper::FindObject(ObjectPool::Entry entry,
 }
 
 
-intptr_t ObjectPoolWrapper::FindObject(const Object& obj) {
-  return FindObject(ObjectPool::Entry(&obj), kNotPatchable);
+intptr_t ObjectPoolWrapper::FindObject(const Object& obj,
+                                       Patchability patchable) {
+  return FindObject(ObjectPool::Entry(&obj), patchable);
 }
 
 
@@ -298,10 +295,10 @@ intptr_t ObjectPoolWrapper::FindImmediate(uword imm) {
 }
 
 
-intptr_t ObjectPoolWrapper::FindExternalLabel(const ExternalLabel* label,
-                                              Patchability patchable) {
+intptr_t ObjectPoolWrapper::FindNativeEntry(const ExternalLabel* label,
+                                            Patchability patchable) {
   return FindObject(ObjectPool::Entry(label->address(),
-                                      ObjectPool::kExternalLabel),
+                                      ObjectPool::kNativeEntry),
                     patchable);
 }
 

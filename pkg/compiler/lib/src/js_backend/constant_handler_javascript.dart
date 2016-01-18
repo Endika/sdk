@@ -196,7 +196,7 @@ class JavaScriptConstantCompiler extends ConstantCompilerBase
     ConstantExpression initialValue =
         initialVariableValues[element.declaration];
     if (initialValue == null) {
-      compiler.internalError(element, "No initial value for given element.");
+      reporter.internalError(element, "No initial value for given element.");
     }
     return getConstantValue(initialValue);
   }
@@ -261,7 +261,7 @@ class ForgetConstantElementVisitor
   const ForgetConstantElementVisitor();
 
   void visitElement(Element e, JavaScriptConstantCompiler constants) {
-    for (MetadataAnnotation data in e.metadata) {
+    for (MetadataAnnotation data in e.implementation.metadata) {
       constants.metadataConstantMap.remove(data);
       if (data.hasNode) {
         data.node.accept(new ForgetConstantNodeVisitor(constants));

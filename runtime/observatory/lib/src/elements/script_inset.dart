@@ -6,7 +6,9 @@ library script_inset_element;
 
 import 'dart:async';
 import 'dart:html';
+import 'dart:math';
 import 'observatory_element.dart';
+import 'nav_bar.dart';
 import 'service_ref.dart';
 import 'package:observatory/service.dart';
 import 'package:observatory/utils.dart';
@@ -121,9 +123,18 @@ class BreakpointAnnotation extends Annotation {
 
   BreakpointAnnotation(this.bpt) {
     var script = bpt.location.script;
-    var pos = bpt.location.tokenPos;
-    line = script.tokenToLine(pos);
-    columnStart = script.tokenToCol(pos) - 1;  // tokenToCol is 1-origin.
+    var location = bpt.location;
+    if (location.tokenPos != null) {
+      var pos = location.tokenPos;
+      line = script.tokenToLine(pos);
+      columnStart = script.tokenToCol(pos) - 1;  // tokenToCol is 1-origin.
+    } else if (location is UnresolvedSourceLocation) {
+      line = location.line;
+      columnStart = location.column;
+      if (columnStart == null) {
+        columnStart = 0;
+      }
+    }
     var length = script.guessTokenLength(line, columnStart);
     if (length == null) {
       length = 1;
@@ -139,7 +150,11 @@ class BreakpointAnnotation extends Annotation {
     var pos = bpt.location.tokenPos;
     int line = script.tokenToLine(pos);
     int column = script.tokenToCol(pos);
-    element.classes.add("breakAnnotation");
+    if (bpt.resolved) {
+      element.classes.add("resolvedBreakAnnotation");
+    } else {
+      element.classes.add("unresolvedBreakAnnotation");
+    }
     element.title = "Breakpoint ${bpt.number} at ${line}:${column}";
   }
 }
@@ -231,7 +246,7 @@ class CallSiteAnnotation extends Annotation {
 
         for (var entry in callSite.entries) {
           var r = row();
-          r.append(cell(serviceRef(entry.receiverContainer)));
+          r.append(cell(serviceRef(entry.receiver)));
           r.append(cell(entry.count.toString()));
           r.append(cell(serviceRef(entry.target)));
           details.append(r);
@@ -361,16 +376,24 @@ class ScriptInsetElement extends ObservatoryElement {
   @published bool inDebuggerContext = false;
   @published ObservableList variables;
 
+  @published Element scroller;
+  RefreshButtonElement _refreshButton;
+
   int _currentLine;
   int _currentCol;
   int _startLine;
   int _endLine;
+
+  Map<int, List<ServiceMap>> _rangeMap = {};
+  Set _callSites = new Set<CallSite>();
+  Set _possibleBreakpointLines = new Set<int>();
 
   var annotations = [];
   var annotationsCursor;
 
   StreamSubscription _scriptChangeSubscription;
   Future<StreamSubscription> _debugSubscriptionFuture;
+  StreamSubscription _scrollSubscription;
 
   bool hasLoadedLibraryDeclarations = false;
 
@@ -389,17 +412,37 @@ class ScriptInsetElement extends ObservatoryElement {
     super.attached();
     _debugSubscriptionFuture =
         app.vm.listenEventStream(VM.kDebugStream, _onDebugEvent);
+    if (scroller != null) {
+      _scrollSubscription = scroller.onScroll.listen(_onScroll);
+    } else {
+      _scrollSubscription = window.onScroll.listen(_onScroll);
+    }
   }
 
   void detached() {
     cancelFutureSubscription(_debugSubscriptionFuture);
     _debugSubscriptionFuture = null;
+    if (_scrollSubscription != null) {
+      _scrollSubscription.cancel();
+      _scrollSubscription = null;
+    }
     if (_scriptChangeSubscription != null) {
       // Don't leak. If only Dart and Javascript exposed weak references...
       _scriptChangeSubscription.cancel();
       _scriptChangeSubscription = null;
     }
     super.detached();
+  }
+
+  void _onScroll(event) {
+    if (_refreshButton == null) {
+      return;
+    }
+    var currentTop = _refreshButton.style.top;
+    var newTop = _refreshButtonTop();
+    if (currentTop != newTop) {
+      _refreshButton.style.top = '${newTop}px';
+    }
   }
 
   void _onDebugEvent(event) {
@@ -412,7 +455,12 @@ class ScriptInsetElement extends ObservatoryElement {
       case ServiceEvent.kBreakpointRemoved:
         var loc = event.breakpoint.location;
         if (loc.script == script) {
-          int line = script.tokenToLine(loc.tokenPos);
+          int line;
+          if (loc.tokenPos != null) {
+            line = script.tokenToLine(loc.tokenPos);
+          } else {
+            line = loc.line;
+          }
           if ((line >= _startLine) && (line <= _endLine)) {
             _updateTask.queue();
           }
@@ -448,6 +496,11 @@ class ScriptInsetElement extends ObservatoryElement {
   Element a(String text) => new AnchorElement()..text = text;
   Element span(String text) => new SpanElement()..text = text;
 
+  Element hitsCurrent(Element element) {
+    element.classes.add('hitsCurrent');
+    element.title = "";
+    return element;
+  }
   Element hitsUnknown(Element element) {
     element.classes.add('hitsNone');
     element.title = "";
@@ -463,11 +516,55 @@ class ScriptInsetElement extends ObservatoryElement {
     element.title = "Line did execute";
     return element;
   }
+  Element hitsCompiled(Element element) {
+    element.classes.add('hitsCompiled');
+    element.title = "Line in compiled function";
+    return element;
+  }
+  Element hitsNotCompiled(Element element) {
+    element.classes.add('hitsNotCompiled');
+    element.title = "Line in uncompiled function";
+    return element;
+  }
 
   Element container;
 
+  Future _refresh() async {
+    await update();
+  }
+
+  // Build _rangeMap and _callSites from a source report.
+  Future _refreshSourceReport() async {
+    var sourceReport = await script.isolate.getSourceReport(
+        [Isolate.kCallSitesReport, Isolate.kPossibleBreakpointsReport],
+        script, startPos, endPos);
+    _possibleBreakpointLines = getPossibleBreakpointLines(sourceReport, script);
+    _rangeMap.clear();
+    _callSites.clear();
+    for (var range in sourceReport['ranges']) {
+      int startLine = script.tokenToLine(range['startPos']);
+      int endLine = script.tokenToLine(range['endPos']);
+      for (var line = startLine; line <= endLine; line++) {
+        var rangeList = _rangeMap[line];
+        if (rangeList == null) {
+          _rangeMap[line] = [range];
+        } else {
+          rangeList.add(range);
+        }
+      }
+      if (range['compiled']) {
+        var rangeCallSites = range['callSites'];
+        if (rangeCallSites != null) {
+          for (var callSiteMap in rangeCallSites) {
+            _callSites.add(new CallSite.fromMap(callSiteMap, script));
+          }
+        }
+      }
+    }
+  }
+
   Task _updateTask;
-  void update() {
+  Future update() async {
     assert(_updateTask != null);
     if (script == null) {
       // We may have previously had a script.
@@ -477,13 +574,12 @@ class ScriptInsetElement extends ObservatoryElement {
       return;
     }
     if (!script.loaded) {
-      script.load().then((_) => update());
-      return;
+      await script.load();
     }
-
     if (_scriptChangeSubscription == null) {
       _scriptChangeSubscription = script.changes.listen((_) => update());
     }
+    await _refreshSourceReport();
 
     computeAnnotations();
 
@@ -520,6 +616,10 @@ class ScriptInsetElement extends ObservatoryElement {
     _endLine = (endPos != null
                 ? script.tokenToLine(endPos)
                 : script.lines.length + script.lineOffset);
+
+    if (_startLine == null || _endLine == null) {
+      return;
+    }
 
     annotations.clear();
 
@@ -636,12 +736,24 @@ class ScriptInsetElement extends ObservatoryElement {
   }
 
   Library resolveDependency(String relativeUri) {
+    // This isn't really correct: we need to ask the embedder to do the
+    // uri canonicalization for us, but Observatory isn't in a position
+    // to invoke the library tag handler. Handle the most common cases.
     var targetUri = Uri.parse(script.library.uri).resolve(relativeUri);
     for (Library l in script.isolate.libraries) {
       if (targetUri.toString() == l.uri) {
         return l;
       }
     }
+    if (targetUri.scheme == 'package') {
+      targetUri = "packages/${targetUri.path}";
+      for (Library l in script.isolate.libraries) {
+        if (targetUri.toString() == l.uri) {
+          return l;
+        }
+      }
+    }
+
     Logger.root.info("Could not resolve library dependency: $relativeUri");
     return null;
   }
@@ -764,7 +876,7 @@ class ScriptInsetElement extends ObservatoryElement {
   }
 
   void addCallSiteAnnotations() {
-    for (var callSite in script.callSites) {
+    for (var callSite in _callSites) {
       annotations.add(new CallSiteAnnotation(callSite));
     }
   }
@@ -789,13 +901,43 @@ class ScriptInsetElement extends ObservatoryElement {
     }
   }
 
+  int _refreshButtonTop() {
+    if (_refreshButton == null) {
+      return 5;
+    }
+    const padding = 5;
+    const navbarHeight = NavBarElement.height;
+    var rect = getBoundingClientRect();
+    var buttonHeight = _refreshButton.clientHeight;
+    return min(max(0, navbarHeight - rect.top) + padding,
+               rect.height - (buttonHeight + padding));
+  }
+
+  RefreshButtonElement _newRefreshButton() {
+    var button = new Element.tag('refresh-button');
+    button.style.position = 'absolute';
+    button.style.display = 'inline-block';
+    button.style.top = '${_refreshButtonTop()}px';
+    button.style.right = '5px';
+    button.callback = _refresh;
+    return button;
+  }
+
   Element linesTable() {
     var table = new DivElement();
     table.classes.add("sourceTable");
 
+    _refreshButton = _newRefreshButton();
+    table.append(_refreshButton);
+
     if (_startLine == null || _endLine == null) {
       return table;
     }
+
+    var endLine = (endPos != null
+                   ? script.tokenToLine(endPos)
+                   : script.lines.length + script.lineOffset);
+    var lineNumPad = endLine.toString().length;
 
     annotationsCursor = 0;
 
@@ -813,17 +955,17 @@ class ScriptInsetElement extends ObservatoryElement {
           if (blankLineCount < 4) {
             // Too few blank lines for an elipsis.
             for (int j = firstBlank; j  <= lastBlank; j++) {
-              table.append(lineElement(script.getLine(j)));
+              table.append(lineElement(script.getLine(j), lineNumPad));
             }
           } else {
             // Add an elipsis for the skipped region.
-            table.append(lineElement(script.getLine(firstBlank)));
-            table.append(lineElement(null));
-            table.append(lineElement(script.getLine(lastBlank)));
+            table.append(lineElement(script.getLine(firstBlank), lineNumPad));
+            table.append(lineElement(null, lineNumPad));
+            table.append(lineElement(script.getLine(lastBlank), lineNumPad));
           }
           blankLineCount = 0;
         }
-        table.append(lineElement(line));
+        table.append(lineElement(line, lineNumPad));
       }
     }
 
@@ -849,46 +991,49 @@ class ScriptInsetElement extends ObservatoryElement {
     return annotation;
   }
 
-  Element lineElement(ScriptLine line) {
+  Element lineElement(ScriptLine line, int lineNumPad) {
     var e = new DivElement();
     e.classes.add("sourceRow");
     e.append(lineBreakpointElement(line));
-    e.append(lineNumberElement(line));
+    e.append(lineNumberElement(line, lineNumPad));
     e.append(lineSourceElement(line));
     return e;
   }
 
   Element lineBreakpointElement(ScriptLine line) {
     var e = new DivElement();
-    var busy = false;
-    if (line == null || !line.possibleBpt) {
-      e.classes.add("emptyBreakpoint");
+    if (line == null || !_possibleBreakpointLines.contains(line.line)) {
       e.classes.add('noCopy');
+      e.classes.add("emptyBreakpoint");
       e.text = nbsp;
       return e;
     }
+
     e.text = 'B';
-    update() {
+    var busy = false;
+    void update() {
       e.classes.clear();
       e.classes.add('noCopy');
-
-      if (!line.possibleBpt) {
-        e.classes.add("emptyBreakpoint");
-        e.text = nbsp;
-      } else if (busy) {
+      if (busy) {
         e.classes.add("busyBreakpoint");
-      } else {
-        if (line.breakpoints != null) {
-          if (line.breakpointResolved) {
-            e.classes.add("resolvedBreakpoint");
-          } else {
-            e.classes.add("unresolvedBreakpoint");
+      } else if (line.breakpoints != null) {
+        bool resolved = false;
+        for (var bpt in line.breakpoints) {
+          if (bpt.resolved) {
+            resolved = true;
+            break;
           }
-        } else {
-          e.classes.add("possibleBreakpoint");
         }
+        if (resolved) {
+          e.classes.add("resolvedBreakpoint");
+        } else {
+          e.classes.add("unresolvedBreakpoint");
+        }
+      } else {
+        e.classes.add("possibleBreakpoint");
       }
     }
+
     line.changes.listen((_) => update());
     e.onClick.listen((event) {
       if (busy) {
@@ -925,19 +1070,55 @@ class ScriptInsetElement extends ObservatoryElement {
     return e;
   }
 
-  Element lineNumberElement(ScriptLine line) {
+  Element lineNumberElement(ScriptLine line, int lineNumPad) {
     var lineNumber = line == null ? "..." : line.line;
-    var e = span("$nbsp$lineNumber$nbsp");
+    var e = span("$nbsp${lineNumber.toString().padLeft(lineNumPad,nbsp)}$nbsp");
     e.classes.add('noCopy');
-
-    if ((line == null) || (line.hits == null)) {
-      hitsUnknown(e);
-    } else if (line.hits == 0) {
-      hitsNotExecuted(e);
-    } else {
-      hitsExecuted(e);
+    if (lineNumber == _currentLine) {
+      hitsCurrent(e);
+      return e;
     }
-
+    var ranges = _rangeMap[lineNumber];
+    if ((ranges == null) || ranges.isEmpty) {
+      // This line is not code.
+      hitsUnknown(e);
+      return e;
+    }
+    bool compiled = true;
+    bool hasCallInfo = false;
+    bool executed = false;
+    for (var range in ranges) {
+      if (range['compiled']) {
+        for (var callSite in range['callSites']) {
+          var callLine = line.script.tokenToLine(callSite['tokenPos']);
+          if (lineNumber == callLine) {
+            // The call site is on the current line.
+            hasCallInfo = true;
+            for (var cacheEntry in callSite['cacheEntries']) {
+              if (cacheEntry['count'] > 0) {
+                // If any call site on the line has been executed, we
+                // mark the line as executed.
+                executed = true;
+                break;
+              }
+            }
+          }
+        }
+      } else {
+        // If any range isn't compiled, show the line as not compiled.
+        // This is necessary so that nested functions appear to be uncompiled.
+        compiled = false;
+      }
+    }
+    if (executed) {
+      hitsExecuted(e);
+    } else if (hasCallInfo) {
+      hitsNotExecuted(e);
+    } else if (compiled) {
+      hitsCompiled(e);
+    } else {
+      hitsNotCompiled(e);
+    }
     return e;
   }
 
@@ -990,6 +1171,26 @@ class ScriptInsetElement extends ObservatoryElement {
   }
 }
 
+@CustomTag('refresh-button')
+class RefreshButtonElement extends PolymerElement {
+  RefreshButtonElement.created() : super.created();
+
+  @published var callback = null;
+  bool busy = false;
+
+  Future buttonClick(var event, var b, var c) async {
+    if (busy) {
+      return;
+    }
+    busy = true;
+    if (callback != null) {
+      await callback();
+    }
+    busy = false;
+  }
+}
+
+
 @CustomTag('source-inset')
 class SourceInsetElement extends PolymerElement {
   SourceInsetElement.created() : super.created();
@@ -999,5 +1200,5 @@ class SourceInsetElement extends PolymerElement {
   @published int currentPos;
   @published bool inDebuggerContext = false;
   @published ObservableList variables;
+  @published Element scroller;
 }
-

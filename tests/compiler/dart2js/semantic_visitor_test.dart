@@ -8,6 +8,7 @@ import 'dart:async';
 import 'dart:mirrors';
 import 'package:async_helper/async_helper.dart';
 import 'package:expect/expect.dart';
+import 'package:compiler/src/commandline_options.dart';
 import 'package:compiler/src/constants/expressions.dart';
 import 'package:compiler/src/dart_types.dart';
 import 'package:compiler/src/diagnostics/spannable.dart';
@@ -18,8 +19,9 @@ import 'package:compiler/src/resolution/operators.dart';
 import 'package:compiler/src/resolution/semantic_visitor.dart';
 import 'package:compiler/src/resolution/tree_elements.dart';
 import 'package:compiler/src/tree/tree.dart';
-import 'package:compiler/src/universe/universe.dart' show
-    CallStructure,
+import 'package:compiler/src/universe/call_structure.dart' show
+    CallStructure;
+import 'package:compiler/src/universe/selector.dart' show
     Selector;
 import 'memory_compiler.dart';
 
@@ -292,9 +294,7 @@ Future test(Set<VisitKind> unvisitedKinds,
 
   CompilationResult result = await runCompiler(
       memorySourceFiles: sourceFiles,
-      options: ['--analyze-all',
-                '--analyze-only',
-                '--enable-null-aware-operators']);
+      options: [Flags.analyzeAll, Flags.analyzeOnly]);
   Compiler compiler = result.compiler;
   testMap.forEach((String filename, Test test) {
     LibraryElement library = compiler.libraryLoader.lookupLibrary(
@@ -313,14 +313,14 @@ Future test(Set<VisitKind> unvisitedKinds,
     }
     var expectedVisits = test.expectedVisits;
     if (expectedVisits == null) {
-      Expect.isTrue(element.isErroneous,
+      Expect.isTrue(element.isMalformed,
           "Element '$method' expected to be have parse errors in:\n"
           "${library.compilationUnit.script.text}");
       return;
     } else if (expectedVisits is! List) {
       expectedVisits = [expectedVisits];
     }
-    Expect.isFalse(element.isErroneous,
+    Expect.isFalse(element.isMalformed,
         "Element '$method' is not expected to be have parse errors in:\n"
         "${library.compilationUnit.script.text}");
 
@@ -330,7 +330,7 @@ Future test(Set<VisitKind> unvisitedKinds,
       ResolvedAst resolvedAst = astElement.resolvedAst;
       SemanticTestVisitor visitor = createVisitor(resolvedAst.elements);
       try {
-        compiler.withCurrentElement(resolvedAst.element, () {
+        compiler.reporter.withCurrentElement(resolvedAst.element, () {
           //print(resolvedAst.node.toDebugString());
           resolvedAst.node.accept(visitor);
         });
@@ -673,7 +673,6 @@ enum VisitKind {
   VISIT_UNRESOLVED_SUPER_GETTER_COMPOUND_INDEX_SET,
   VISIT_UNRESOLVED_SUPER_SETTER_COMPOUND_INDEX_SET,
 
-  VISIT_ASSERT,
   VISIT_LOGICAL_AND,
   VISIT_LOGICAL_OR,
   VISIT_IS,
@@ -735,7 +734,6 @@ enum VisitKind {
   VISIT_IF_NOT_NULL_DYNAMIC_PROPERTY_PREFIX,
   VISIT_IF_NOT_NULL_DYNAMIC_PROPERTY_POSTFIX,
 
-  ERROR_INVALID_ASSERT,
   ERROR_UNDEFINED_UNARY_EXPRESSION,
   ERROR_UNDEFINED_BINARY_EXPRESSION,
   ERROR_INVALID_GET,

@@ -239,6 +239,7 @@ class _Html5NodeValidator implements NodeValidator {
     'INPUT::align',
     'INPUT::alt',
     'INPUT::autocomplete',
+    'INPUT::autofocus',
     'INPUT::checked',
     'INPUT::disabled',
     'INPUT::inputmode',
@@ -423,11 +424,11 @@ class _Html5NodeValidator implements NodeValidator {
   }
 
   bool allowsElement(Element element) {
-    return _allowedElements.contains(element.tagName);
+    return _allowedElements.contains(Element._safeTagName(element));
   }
 
   bool allowsAttribute(Element element, String attributeName, String value) {
-    var tagName = element.tagName;
+    var tagName = Element._safeTagName(element);
     var validator = _attributeValidators['$tagName::$attributeName'];
     if (validator == null) {
       validator = _attributeValidators['*::$attributeName'];
